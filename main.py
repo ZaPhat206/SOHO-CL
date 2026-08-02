@@ -57,7 +57,8 @@ if __name__ == "__main__":
 
     if args.method == 'flycl':
         print("Initializing FlyHash & FlyCL Agent...")
-        flyhash = FlyHash(args.embedding_dim, args.expand_dim, args.synaptic_degree)
+        from models.flyhash import FlyHash
+        flyhash = FlyHash(args.embedding_dim, args.expand_dim, args.synaptic_degree).to(device)
         agent = FlyCL(backbone, flyhash, args.num_classes, args.coding_level, 
                       args.ridge_lower, args.ridge_upper, device)
     else:
