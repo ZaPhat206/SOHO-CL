@@ -18,7 +18,10 @@ def select_ridge_parameter(Features, Y, ridge_lower, ridge_upper):
         df = diag.sum()
         Y_hat = U @ (diag[:, None] * UTY)
         residual = torch.norm(Y - Y_hat)**2
-        gcv = (residual / n_samples) / (1 - df / n_samples)**2
+        
+        # Ngăn chặn lỗi chia cho 0 khi số chiều D > số mẫu N (khiến df tiến tới n_samples)
+        denom = max(1.0 - (df / n_samples).item(), 1e-4)
+        gcv = (residual / n_samples) / (denom ** 2)
         gcv_scores.append(gcv.item())
 
     optimal_idx = np.argmin(gcv_scores)
@@ -63,7 +66,7 @@ class SOHOCL(BaseCL):
         all_labels = torch.cat(self.memory_labels, dim=0)
         
         # 4. Transform all accumulated features with updated R + WTA
-        z_sparse = self.soho(all_features, self.coding_level, absolute_wta=False)
+        z_sparse = self.soho(all_features, self.coding_level, absolute_wta=True)
         
         # 5. Recompute Q_global and G_global from scratch for the new subspace
         Y = target2onehot(all_labels, self.num_classes)
@@ -74,7 +77,8 @@ class SOHOCL(BaseCL):
         best_lam = select_ridge_parameter(z_sparse, Y, self.ridge_lower, self.ridge_upper)
         
         # 7. Solve Ridge Regression
-        G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device)
+        # Thêm 1e-4 * I để đảm bảo ma trận luôn khả nghịch (tránh Singularity khi N <= D)
+        G_reg = G_global + (best_lam + 1e-4) * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
         

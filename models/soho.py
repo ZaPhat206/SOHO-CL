@@ -81,31 +81,43 @@ class SOHO(nn.Module):
         self.in_dim = in_dim
         self.output_dim = output_dim
         self.device = device
+        
+        # Giới hạn OLDA ở mức 256 chiều
+        self.olda_dim = min(256, in_dim)
         self.olda = IncrementalOLDA(in_dim, device)
         
-        # Store current projection matrix R
-        self.R = torch.randn(min(output_dim, in_dim), in_dim, device=device)
+        # Ma trận chiếu trực giao R (sẽ được cập nhật)
+        self.R = torch.randn(self.olda_dim, in_dim, device=device)
+        
+        # Ma trận mở rộng nhị phân thưa cố định W (output_dim x olda_dim)
+        # Tỷ lệ 10% phần tử bằng 1, 90% phần tử bằng 0. Không bao giờ được cập nhật.
+        self.W = (torch.rand(self.output_dim, self.olda_dim, device=device) < 0.1).float()
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
         self.olda.update(features, labels)
-        self.R = self.olda.compute_projection(self.output_dim)
+        self.R = self.olda.compute_projection(self.olda_dim)
         
     def forward(self, x: torch.Tensor, coding_level: float, absolute_wta: bool = False):
         """
         x: (N, in_dim)
         Returns sparse activated features (N, output_dim)
         """
-        z = x @ self.R.T # (N, actual_out_dim)
+        # 1. Chiếu trực giao: z = x @ R^T
+        z = x @ self.R.T # (N, olda_dim)
         
-        k = int(z.shape[1] * coding_level)
+        # 2. Mở rộng chiều ngẫu nhiên: v = z @ W^T
+        expanded = z @ self.W.T # (N, output_dim)
+        
+        # 3. Áp dụng WTA trên không gian mở rộng
+        k = max(1, int(expanded.shape[1] * coding_level))
         if absolute_wta:
-            values, indices = torch.abs(z).topk(k, dim=1, largest=True)
-            original_values = z.gather(1, indices)
-            output = torch.zeros_like(z)
+            values, indices = torch.abs(expanded).topk(k, dim=1, largest=True)
+            original_values = expanded.gather(1, indices)
+            output = torch.zeros_like(expanded)
             output.scatter_(1, indices, original_values)
         else:
-            values, indices = z.topk(k, dim=1, largest=True)
-            output = torch.zeros_like(z)
+            values, indices = expanded.topk(k, dim=1, largest=True)
+            output = torch.zeros_like(expanded)
             output.scatter_(1, indices, values)
             
         return output
