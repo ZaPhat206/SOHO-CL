@@ -74,8 +74,7 @@ class SOHOCL(BaseCL):
         best_lam = select_ridge_parameter(z_sparse, Y, self.ridge_lower, self.ridge_upper)
         
         # 7. Solve Ridge Regression
-        # Add prior to ensure numerical stability (our Silver Bullet fix!)
-        G_reg = G_global + 10.0 * torch.eye(G_global.size(0), device=self.device) + best_lam * torch.eye(G_global.size(0), device=self.device)
+        G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
         
@@ -88,7 +87,7 @@ class SOHOCL(BaseCL):
         test_embeddings, test_labels = feature_extract(self.backbone, test_loader, self.device)
         
         # Project using the CURRENT task's R matrix and WTA
-        test_embeddings = self.soho(test_embeddings, self.coding_level, absolute_wta=False)
+        test_embeddings = self.soho(test_embeddings, self.coding_level, absolute_wta=True)
         
         # Inference
         output = test_embeddings @ self.Wo

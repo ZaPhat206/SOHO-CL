@@ -32,7 +32,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument('--seed', type=int, default=2025, help='Random seed')
     parser.add_argument('--ridge_lower', type=float, default=4, help='lower bound for ridge coefficient (log10)')
     parser.add_argument('--ridge_upper', type=float, default=10, help='upper bound for ridge coefficient (log10)')
-    parser.add_argument('--data_augmentation', default="vit", help='choose which normalization or not')
+    parser.add_argument('--data_augmentation', default=None, help='choose which normalization or not')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--gpu', type=int, default=0, help='Choose gpu')
     
