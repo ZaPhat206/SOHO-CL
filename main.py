@@ -1,0 +1,101 @@
+import argparse
+import time
+import torch
+import numpy as np
+
+from utils.data_utils import load_dataset
+from utils.train_utils import random_initialization
+from utils.metrics import print_accuracy_matrix
+from models.backbone import load_model
+from models.soho import SOHO
+from methods.sohocl import SOHOCL
+from methods.flycl import FlyCL
+
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="SOHO-CL Experiment Pipeline")
+
+    # Continual Learning Task Setting
+    parser.add_argument('--method', default='flycl', choices=['flycl', 'sohocl'], help='CL Method')
+    parser.add_argument('--dataset', default='CIFAR-100', help='Choose dataset')
+    parser.add_argument('--root', default='../data', help='Dataset path')
+    parser.add_argument('--num_classes', type=int, default=100, help='Total number of classes')
+    parser.add_argument('--num_tasks', type=int, default=20, help='Number of tasks')
+
+    # model Architecture
+    parser.add_argument('--model_name', type=str, default="vit_base_patch16_224", help='model name')
+    parser.add_argument('--embedding_dim', type=int, default=768, help='Embedding dimension of pre-trained model')
+    parser.add_argument('--expand_dim', type=int, default=10000, help='Expansion dimension of FlyHash')
+    parser.add_argument('--synaptic_degree', type=int, default=100, help='Number of connections')
+    parser.add_argument('--coding_level', type=float, default=0.01, help='Top-k sparsity ratio')
+
+    # Training Configuration
+    parser.add_argument('--seed', type=int, default=2025, help='Random seed')
+    parser.add_argument('--ridge_lower', type=float, default=4, help='lower bound for ridge coefficient (log10)')
+    parser.add_argument('--ridge_upper', type=float, default=10, help='upper bound for ridge coefficient (log10)')
+    parser.add_argument('--data_augmentation', default="vit", help='choose which normalization or not')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+    parser.add_argument('--gpu', type=int, default=0, help='Choose gpu')
+    
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_parser()
+    args = parser.parse_args()
+    
+    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    random_initialization(args.seed)
+
+    print(f"Loading {args.dataset}...")
+    train_loader_dict, test_loader_dict = load_dataset(args)
+    print("Dataset loaded and split successfully.")
+
+    print(f"Initializing Backbone ({args.model_name})...")
+    backbone = load_model(args.model_name)
+    backbone.eval()
+    backbone.to(device)
+
+    if args.method == 'flycl':
+        print("Initializing FlyHash & FlyCL Agent...")
+        flyhash = FlyHash(args.embedding_dim, args.expand_dim, args.synaptic_degree)
+        agent = FlyCL(backbone, flyhash, args.num_classes, args.coding_level, 
+                      args.ridge_lower, args.ridge_upper, device)
+    else:
+        print("Initializing SOHO & SOHOCL Agent...")
+        # SOHO can output at most in_dim non-zero components from OLDA
+        soho = SOHO(args.embedding_dim, output_dim=args.expand_dim, device=device)
+        agent = SOHOCL(backbone, soho, args.num_classes, args.coding_level, 
+                       args.ridge_lower, args.ridge_upper, device)
+
+    from utils.metrics import print_accuracy_matrix, print_timing_metrics, compute_memory_footprint
+    
+    acc = {}
+    training_time = []
+    feature_extract_time = []
+    
+    print("\n" + "="*50)
+    print("🚀 Starting Continual Learning")
+    print("="*50)
+
+    for task in range(args.num_tasks):
+        acc[task] = []
+        
+        # Train Task
+        print(f"\n[Task {task:02d}] Training...")
+        best_lam, ext_time, t_time = agent.train_task(task, train_loader_dict[task])
+        training_time.append(t_time)
+        feature_extract_time.append(ext_time)
+        print(f"[Task {task:02d}] Done | train_time={t_time:.2f}s | best_lam={best_lam}")
+
+        # Eval Task up to current task
+        for sub_task in range(task + 1):
+            test_acc = agent.eval_task(sub_task, test_loader_dict[sub_task])
+            acc[sub_task].append(test_acc)
+            
+    print("\n" + "="*50)
+    print("📊 Evaluation Summary")
+    print("="*50)
+    
+    aa = print_accuracy_matrix(acc, args.num_tasks)
+    print_timing_metrics(training_time, feature_extract_time)
+    compute_memory_footprint(agent)
