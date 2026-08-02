@@ -4,7 +4,7 @@ def print_accuracy_matrix(acc_dict, num_tasks):
     acc_matrix = [["{:.2f}".format(0.00) for _ in range(num_tasks)] for _ in range(len(acc_dict))]
     for i, (task, values) in enumerate(acc_dict.items()):
         for j, value in enumerate(values):
-            acc_matrix[i][i + j] = round(value, 2)
+            acc_matrix[i][i + j] = round(float(value), 2)
     
     print("\nAccuracy Matrix")
     for row in acc_matrix:
