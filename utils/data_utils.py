@@ -62,18 +62,26 @@ def load_dataset(args, domain_name=None, train=None):
     test_transform = transforms.Compose([*test_transform])
 
     # Load the full dataset
+    import os
     if dataset == "CIFAR-100":
-        full_train_dataset = datasets.CIFAR100(root=root, train=True, download=True, transform=train_transform)
-        full_test_dataset = datasets.CIFAR100(root=root, train=False, download=True, transform=test_transform)
+        # Force CIFAR to download to a writable directory on Kaggle
+        cifar_root = "./data" if root.startswith("/kaggle/input") else root
+        full_train_dataset = datasets.CIFAR100(root=cifar_root, train=True, download=True, transform=train_transform)
+        full_test_dataset = datasets.CIFAR100(root=cifar_root, train=False, download=True, transform=test_transform)
     elif dataset == "CUB-200-2011":
-        full_train_dataset = datasets.ImageFolder(root=f"{root}/cub/train/", transform=train_transform)
-        full_test_dataset = datasets.ImageFolder(root=f"{root}/cub/test/", transform=test_transform)
+        # Hỗ trợ cả cấu trúc Local (root/cub/train) và Kaggle (root/cub-200-2011/cub/train)
+        cub_base = f"{root}/cub-200-2011/cub" if os.path.exists(f"{root}/cub-200-2011/cub") else f"{root}/cub"
+        full_train_dataset = datasets.ImageFolder(root=f"{cub_base}/train/", transform=train_transform)
+        full_test_dataset = datasets.ImageFolder(root=f"{cub_base}/test/", transform=test_transform)
     elif dataset == "VTAB":
-        full_train_dataset = datasets.ImageFolder(root=f"{root}/vtab/train/", transform=train_transform)
-        full_test_dataset = datasets.ImageFolder(root=f"{root}/vtab/test/", transform=test_transform)
+        vtab_base = f"{root}/vtab-1k/vtab" if os.path.exists(f"{root}/vtab-1k/vtab") else f"{root}/vtab"
+        full_train_dataset = datasets.ImageFolder(root=f"{vtab_base}/train/", transform=train_transform)
+        full_test_dataset = datasets.ImageFolder(root=f"{vtab_base}/test/", transform=test_transform)
     elif dataset == "ImageNet-R":
-        full_train_dataset = datasets.ImageFolder(root=f"{root}/imagenet-r/train/", transform=train_transform)
-        full_test_dataset = datasets.ImageFolder(root=f"{root}/imagenet-r/test/", transform=test_transform)
+        # Hỗ trợ cả cấu trúc Local (root/imagenet-r/train) và Kaggle (root/imagenet-r/imagenet-r/train)
+        im_base = f"{root}/imagenet-r/imagenet-r" if os.path.exists(f"{root}/imagenet-r/imagenet-r") else f"{root}/imagenet-r"
+        full_train_dataset = datasets.ImageFolder(root=f"{im_base}/train/", transform=train_transform)
+        full_test_dataset = datasets.ImageFolder(root=f"{im_base}/test/", transform=test_transform)
     elif dataset == "TinyImageNet":
         full_train_dataset = datasets.ImageFolder(root=f"{root}/tiny-imagenet-200/train/", transform=train_transform)
         full_test_dataset = datasets.ImageFolder(root=f"{root}/tiny-imagenet-200/val/", transform=test_transform)
