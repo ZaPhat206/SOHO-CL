@@ -70,7 +70,8 @@ def load_dataset(args, domain_name=None, train=None):
         
         if not os.path.exists(target_dir):
             os.makedirs("./data", exist_ok=True)
-            user_cifar = f"{root}/CIFAR-100"  # Tên thư mục bạn up lên (viết hoa)
+            # Kaggle luôn tự động chuyển tên thư mục thành chữ thường (cifar-100) trên ổ cứng!
+            user_cifar = f"{root}/cifar-100"
             
             if os.path.exists(user_cifar):
                 print(f"📦 Tìm thấy bản sao CIFAR-100 tại {user_cifar}! Tạo cầu nối (Symlink)...")
