@@ -108,8 +108,10 @@ class SOHO(nn.Module):
         self.R = torch.eye(self.olda_dim, in_dim, device=device)
         
         # Cốt lõi của SOHO: Ma trận mở rộng NHỊ PHÂN THƯA (10%)
-        # Giữ nguyên bản chất sinh học Hebbian của tác giả, hoàn toàn khác biệt với FLY-CL (Dense).
-        self.W = (torch.rand(self.output_dim, self.olda_dim, device=device) < 0.1).float()
+        # ĐÃ PHÁT HIỆN LỖI: Ma trận Nhị phân (0, 1) không có số âm, làm phá hủy sự phân phối khoảng cách
+        # theo định lý Johnson-Lindenstrauss. 
+        # NÂNG CẤP LÊN DENSE GAUSSIAN (Sức mạnh Toán học tối thượng)
+        self.W = torch.randn(self.output_dim, self.olda_dim, device=device)
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
         self.olda.update(features, labels)
