@@ -67,9 +67,14 @@ class SOHOCL(BaseCL):
         
         # 4. Transform all accumulated features with updated R + WTA
         z_sparse = self.soho(all_features, self.coding_level, absolute_wta=True)
+        # Bơm Trick 1: Chuẩn hóa L2 để cân bằng năng lượng các ảnh
+        z_sparse = torch.nn.functional.normalize(z_sparse, p=2, dim=1)
         
         # 5. Recompute Q_global and G_global from scratch for the new subspace
-        Y = target2onehot(all_labels, self.num_classes)
+        Y_onehot = target2onehot(all_labels, self.num_classes)
+        # Bơm Trick 2: Nhãn Mềm (Label Smoothing) để Ridge bớt tự mãn
+        Y = Y_onehot * 0.95 + 0.05 / self.num_classes
+        
         Q_global = z_sparse.T @ Y
         G_global = z_sparse.T @ z_sparse
         
@@ -92,6 +97,8 @@ class SOHOCL(BaseCL):
         
         # Project using the CURRENT task's R matrix and WTA
         test_embeddings = self.soho(test_embeddings, self.coding_level, absolute_wta=True)
+        # Bơm Trick 1: Chuẩn hóa L2 tương tự lúc Train
+        test_embeddings = torch.nn.functional.normalize(test_embeddings, p=2, dim=1)
         
         # Inference
         output = test_embeddings @ self.Wo

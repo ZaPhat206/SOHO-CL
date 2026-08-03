@@ -82,8 +82,8 @@ class SOHO(nn.Module):
         self.output_dim = output_dim
         self.device = device
         
-        # Giới hạn OLDA ở mức 256 chiều
-        self.olda_dim = min(256, in_dim)
+        # Tối ưu: Bắt lấy 500 đặc trưng mạnh nhất (Bỏ đi khoảng 40% nhiễu rác của 768D)
+        self.olda_dim = min(500, in_dim)
         self.olda = IncrementalOLDA(in_dim, device)
         
         # Ma trận chiếu trực giao R (sẽ được cập nhật)
