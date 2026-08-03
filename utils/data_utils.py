@@ -64,10 +64,23 @@ def load_dataset(args, domain_name=None, train=None):
     # Load the full dataset
     import os
     if dataset == "CIFAR-100":
-        # Force CIFAR to download to a writable directory on Kaggle
-        cifar_root = "./data" if root.startswith("/kaggle/input") else root
-        full_train_dataset = datasets.CIFAR100(root=cifar_root, train=True, download=True, transform=train_transform)
-        full_test_dataset = datasets.CIFAR100(root=cifar_root, train=False, download=True, transform=test_transform)
+        import os
+        # PyTorch bắt buộc thư mục phải tên là 'cifar-100-python'
+        target_dir = "./data/cifar-100-python"
+        
+        if not os.path.exists(target_dir):
+            os.makedirs("./data", exist_ok=True)
+            user_cifar = f"{root}/CIFAR-100"  # Tên thư mục bạn up lên (viết hoa)
+            
+            if os.path.exists(user_cifar):
+                print(f"📦 Tìm thấy bản sao CIFAR-100 tại {user_cifar}! Tạo cầu nối (Symlink)...")
+                os.symlink(user_cifar, target_dir)
+            else:
+                print("🌐 Không tìm thấy CIFAR-100 cục bộ, tiến hành tải mạng...")
+                
+        # Gọi PyTorch load từ ./data (Nó sẽ tự động đi qua cầu nối Symlink vào thư mục của bạn)
+        full_train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=train_transform)
+        full_test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=test_transform)
     elif dataset == "CUB-200-2011":
         # Hỗ trợ cả cấu trúc Local (root/cub/train) và Kaggle (root/cub-200-2011/cub/train)
         cub_base = f"{root}/cub-200-2011/cub" if os.path.exists(f"{root}/cub-200-2011/cub") else f"{root}/cub"
