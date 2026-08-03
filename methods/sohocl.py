@@ -79,7 +79,11 @@ class SOHOCL(BaseCL):
         G_global = z_sparse.T @ z_sparse
         
         # 6. Select Ridge Parameter
-        best_lam = select_ridge_parameter(z_sparse, Y, self.ridge_lower, self.ridge_upper)
+        # Cắt riêng dữ liệu của Task MỚI NHẤT để tìm lambda siêu tốc (Tăng tốc SVD gấp 20 lần)
+        n_new = new_embeddings.shape[0]
+        z_sparse_new = z_sparse[-n_new:]
+        Y_new = Y[-n_new:]
+        best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
         
         # 7. Solve Ridge Regression
         # Thêm 1e-4 * I để đảm bảo ma trận luôn khả nghịch (tránh Singularity khi N <= D)
