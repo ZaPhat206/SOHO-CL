@@ -14,6 +14,10 @@ class IncrementalOLDA:
         self.S_w = torch.zeros(in_dim, in_dim, device=device)
         
     def update(self, features: torch.Tensor, labels: torch.Tensor):
+        # ĐỘT PHÁ TOÁN HỌC: Spherical OLDA (L2-Normalized OLDA)
+        # Bóp các mẫu cùng lớp thành khối cầu đặc kịt trước khi tính phương sai
+        features = torch.nn.functional.normalize(features, p=2, dim=1)
+        
         unique_classes = torch.unique(labels)
         for c in unique_classes:
             c = c.item()
@@ -74,6 +78,44 @@ class IncrementalOLDA:
         # Trực giao hóa không gian Discriminative
         Q_disc, _ = torch.linalg.qr(V_disc) 
         
+        # =====================================================================
+        # ĐỘT PHÁ TOÁN HỌC - ETF PROCRUSTES ALIGNMENT
+        # =====================================================================
+        N = len(self.class_sums)
+        # Chỉ kích hoạt khi số class > 1 và số chiều Q_disc khớp chính xác N-1
+        if N > 1 and Q_disc.shape[1] == N - 1:
+            # BƯỚC 1: Trích xuất Tâm điểm M trong không gian OLDA
+            mu_global = self.global_sum / self.global_count
+            M_orig_list = []
+            for c in sorted(self.class_sums.keys()):
+                mu_c = (self.class_sums[c] / self.class_counts[c]) - mu_global
+                M_orig_list.append(mu_c.unsqueeze(1))
+            
+            # M_orig: (768, N) -> M: (N-1, N)
+            M_orig = torch.cat(M_orig_list, dim=1)
+            M = Q_disc.T @ M_orig
+            
+            # Chuẩn hóa M để xoay góc thuần túy (không bị lệch do độ dài)
+            M_norm = torch.nn.functional.normalize(M, p=2, dim=0)
+            
+            # BƯỚC 2: Sinh bộ khung ETF lý tưởng E
+            I_N = torch.eye(N, device=self.device)
+            Ones_N = torch.ones(N, N, device=self.device)
+            P = I_N - (1.0 / N) * Ones_N
+            
+            U_P, _, _ = torch.linalg.svd(P)
+            U_sub = U_P[:, :N-1] # (N, N-1)
+            E = ((N / (N - 1)) ** 0.5) * U_sub.T # E: (N-1, N)
+            
+            # BƯỚC 3: Thuật toán Orthogonal Procrustes
+            # Tìm ma trận xoay Q trực giao để M_norm khớp vào E
+            U_proc, _, Vh_proc = torch.linalg.svd(M_norm @ E.T)
+            Q_rot = U_proc @ Vh_proc # Ma trận xoay: (N-1, N-1)
+            
+            # Xoay toàn bộ trục không gian Discriminative (Áp dụng xoay vào Q_disc)
+            Q_disc = Q_disc @ Q_rot
+        # =====================================================================
+        
         # 2. Bảo toàn Không gian Rỗng (Null Space)
         num_null_dims = self.in_dim - Q_disc.shape[1]
         
@@ -107,11 +149,14 @@ class SOHO(nn.Module):
         # Khởi tạo R bằng Ma trận Đơn vị (Identity Matrix) cho Task 1.
         self.R = torch.eye(self.olda_dim, in_dim, device=device)
         
-        # Cốt lõi của SOHO: Ma trận mở rộng NHỊ PHÂN THƯA (10%)
-        # ĐÃ PHÁT HIỆN LỖI: Ma trận Nhị phân (0, 1) không có số âm, làm phá hủy sự phân phối khoảng cách
-        # theo định lý Johnson-Lindenstrauss. 
-        # NÂNG CẤP LÊN DENSE GAUSSIAN (Sức mạnh Toán học tối thượng)
-        self.W = torch.randn(self.output_dim, self.olda_dim, device=device)
+        # ĐỘT PHÁ TOÁN HỌC: Ma trận Sparse Rademacher (-1, 0, 1)
+        # Khắc phục triệt để "Gaussian Annihilation" (sự hủy diệt của cấu trúc trực giao)
+        # Giữ nguyên tỷ lệ thưa 10% (5% là 1, 5% là -1) để bảo toàn khoảng cách JL.
+        density = 0.1
+        random_tensor = torch.rand(self.output_dim, self.olda_dim, device=device)
+        self.W = torch.zeros(self.output_dim, self.olda_dim, device=device)
+        self.W[random_tensor < (density / 2)] = 1.0
+        self.W[(random_tensor >= (density / 2)) & (random_tensor < density)] = -1.0
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
         self.olda.update(features, labels)
@@ -122,8 +167,11 @@ class SOHO(nn.Module):
         x: (N, in_dim)
         Returns sparse activated features (N, output_dim)
         """
+        # 0. Spherical OLDA: Chuẩn hóa L2 đầu vào
+        x_norm = torch.nn.functional.normalize(x, p=2, dim=1)
+        
         # 1. Chiếu trực giao: z = x @ R^T
-        z = x @ self.R.T # (N, olda_dim)
+        z = x_norm @ self.R.T # (N, olda_dim)
         
         # 2. Mở rộng chiều: v = z @ W^T
         expanded = z @ self.W.T # (N, output_dim)

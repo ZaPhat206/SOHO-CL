@@ -84,26 +84,24 @@ class SOHOCL(BaseCL):
         
         z_sparse_new_list = []
         
-        for i in range(0, n_samples, chunk_size):
-            end = min(i + chunk_size, n_samples)
-            feat_chunk = all_features[i:end]
-            Y_chunk = Y[i:end]
-            
-            # Biến đổi và chuẩn hóa L2 cho từng Chunk
-            z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=True)
-            z_chunk = torch.nn.functional.normalize(z_chunk, p=2, dim=1)
-            
-            # Cộng dồn ma trận (Y hệt FLY-CL)
-            Q_global += z_chunk.T @ Y_chunk
-            G_global += z_chunk.T @ z_chunk
-            
-            # Trích xuất riêng dữ liệu của Task mới nhất để tính Lambda
-            if end > start_new:
-                chunk_start_in_new = max(0, start_new - i)
-                # Wait, if i < start_new, chunk_start_in_new is start_new - i. 
-                # Meaning the new data starts at index `start_new - i` within this chunk.
-                # If i >= start_new, chunk_start_in_new is 0.
-                z_sparse_new_list.append(z_chunk[chunk_start_in_new:])
+        with torch.no_grad():
+            for i in range(0, n_samples, chunk_size):
+                end = min(i + chunk_size, n_samples)
+                feat_chunk = all_features[i:end]
+                Y_chunk = Y[i:end]
+                
+                # Biến đổi và chuẩn hóa L2 cho từng Chunk
+                z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=True)
+                z_chunk = torch.nn.functional.normalize(z_chunk, p=2, dim=1)
+                
+                # Cộng dồn ma trận (Y hệt FLY-CL)
+                Q_global += z_chunk.T @ Y_chunk
+                G_global += z_chunk.T @ z_chunk
+                
+                # Trích xuất riêng dữ liệu của Task mới nhất để tính Lambda
+                if end > start_new:
+                    chunk_start_in_new = max(0, start_new - i)
+                    z_sparse_new_list.append(z_chunk[chunk_start_in_new:])
                 
         z_sparse_new = torch.cat(z_sparse_new_list, dim=0)
         Y_new = Y[start_new:]
