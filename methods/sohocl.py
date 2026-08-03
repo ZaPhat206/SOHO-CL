@@ -65,24 +65,50 @@ class SOHOCL(BaseCL):
         all_features = torch.cat(self.memory_features, dim=0)
         all_labels = torch.cat(self.memory_labels, dim=0)
         
-        # 4. Transform all accumulated features with updated R + WTA
-        z_sparse = self.soho(all_features, self.coding_level, absolute_wta=True)
-        # Bơm Trick 1: Chuẩn hóa L2 để cân bằng năng lượng các ảnh
-        z_sparse = torch.nn.functional.normalize(z_sparse, p=2, dim=1)
-        
-        # 5. Recompute Q_global and G_global from scratch for the new subspace
+        # Bơm Trick 2: Nhãn Mềm (Label Smoothing)
         Y_onehot = target2onehot(all_labels, self.num_classes)
-        # Bơm Trick 2: Nhãn Mềm (Label Smoothing) để Ridge bớt tự mãn
         Y = Y_onehot * 0.95 + 0.05 / self.num_classes
         
-        Q_global = z_sparse.T @ Y
-        G_global = z_sparse.T @ z_sparse
+        # =========================================================================
+        # ĐỘT PHÁ TỐI ƯU MEMORY: Xử lý Chunking (Mini-batching)
+        # Thay vì tống 50,000 ảnh (2GB) vào RAM cùng lúc gây tràn bộ nhớ, 
+        # ta chia nhỏ ra xử lý từng cụm 2000 ảnh. RAM sẽ tụt xuống chỉ còn ~80MB!
+        # =========================================================================
+        Q_global = torch.zeros(self.soho.output_dim, self.num_classes, device=self.device)
+        G_global = torch.zeros(self.soho.output_dim, self.soho.output_dim, device=self.device)
         
-        # 6. Select Ridge Parameter
-        # Cắt riêng dữ liệu của Task MỚI NHẤT để tìm lambda siêu tốc (Tăng tốc SVD gấp 20 lần)
+        chunk_size = 2000
+        n_samples = all_features.shape[0]
         n_new = new_embeddings.shape[0]
-        z_sparse_new = z_sparse[-n_new:]
-        Y_new = Y[-n_new:]
+        start_new = n_samples - n_new
+        
+        z_sparse_new_list = []
+        
+        for i in range(0, n_samples, chunk_size):
+            end = min(i + chunk_size, n_samples)
+            feat_chunk = all_features[i:end]
+            Y_chunk = Y[i:end]
+            
+            # Biến đổi và chuẩn hóa L2 cho từng Chunk
+            z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=True)
+            z_chunk = torch.nn.functional.normalize(z_chunk, p=2, dim=1)
+            
+            # Cộng dồn ma trận (Y hệt FLY-CL)
+            Q_global += z_chunk.T @ Y_chunk
+            G_global += z_chunk.T @ z_chunk
+            
+            # Trích xuất riêng dữ liệu của Task mới nhất để tính Lambda
+            if end > start_new:
+                chunk_start_in_new = max(0, start_new - i)
+                # Wait, if i < start_new, chunk_start_in_new is start_new - i. 
+                # Meaning the new data starts at index `start_new - i` within this chunk.
+                # If i >= start_new, chunk_start_in_new is 0.
+                z_sparse_new_list.append(z_chunk[chunk_start_in_new:])
+                
+        z_sparse_new = torch.cat(z_sparse_new_list, dim=0)
+        Y_new = Y[start_new:]
+        
+        # 6. Select Ridge Parameter (Chỉ dùng dữ liệu mới nhất để tăng tốc)
         best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
         
         # 7. Solve Ridge Regression

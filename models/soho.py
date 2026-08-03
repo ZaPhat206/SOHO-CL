@@ -14,7 +14,6 @@ class IncrementalOLDA:
         self.S_w = torch.zeros(in_dim, in_dim, device=device)
         
     def update(self, features: torch.Tensor, labels: torch.Tensor):
-        """Update scatter matrices with new data."""
         unique_classes = torch.unique(labels)
         for c in unique_classes:
             c = c.item()
@@ -32,7 +31,6 @@ class IncrementalOLDA:
                 self.class_sums[c] += sum_c
                 self.class_counts[c] += n_c
                 
-            # Update Within-class scatter incrementally (Assuming CIL disjoint classes)
             centered = class_features - mu_c
             self.S_w += centered.T @ centered
             
@@ -40,7 +38,6 @@ class IncrementalOLDA:
         self.global_count += features.shape[0]
         
     def compute_projection(self, output_dim: int):
-        """Compute the Orthogonal LDA projection matrix R."""
         mu_global = self.global_sum / self.global_count
         S_b = torch.zeros_like(self.S_w)
         
@@ -50,10 +47,8 @@ class IncrementalOLDA:
             diff = (mu_c - mu_global).unsqueeze(1)
             S_b += n_c * (diff @ diff.T)
             
-        # Add regularization to avoid singular matrix
         S_w_reg = self.S_w + 1e-4 * torch.eye(self.in_dim, device=self.device)
         
-        # Solve generalized eigenvalue problem: S_b v = lambda S_w v => S_w^{-1} S_b v = lambda v
         inv_S_w = torch.linalg.inv(S_w_reg)
         target_matrix = inv_S_w @ S_b
         
@@ -61,18 +56,41 @@ class IncrementalOLDA:
         eigenvalues = eigenvalues.real
         eigenvectors = eigenvectors.real
         
-        # Sort eigenvalues and take top ones
+        # =========================================================================
+        # ĐỘT PHÁ TOÁN HỌC: NSP-OLDA (Null-Space Preserving Orthogonal LDA)
+        # =========================================================================
+        # Sắp xếp trị riêng giảm dần để lấy các trục phân loại mạnh nhất lên đầu
         sorted_indices = torch.argsort(eigenvalues, descending=True)
-        # Cap output_dim to in_dim since we can't extract more eigenvectors than the dimension
+        eigenvalues = eigenvalues[sorted_indices]
+        eigenvectors = eigenvectors[:, sorted_indices]
+        
+        # 1. Trích xuất không gian đặc trưng có ý nghĩa (Discriminative Subspace)
+        positive_mask = eigenvalues > 1e-5
+        if not positive_mask.any():
+            return torch.eye(self.in_dim, device=self.device)
+            
+        V_disc = eigenvectors[:, positive_mask]
+        
+        # Trực giao hóa không gian Discriminative
+        Q_disc, _ = torch.linalg.qr(V_disc) 
+        
+        # 2. Bảo toàn Không gian Rỗng (Null Space)
+        num_null_dims = self.in_dim - Q_disc.shape[1]
+        
+        if num_null_dims > 0:
+            I = torch.eye(self.in_dim, device=self.device)
+            P_ortho = I - Q_disc @ Q_disc.T
+            
+            U_null, S_null, _ = torch.linalg.svd(P_ortho)
+            Q_null = U_null[:, :num_null_dims]
+            
+            R_full = torch.cat([Q_disc, Q_null], dim=1)
+        else:
+            R_full = Q_disc
+            
         actual_out_dim = min(output_dim, self.in_dim)
-        top_indices = sorted_indices[:actual_out_dim]
-        V = eigenvectors[:, top_indices] # (in_dim, actual_out_dim)
-        
-        # Orthogonalize via SVD
-        U, S, Vh = torch.linalg.svd(V, full_matrices=False)
-        R = U # (in_dim, actual_out_dim)
-        
-        return R.T # (actual_out_dim, in_dim)
+        R = R_full[:, :actual_out_dim].T
+        return R
 
 
 class SOHO(nn.Module):
@@ -82,15 +100,15 @@ class SOHO(nn.Module):
         self.output_dim = output_dim
         self.device = device
         
-        # Tối ưu: Bắt lấy 500 đặc trưng mạnh nhất (Bỏ đi khoảng 40% nhiễu rác của 768D)
-        self.olda_dim = min(500, in_dim)
+        # NSP-OLDA: Giữ nguyên 100% số chiều (768D), KHÔNG vứt bỏ thông tin.
+        self.olda_dim = in_dim
         self.olda = IncrementalOLDA(in_dim, device)
         
-        # Ma trận chiếu trực giao R (sẽ được cập nhật)
-        self.R = torch.randn(self.olda_dim, in_dim, device=device)
+        # Khởi tạo R bằng Ma trận Đơn vị (Identity Matrix) cho Task 1.
+        self.R = torch.eye(self.olda_dim, in_dim, device=device)
         
-        # Ma trận mở rộng nhị phân thưa cố định W (output_dim x olda_dim)
-        # Tỷ lệ 10% phần tử bằng 1, 90% phần tử bằng 0. Không bao giờ được cập nhật.
+        # Cốt lõi của SOHO: Ma trận mở rộng NHỊ PHÂN THƯA (10%)
+        # Giữ nguyên bản chất sinh học Hebbian của tác giả, hoàn toàn khác biệt với FLY-CL (Dense).
         self.W = (torch.rand(self.output_dim, self.olda_dim, device=device) < 0.1).float()
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
@@ -105,7 +123,7 @@ class SOHO(nn.Module):
         # 1. Chiếu trực giao: z = x @ R^T
         z = x @ self.R.T # (N, olda_dim)
         
-        # 2. Mở rộng chiều ngẫu nhiên: v = z @ W^T
+        # 2. Mở rộng chiều: v = z @ W^T
         expanded = z @ self.W.T # (N, output_dim)
         
         # 3. Áp dụng WTA trên không gian mở rộng
