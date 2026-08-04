@@ -27,6 +27,7 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument('--expand_dim', type=int, default=10000, help='Expansion dimension of FlyHash')
     parser.add_argument('--synaptic_degree', type=int, default=100, help='Number of connections')
     parser.add_argument('--coding_level', type=float, default=0.01, help='Top-k sparsity ratio')
+    parser.add_argument('--density', type=float, default=0.3, help='Density of Sparse Rademacher Matrix')
 
     # Training Configuration
     parser.add_argument('--seed', type=int, default=2025, help='Random seed')
@@ -64,7 +65,7 @@ if __name__ == "__main__":
     else:
         print("Initializing SOHO & SOHOCL Agent...")
         # SOHO can output at most in_dim non-zero components from OLDA
-        soho = SOHO(args.embedding_dim, output_dim=args.expand_dim, device=device)
+        soho = SOHO(args.embedding_dim, output_dim=args.expand_dim, device=device, density=args.density)
         agent = SOHOCL(backbone, soho, args.num_classes, args.coding_level, 
                        args.ridge_lower, args.ridge_upper, device)
 
