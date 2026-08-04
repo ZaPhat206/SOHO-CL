@@ -152,7 +152,7 @@ class SOHO(nn.Module):
         # ĐỘT PHÁ TOÁN HỌC: Ma trận Sparse Rademacher (-1, 0, 1)
         # Khắc phục triệt để "Gaussian Annihilation" (sự hủy diệt của cấu trúc trực giao)
         # Giữ nguyên tỷ lệ thưa 10% (5% là 1, 5% là -1) để bảo toàn khoảng cách JL.
-        density = 0.1
+        density = 0.3
         random_tensor = torch.rand(self.output_dim, self.olda_dim, device=device)
         self.W = torch.zeros(self.output_dim, self.olda_dim, device=device)
         self.W[random_tensor < (density / 2)] = 1.0
