@@ -26,6 +26,11 @@ def print_accuracy_matrix(acc_dict, num_tasks):
     aa = round(np.mean(A_t), 2)
     print(aa)
     print()
+
+    print("Last Stage Accuracy (A_T)")
+    at = round(A_t[-1], 2)
+    print(at)
+    print()
     
     # 2.3 Learning Accuracy (LA)
     # Độ chính xác của task i ngay sau khi vừa học xong task i (đường chéo của ma trận)
