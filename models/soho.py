@@ -70,19 +70,20 @@ class IncrementalOLDA:
         eigenvectors = eigenvectors[:, sorted_indices]
         
         # 1. Trích xuất không gian đặc trưng có ý nghĩa (Discriminative Subspace)
-        positive_mask = eigenvalues > 1e-5
-        if not positive_mask.any():
-            return torch.eye(self.in_dim, device=self.device)
-            
-        V_disc = eigenvectors[:, positive_mask]
+        # S_b có hạng tối đa là N-1. Do đó, ta luôn lấy đúng N-1 vector riêng lớn nhất
+        N = len(self.class_sums)
+        num_disc = min(N - 1, self.in_dim)
         
-        # Trực giao hóa không gian Discriminative
-        Q_disc, _ = torch.linalg.qr(V_disc) 
+        if num_disc > 0:
+            V_disc = eigenvectors[:, :num_disc]
+            # Trực giao hóa không gian Discriminative
+            Q_disc, _ = torch.linalg.qr(V_disc) 
+        else:
+            Q_disc = torch.empty((self.in_dim, 0), device=self.device)
         
         # =====================================================================
         # ĐỘT PHÁ TOÁN HỌC - ETF PROCRUSTES ALIGNMENT
         # =====================================================================
-        N = len(self.class_sums)
         # Chỉ kích hoạt khi số class > 1 và số chiều Q_disc khớp chính xác N-1
         if self.use_etf and N > 1 and Q_disc.shape[1] == N - 1:
             # BƯỚC 1: Trích xuất Tâm điểm M trong không gian OLDA
