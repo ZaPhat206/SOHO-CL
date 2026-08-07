@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 
 class IncrementalOLDA:
-    def __init__(self, in_dim: int, device: torch.device):
+    def __init__(self, in_dim: int, device: torch.device, use_etf: bool = True):
         self.in_dim = in_dim
         self.device = device
+        self.use_etf = use_etf
         
         self.class_sums = {}
         self.class_counts = {}
@@ -83,7 +84,7 @@ class IncrementalOLDA:
         # =====================================================================
         N = len(self.class_sums)
         # Chỉ kích hoạt khi số class > 1 và số chiều Q_disc khớp chính xác N-1
-        if N > 1 and Q_disc.shape[1] == N - 1:
+        if self.use_etf and N > 1 and Q_disc.shape[1] == N - 1:
             # BƯỚC 1: Trích xuất Tâm điểm M trong không gian OLDA
             mu_global = self.global_sum / self.global_count
             M_orig_list = []
@@ -136,15 +137,14 @@ class IncrementalOLDA:
 
 
 class SOHO(nn.Module):
-    def __init__(self, in_dim: int, output_dim: int, device: torch.device, density: float = 0.3):
+    def __init__(self, in_dim: int, output_dim: int, device: torch.device, density: float = 0.3, olda_dim: int = 768, use_etf: bool = True):
         super().__init__()
         self.in_dim = in_dim
         self.output_dim = output_dim
         self.device = device
         
-        # NSP-OLDA: Giữ nguyên 100% số chiều (768D), KHÔNG vứt bỏ thông tin.
-        self.olda_dim = in_dim
-        self.olda = IncrementalOLDA(in_dim, device)
+        self.olda_dim = min(olda_dim, in_dim)
+        self.olda = IncrementalOLDA(in_dim, device, use_etf=use_etf)
         
         # Khởi tạo R bằng Ma trận Đơn vị (Identity Matrix) cho Task 1.
         self.R = torch.eye(self.olda_dim, in_dim, device=device)

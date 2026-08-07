@@ -28,6 +28,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument('--synaptic_degree', type=int, default=100, help='Number of connections')
     parser.add_argument('--coding_level', type=float, default=0.01, help='Top-k sparsity ratio')
     parser.add_argument('--density', type=float, default=0.3, help='Density of Sparse Rademacher Matrix')
+    parser.add_argument('--olda_dim', type=int, default=768, help='Output dimension of OLDA')
+    parser.add_argument('--no_etf', action='store_true', help='Disable ETF Procrustes Alignment')
 
     # Training Configuration
     parser.add_argument('--seed', type=int, default=2025, help='Random seed')
@@ -65,7 +67,8 @@ if __name__ == "__main__":
     else:
         print("Initializing SOHO & SOHOCL Agent...")
         # SOHO can output at most in_dim non-zero components from OLDA
-        soho = SOHO(args.embedding_dim, output_dim=args.expand_dim, device=device, density=args.density)
+        use_etf = not args.no_etf
+        soho = SOHO(args.embedding_dim, output_dim=args.expand_dim, device=device, density=args.density, olda_dim=args.olda_dim, use_etf=use_etf)
         agent = SOHOCL(backbone, soho, args.num_classes, args.coding_level, 
                        args.ridge_lower, args.ridge_upper, device)
 
