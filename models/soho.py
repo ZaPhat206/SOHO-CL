@@ -140,8 +140,11 @@ class IncrementalOLDA:
             I = torch.eye(self.in_dim, device=self.device)
             P_ortho = I - Q_disc @ Q_disc.T
             
-            U_null, S_null, _ = torch.linalg.svd(P_ortho)
-            Q_null = U_null[:, :num_null_dims]
+            # Dùng eigh thay SVD: P_ortho là ma trận symmetric PSD → nhanh hơn 3-5x
+            # eigenvalues ≈ 0 (discriminative dims) hoặc ≈ 1 (null space dims)
+            eigvals, eigvecs = torch.linalg.eigh(P_ortho)
+            # Lấy eigenvectors có eigenvalue lớn nhất (≈1) = null space
+            Q_null = eigvecs[:, -num_null_dims:]
             
             R_full = torch.cat([Q_disc, Q_null], dim=1)
         else:
