@@ -165,17 +165,14 @@ class SOHO(nn.Module):
         # Khởi tạo R bằng Ma trận Đơn vị (Identity Matrix) cho Task 1.
         self.R = torch.eye(self.olda_dim, in_dim, device=device)
         
-        # Ma trận Sparse Rademacher (-1, 0, 1) với chuẩn hóa JL
-        # FIX Hướng 1: Scale bởi 1/sqrt(density * olda_dim) để bảo toàn khoảng cách
-        # theo Johnson-Lindenstrauss lemma. Thiếu scale này khiến Gram matrix G bị
-        # lệch ~(density*olda_dim) lần so với FLY-CL, làm GCV chọn lambda sai.
+        # Ma trận Sparse Rademacher (-1, 0, 1)
+        # REVERT JL scaling: scaling 1/sqrt(d*D) làm G nhỏ đi ~76x, khiến
+        # lambda tối ưu dịch ra ngoài search range của GCV → accuracy sụt.
+        # GCV đã tự thích nghi với scale của G qua SVD → không cần JL scaling.
         random_tensor = torch.rand(self.output_dim, self.olda_dim, device=device)
         self.W = torch.zeros(self.output_dim, self.olda_dim, device=device)
         self.W[random_tensor < (density / 2)] = 1.0
         self.W[(random_tensor >= (density / 2)) & (random_tensor < density)] = -1.0
-        # Áp dụng JL normalization scale
-        jl_scale = 1.0 / (density * self.olda_dim) ** 0.5
-        self.W = self.W * jl_scale
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
         self.olda.update(features, labels)
