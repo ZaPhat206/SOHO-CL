@@ -19,9 +19,8 @@ def select_ridge_parameter(Features, Y, ridge_lower, ridge_upper):
         Y_hat = U @ (diag[:, None] * UTY)
         residual = torch.norm(Y - Y_hat)**2
         
-        # Ngăn chặn lỗi chia cho 0 khi số chiều D > số mẫu N (khiến df tiến tới n_samples)
-        denom = max(1.0 - (df / n_samples).item(), 1e-4)
-        gcv = (residual / n_samples) / (denom ** 2)
+        # FIX Lỗi 3: Không clamp denom, dùng công thức chuẩn như FLY-CL
+        gcv = (residual / n_samples) / (1 - df / n_samples)**2
         gcv_scores.append(gcv.item())
 
     optimal_idx = np.argmin(gcv_scores)
@@ -65,9 +64,9 @@ class SOHOCL(BaseCL):
         all_features = torch.cat(self.memory_features, dim=0)
         all_labels = torch.cat(self.memory_labels, dim=0)
         
-        # Bơm Trick 2: Nhãn Mềm (Label Smoothing)
-        Y_onehot = target2onehot(all_labels, self.num_classes)
-        Y = Y_onehot * 0.95 + 0.05 / self.num_classes
+        # FIX Lỗi 2: Bỏ Label Smoothing. Ridge Regression tự chống Overfit qua lambda rồi.
+        # Thêm Label Smoothing vào chỉ khiến mô hình bị phạt 2 lần -> Under-learning trên CUB/CIFAR.
+        Y = target2onehot(all_labels, self.num_classes)
         
         # =========================================================================
         # ĐỘT PHÁ TỐI ƯU MEMORY: Xử lý Chunking (Mini-batching)
@@ -109,9 +108,10 @@ class SOHOCL(BaseCL):
         # 6. Select Ridge Parameter (Chỉ dùng dữ liệu mới nhất để tăng tốc)
         best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
         
-        # 7. Solve Ridge Regression
-        # Thêm 1e-4 * I để đảm bảo ma trận luôn khả nghịch (tránh Singularity khi N <= D)
-        G_reg = G_global + (best_lam + 1e-4) * torch.eye(G_global.size(0), device=self.device)
+        # FIX Lỗi 4: Không cộng thêm 1e-4 cố định vào best_lam.
+        # best_lam đã được GCV chọn tối ưu, cộng thêm 1e-4 sẽ làm lệch khỏi giá trị chuẩn xác.
+        # Dùng cộng nhỏ 1e-6 vào đường chéo để chống suy biến (Singularity) mà không làm sai lambda.
+        G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device) + 1e-6 * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
         

@@ -15,32 +15,38 @@ class IncrementalOLDA:
         self.S_w = torch.zeros(in_dim, in_dim, device=device)
         
     def update(self, features: torch.Tensor, labels: torch.Tensor):
-        # ĐỘT PHÁ TOÁN HỌC: Spherical OLDA (L2-Normalized OLDA)
-        # Bóp các mẫu cùng lớp thành khối cầu đặc kịt trước khi tính phương sai
+        # Spherical OLDA (L2-Normalized OLDA)
         features = torch.nn.functional.normalize(features, p=2, dim=1)
         
         unique_classes = torch.unique(labels)
+
+        # FIX Lỗi 1 - BƯỚC 1: Cập nhật class_sums và global_sum trước
         for c in unique_classes:
             c = c.item()
             mask = (labels == c)
             class_features = features[mask]
-            
             n_c = class_features.shape[0]
             sum_c = class_features.sum(dim=0)
-            mu_c = sum_c / n_c
-            
+
             if c not in self.class_sums:
                 self.class_sums[c] = sum_c
                 self.class_counts[c] = n_c
             else:
                 self.class_sums[c] += sum_c
                 self.class_counts[c] += n_c
-                
-            centered = class_features - mu_c
-            self.S_w += centered.T @ centered
-            
+
         self.global_sum += features.sum(dim=0)
         self.global_count += features.shape[0]
+
+        # FIX Lỗi 1 - BƯỚC 2: Dùng TÂM TOÀN CỤC (global running mean) để tính S_w
+        # Cách cũ dùng tâm BATCH tạm thời -> S_w bị sai lệch qua các Task
+        for c in unique_classes:
+            c = c.item()
+            mask = (labels == c)
+            class_features = features[mask]
+            mu_c_global = self.class_sums[c] / self.class_counts[c]  # Tâm toàn cục của class c
+            centered = class_features - mu_c_global
+            self.S_w += centered.T @ centered
         
     def compute_projection(self, output_dim: int):
         mu_global = self.global_sum / self.global_count
