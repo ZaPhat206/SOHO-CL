@@ -173,25 +173,26 @@ class SOHO(nn.Module):
         x: (N, in_dim)
         Returns sparse activated features (N, output_dim)
         """
-        # 0. Spherical OLDA: Chuẩn hóa L2 đầu vào
+        # 0. Spherical OLDA: Chuẩn hóa L2 đầu vào (chỉ input, không phải sau WTA)
         x_norm = torch.nn.functional.normalize(x, p=2, dim=1)
         
         # 1. Chiếu trực giao: z = x @ R^T
         z = x_norm @ self.R.T # (N, olda_dim)
         
-        # 2. Mở rộng chiều: v = z @ W^T
-        expanded = z @ self.W.T # (N, output_dim)
+        # 2. Mở rộng chiều: v = W @ z^T -> shape (output_dim, N)
+        # Dùng chiều (output_dim, N) giống hệt FLY baseline (expand_dim, N)
+        expanded = self.W @ z.T  # (output_dim, N)
         
-        # 3. Áp dụng WTA trên không gian mở rộng
-        k = max(1, int(expanded.shape[1] * coding_level))
+        # 3. Áp dụng WTA theo dim=0 (đúng chuẩn FLY-CL: Winner-Takes-All theo chiều Feature)
+        k = max(1, int(expanded.shape[0] * coding_level))
         if absolute_wta:
-            values, indices = torch.abs(expanded).topk(k, dim=1, largest=True)
-            original_values = expanded.gather(1, indices)
+            values, indices = torch.abs(expanded).topk(k, dim=0, largest=True)
+            original_values = expanded.gather(0, indices)
             output = torch.zeros_like(expanded)
-            output.scatter_(1, indices, original_values)
+            output.scatter_(0, indices, original_values)
         else:
-            values, indices = expanded.topk(k, dim=1, largest=True)
+            values, indices = expanded.topk(k, dim=0, largest=True)
             output = torch.zeros_like(expanded)
-            output.scatter_(1, indices, values)
+            output.scatter_(0, indices, values)
             
-        return output
+        return output.T  # Trả về shape (N, output_dim) cho Ridge Regression

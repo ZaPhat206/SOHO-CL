@@ -89,11 +89,11 @@ class SOHOCL(BaseCL):
                 feat_chunk = all_features[i:end]
                 Y_chunk = Y[i:end]
                 
-                # Biến đổi và chuẩn hóa L2 cho từng Chunk
-                z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=True)
-                z_chunk = torch.nn.functional.normalize(z_chunk, p=2, dim=1)
+                # FIX Lỗi 7: Bỏ L2 normalize sau WTA - FLY-CL không có bước này.
+                # Normalize phá vỡ tnh thưa (Sparsity) và mất thông tin cường độ kích hoạt.
+                z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=False)
                 
-                # Cộng dồn ma trận (Y hệt FLY-CL)
+                # Cộng dồn ma trận
                 Q_global += z_chunk.T @ Y_chunk
                 G_global += z_chunk.T @ z_chunk
                 
@@ -105,12 +105,10 @@ class SOHOCL(BaseCL):
         z_sparse_new = torch.cat(z_sparse_new_list, dim=0)
         Y_new = Y[start_new:]
         
-        # 6. Select Ridge Parameter (Chỉ dùng dữ liệu mới nhất để tăng tốc)
+        # FIX Lỗi 6: Chọn lambda trên dữ liệu Task mới (phân phối local) - giống FLY-CL
         best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
         
-        # FIX Lỗi 4: Không cộng thêm 1e-4 cố định vào best_lam.
-        # best_lam đã được GCV chọn tối ưu, cộng thêm 1e-4 sẽ làm lệch khỏi giá trị chuẩn xác.
-        # Dùng cộng nhỏ 1e-6 vào đường chéo để chống suy biến (Singularity) mà không làm sai lambda.
+        # FIX Lỗi 4: Chỉ dùng best_lam, không cộng thêm 1e-4 ảnh hưởng Ridge
         G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device) + 1e-6 * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
@@ -124,9 +122,8 @@ class SOHOCL(BaseCL):
         test_embeddings, test_labels = feature_extract(self.backbone, test_loader, self.device)
         
         # Project using the CURRENT task's R matrix and WTA
-        test_embeddings = self.soho(test_embeddings, self.coding_level, absolute_wta=True)
-        # Bơm Trick 1: Chuẩn hóa L2 tương tự lúc Train
-        test_embeddings = torch.nn.functional.normalize(test_embeddings, p=2, dim=1)
+        # FIX Lỗi 7: Không normalize sau WTA, giống hệt FLY-CL
+        test_embeddings = self.soho(test_embeddings, self.coding_level, absolute_wta=False)
         
         # Inference
         output = test_embeddings @ self.Wo
