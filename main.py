@@ -35,6 +35,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument('--seed', type=int, default=2025, help='Random seed')
     parser.add_argument('--ridge_lower', type=float, default=4, help='lower bound for ridge coefficient (log10)')
     parser.add_argument('--ridge_upper', type=float, default=10, help='upper bound for ridge coefficient (log10)')
+    parser.add_argument('--auto_ridge', action='store_true',
+                        help='FIX Hướng 2: Tự động chọn ridge_lower tối ưu theo dataset thay vì dùng giá trị mặc định.')
     parser.add_argument('--data_augmentation', default=None, help='choose which normalization or not')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--gpu', type=int, default=0, help='Choose gpu')
@@ -45,6 +47,19 @@ def get_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
+
+    # FIX Hướng 2: Tự động điều chỉnh ridge_lower theo từng dataset
+    # GCV cần tìm lambda trong vùng phù hợp với scale của Gram matrix.
+    # CIFAR-100 và CUB có nhiều mẫu/task → Gram matrix lớn → lambda tối ưu cao hơn.
+    if args.auto_ridge and args.method == 'sohocl':
+        dataset_ridge_map = {
+            "CIFAR-100":   2,   # 50k samples, Gram scale cao → cần lambda cao
+            "CUB-200-2011": 1,  # 9k samples, moderate
+            "ImageNet-R":  -1,  # 30k samples, varied distribution
+        }
+        auto_lower = dataset_ridge_map.get(args.dataset, args.ridge_lower)
+        print(f"[auto_ridge] Override ridge_lower: {args.ridge_lower} → {auto_lower} (dataset={args.dataset})")
+        args.ridge_lower = auto_lower
     
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     random_initialization(args.seed)

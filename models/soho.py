@@ -20,33 +20,42 @@ class IncrementalOLDA:
         
         unique_classes = torch.unique(labels)
 
-        # FIX Lỗi 1 - BƯỚC 1: Cập nhật class_sums và global_sum trước
+        # FIX Hướng 3: Welford's Parallel Covariance Formula cho S_w
+        # Công thức chuẩn xác để cộng dồn scatter khi mean thay đổi theo từng task:
+        #   S_w_combined = S_w_old + S_batch + (n_old*n_new)/(n_old+n_new) * outer(mu_old - mu_new)
+        # Đây là cách duy nhất đúng về mặt toán học khi không lưu lại dữ liệu cũ.
         for c in unique_classes:
             c = c.item()
             mask = (labels == c)
             class_features = features[mask]
-            n_c = class_features.shape[0]
-            sum_c = class_features.sum(dim=0)
+            n_new = class_features.shape[0]
+            sum_new = class_features.sum(dim=0)
+            mu_new = sum_new / n_new  # Mean của batch hiện tại
+
+            # Scatter của batch hiện tại quanh mean của chính batch đó
+            centered_new = class_features - mu_new
+            S_batch = centered_new.T @ centered_new
 
             if c not in self.class_sums:
-                self.class_sums[c] = sum_c
-                self.class_counts[c] = n_c
+                # Lần đầu xuất hiện: chưa có dữ liệu cũ, không có correction term
+                self.S_w += S_batch
+                self.class_sums[c] = sum_new
+                self.class_counts[c] = n_new
             else:
-                self.class_sums[c] += sum_c
-                self.class_counts[c] += n_c
+                # Đã có dữ liệu cũ: thêm correction term (Welford's)
+                n_old = self.class_counts[c]
+                mu_old = self.class_sums[c] / n_old  # Mean cũ TRƯỚC khi cập nhật
+                
+                # Số hạng hiệu chỉnh: bù đắp cho sự dịch chuyển của mean
+                delta = (mu_new - mu_old).unsqueeze(1)  # (D, 1)
+                correction = (n_old * n_new) / (n_old + n_new) * (delta @ delta.T)
+                
+                self.S_w += S_batch + correction
+                self.class_sums[c] += sum_new
+                self.class_counts[c] += n_new
 
         self.global_sum += features.sum(dim=0)
         self.global_count += features.shape[0]
-
-        # FIX Lỗi 1 - BƯỚC 2: Dùng TÂM TOÀN CỤC (global running mean) để tính S_w
-        # Cách cũ dùng tâm BATCH tạm thời -> S_w bị sai lệch qua các Task
-        for c in unique_classes:
-            c = c.item()
-            mask = (labels == c)
-            class_features = features[mask]
-            mu_c_global = self.class_sums[c] / self.class_counts[c]  # Tâm toàn cục của class c
-            centered = class_features - mu_c_global
-            self.S_w += centered.T @ centered
         
     def compute_projection(self, output_dim: int):
         mu_global = self.global_sum / self.global_count
@@ -156,13 +165,17 @@ class SOHO(nn.Module):
         # Khởi tạo R bằng Ma trận Đơn vị (Identity Matrix) cho Task 1.
         self.R = torch.eye(self.olda_dim, in_dim, device=device)
         
-        # ĐỘT PHÁ TOÁN HỌC: Ma trận Sparse Rademacher (-1, 0, 1)
-        # Khắc phục triệt để "Gaussian Annihilation" (sự hủy diệt của cấu trúc trực giao)
-        # Giữ nguyên tỷ lệ thưa để bảo toàn khoảng cách JL.
+        # Ma trận Sparse Rademacher (-1, 0, 1) với chuẩn hóa JL
+        # FIX Hướng 1: Scale bởi 1/sqrt(density * olda_dim) để bảo toàn khoảng cách
+        # theo Johnson-Lindenstrauss lemma. Thiếu scale này khiến Gram matrix G bị
+        # lệch ~(density*olda_dim) lần so với FLY-CL, làm GCV chọn lambda sai.
         random_tensor = torch.rand(self.output_dim, self.olda_dim, device=device)
         self.W = torch.zeros(self.output_dim, self.olda_dim, device=device)
         self.W[random_tensor < (density / 2)] = 1.0
         self.W[(random_tensor >= (density / 2)) & (random_tensor < density)] = -1.0
+        # Áp dụng JL normalization scale
+        jl_scale = 1.0 / (density * self.olda_dim) ** 0.5
+        self.W = self.W * jl_scale
         
     def update_stats(self, features: torch.Tensor, labels: torch.Tensor):
         self.olda.update(features, labels)
