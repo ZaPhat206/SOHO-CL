@@ -34,7 +34,7 @@ def build_transform(is_cifar: bool = False, data_augmentation = None) -> transfo
         transform.append(transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC))
         transform.append(transforms.CenterCrop(input_size))
     transform.append(transforms.ToTensor())
-    if data_augmentation is None:
+    if data_augmentation is None or data_augmentation.lower() == "none":
         pass
     elif data_augmentation == "resnet":
         transform.append(transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
