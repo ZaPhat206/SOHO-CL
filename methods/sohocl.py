@@ -105,17 +105,12 @@ class SOHOCL(BaseCL):
         z_sparse_new = torch.cat(z_sparse_new_list, dim=0)
         Y_new = Y[start_new:]
         
-        # FIX Lỗi GCV-G_global Mismatch:
-        # GCV chọn lambda trên z_sparse_new (chỉ Task T, n_new mẫu).
-        # Nhưng Cholesky dùng G_global (tất cả tasks, n_all mẫu).
-        # Lambda tối ưu cho G_global lớn hơn ~(n_all/n_new) lần.
-        # Scale lambda để bù đắp sự chệnh lệch này.
+        # Chọn lambda trên Task mới — giống FLY-CL, không scale.
+        # Lý do: tất cả features trong G_global đều được re-project qua cùng R hiện tại,
+        # nên GCV trên Task T đã ước lượng đú lambda phù hợp cho toàn bộ G_global.
         best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
-        scale_factor = n_samples / n_new  # n_all / n_new
-        scaled_lam = best_lam * scale_factor
         
-        # Chỉ dùng scaled_lam, bỏ 1e-6 dư thừa (FLY-CL không có bước này)
-        G_reg = G_global + scaled_lam * torch.eye(G_global.size(0), device=self.device)
+        G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
         
