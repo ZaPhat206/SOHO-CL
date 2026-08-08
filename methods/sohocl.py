@@ -75,40 +75,34 @@ class SOHOCL(BaseCL):
         # =========================================================================
         Q_global = torch.zeros(self.soho.output_dim, self.num_classes, device=self.device)
         G_global = torch.zeros(self.soho.output_dim, self.soho.output_dim, device=self.device)
-        
+
         chunk_size = 2000
-        n_samples = all_features.shape[0]
-        n_new = new_embeddings.shape[0]
-        start_new = n_samples - n_new
-        
-        z_sparse_new_list = []
-        
+        n_samples  = all_features.shape[0]
+
         with torch.no_grad():
             for i in range(0, n_samples, chunk_size):
-                end = min(i + chunk_size, n_samples)
+                end        = min(i + chunk_size, n_samples)
                 feat_chunk = all_features[i:end]
-                Y_chunk = Y[i:end]
-                
-                # FIX Lỗi 7: Bỏ L2 normalize sau WTA - FLY-CL không có bước này.
-                # Normalize phá vỡ tnh thưa (Sparsity) và mất thông tin cường độ kích hoạt.
+                Y_chunk    = Y[i:end]
+
                 z_chunk = self.soho(feat_chunk, self.coding_level, absolute_wta=False)
-                
-                # Cộng dồn ma trận
+
+                # Cộng dồn Gram matrix và cross-covariance
                 Q_global += z_chunk.T @ Y_chunk
                 G_global += z_chunk.T @ z_chunk
-                
-                # Trích xuất riêng dữ liệu của Task mới nhất để tính Lambda
-                if end > start_new:
-                    chunk_start_in_new = max(0, start_new - i)
-                    z_sparse_new_list.append(z_chunk[chunk_start_in_new:])
-                
-        z_sparse_new = torch.cat(z_sparse_new_list, dim=0)
-        Y_new = Y[start_new:]
-        
-        # Chọn lambda trên Task mới — giống FLY-CL, không scale.
-        # Lý do: tất cả features trong G_global đều được re-project qua cùng R hiện tại,
-        # nên GCV trên Task T đã ước lượng đú lambda phù hợp cho toàn bộ G_global.
-        best_lam = select_ridge_parameter(z_sparse_new, Y_new, self.ridge_lower, self.ridge_upper)
+
+        # FIX Bug#3: GCV trên sample ngẫu nhiên từ TOÀN BỘ data (không chỉ task mới)
+        # -----------------------------------------------------------------------
+        # Vấn đề cũ: R thay đổi sau mỗi task → features cũ re-projected qua R mới
+        # có phân phối khác task mới → GCV chỉ trên task mới chọn lambda sai.
+        # Fix: Sample 3000 mẫu ngẫu nhiên từ all_features đã được chiếu qua R mới,
+        # đây là proxy chính xác hơn cho G_global → lambda tốt hơn → Wo tốt hơn.
+        gcv_size = min(3000, n_samples)
+        gcv_idx  = torch.randperm(n_samples, device=self.device)[:gcv_size]
+        with torch.no_grad():
+            z_gcv = self.soho(all_features[gcv_idx], self.coding_level, absolute_wta=False)
+        Y_gcv    = Y[gcv_idx]
+        best_lam = select_ridge_parameter(z_gcv, Y_gcv, self.ridge_lower, self.ridge_upper)
         
         G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)

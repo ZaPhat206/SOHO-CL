@@ -58,98 +58,113 @@ class IncrementalOLDA:
         self.global_count += features.shape[0]
         
     def compute_projection(self, output_dim: int):
+        n_total = sum(self.class_counts.values())
+
         mu_global = self.global_sum / self.global_count
         S_b = torch.zeros_like(self.S_w)
-        
+
         for c, sum_c in self.class_sums.items():
             n_c = self.class_counts[c]
             mu_c = sum_c / n_c
             diff = (mu_c - mu_global).unsqueeze(1)
             S_b += n_c * (diff @ diff.T)
-            
-        S_w_reg = self.S_w + 1e-4 * torch.eye(self.in_dim, device=self.device)
-        
-        inv_S_w = torch.linalg.inv(S_w_reg)
-        target_matrix = inv_S_w @ S_b
-        
-        eigenvalues, eigenvectors = torch.linalg.eig(target_matrix)
-        eigenvalues = eigenvalues.real
-        eigenvectors = eigenvectors.real
-        
+
+        # FIX Bug#2: Normalize scatter matrices theo tổng số mẫu
+        # S_w tích lũy qua nhiều tasks → scale tăng liên tục → inv(S_w) → gần 0
+        # → eigenvectors của inv_S_w @ S_b mất ý nghĩa phân loại.
+        # Normalize bằng n_total → giá trị ổn định bất kể đã học bao nhiêu tasks.
+        S_w_norm = self.S_w / n_total
+        S_b_norm = S_b / n_total
+
+        S_w_reg = S_w_norm + 1e-4 * torch.eye(self.in_dim, device=self.device)
+
+        # FIX Bug#4: GEVD qua Cholesky Transform — numerically stable
+        # Bài toán: S_b v = λ S_w v (Generalized Eigenvalue Problem)
+        # Cách cũ: inv(S_w) @ S_b → eig() → unstable vì non-symmetric + dùng inv()
+        # Cách mới: Cholesky L s.t. S_w = L @ L^T → C = L^{-1} @ S_b @ L^{-T}
+        #           C là symmetric → eigh(C) stable → v = L^{-T} @ w
+        try:
+            L_chol  = torch.linalg.cholesky(S_w_reg)       # S_w_reg = L @ L^T
+            L_inv   = torch.linalg.inv(L_chol)             # Triangular inverse O(D²)
+            C       = L_inv @ S_b_norm @ L_inv.T
+            C       = (C + C.T) / 2                        # Force exact symmetry
+
+            eigenvalues, eigvecs_C = torch.linalg.eigh(C)  # Ascending order
+            eigenvalues  = eigenvalues.flip(0)              # → Descending
+            eigvecs_C    = eigvecs_C.flip(1)
+
+            # Chuyển về không gian gốc: v = L^{-T} @ w, normalize cột
+            eigenvectors = L_inv.T @ eigvecs_C
+            col_norms    = torch.linalg.norm(eigenvectors, dim=0, keepdim=True).clamp(min=1e-8)
+            eigenvectors = eigenvectors / col_norms
+
+        except Exception:
+            # Fallback: phương pháp cũ nếu Cholesky thất bại (S_w_reg không PD)
+            S_w_fb  = S_w_norm + 1e-3 * torch.eye(self.in_dim, device=self.device)
+            inv_S_w = torch.linalg.inv(S_w_fb)
+            target  = inv_S_w @ S_b_norm
+            ev, evec = torch.linalg.eig(target)
+            eigenvalues  = ev.real
+            eigenvectors = evec.real
+            idx          = torch.argsort(eigenvalues, descending=True)
+            eigenvalues  = eigenvalues[idx]
+            eigenvectors = eigenvectors[:, idx]
+
         # =========================================================================
-        # ĐỘT PHÁ TOÁN HỌC: NSP-OLDA (Null-Space Preserving Orthogonal LDA)
+        # NSP-OLDA: Discriminative Subspace
         # =========================================================================
-        # Sắp xếp trị riêng giảm dần để lấy các trục phân loại mạnh nhất lên đầu
-        sorted_indices = torch.argsort(eigenvalues, descending=True)
-        eigenvalues = eigenvalues[sorted_indices]
-        eigenvectors = eigenvectors[:, sorted_indices]
-        
-        # 1. Trích xuất không gian đặc trưng có ý nghĩa (Discriminative Subspace)
-        # S_b có hạng tối đa là N-1. Do đó, ta luôn lấy đúng N-1 vector riêng lớn nhất
+        # S_b có hạng tối đa N-1 (N = số class đã thấy). Lấy top N-1 eigenvectors.
         N = len(self.class_sums)
         num_disc = min(N - 1, self.in_dim)
-        
+
         if num_disc > 0:
             V_disc = eigenvectors[:, :num_disc]
-            # Trực giao hóa không gian Discriminative
-            Q_disc, _ = torch.linalg.qr(V_disc) 
+            Q_disc, _ = torch.linalg.qr(V_disc)    # Trực giao hóa Discriminative Subspace
         else:
             Q_disc = torch.empty((self.in_dim, 0), device=self.device)
-        
+
         # =====================================================================
-        # ĐỘT PHÁ TOÁN HỌC - ETF PROCRUSTES ALIGNMENT
+        # ETF PROCRUSTES ALIGNMENT
         # =====================================================================
-        # Chỉ kích hoạt khi số class > 1 và số chiều Q_disc khớp chính xác N-1
         if self.use_etf and N > 1 and Q_disc.shape[1] == N - 1:
-            # BƯỚC 1: Trích xuất Tâm điểm M trong không gian OLDA
-            mu_global = self.global_sum / self.global_count
+            # BƯỚC 1: Tâm điểm lớp trong không gian OLDA
+            mu_global_etf = self.global_sum / self.global_count
             M_orig_list = []
             for c in sorted(self.class_sums.keys()):
-                mu_c = (self.class_sums[c] / self.class_counts[c]) - mu_global
+                mu_c = (self.class_sums[c] / self.class_counts[c]) - mu_global_etf
                 M_orig_list.append(mu_c.unsqueeze(1))
-            
-            # M_orig: (768, N) -> M: (N-1, N)
-            M_orig = torch.cat(M_orig_list, dim=1)
-            M = Q_disc.T @ M_orig
-            
-            # Chuẩn hóa M để xoay góc thuần túy (không bị lệch do độ dài)
+
+            M_orig = torch.cat(M_orig_list, dim=1)          # (D, N)
+            M      = Q_disc.T @ M_orig                      # (N-1, N)
             M_norm = torch.nn.functional.normalize(M, p=2, dim=0)
-            
-            # BƯỚC 2: Sinh bộ khung ETF lý tưởng E
-            I_N = torch.eye(N, device=self.device)
+
+            # BƯỚC 2: ETF lý tưởng E
+            I_N    = torch.eye(N, device=self.device)
             Ones_N = torch.ones(N, N, device=self.device)
-            P = I_N - (1.0 / N) * Ones_N
-            
+            P      = I_N - (1.0 / N) * Ones_N
             U_P, _, _ = torch.linalg.svd(P)
-            U_sub = U_P[:, :N-1] # (N, N-1)
-            E = ((N / (N - 1)) ** 0.5) * U_sub.T # E: (N-1, N)
-            
-            # BƯỚC 3: Thuật toán Orthogonal Procrustes
-            # Tìm ma trận xoay Q trực giao để M_norm khớp vào E
+            U_sub  = U_P[:, :N-1]                           # (N, N-1)
+            E      = ((N / (N - 1)) ** 0.5) * U_sub.T      # (N-1, N)
+
+            # BƯỚC 3: Orthogonal Procrustes → xoay Q_disc về gần ETF nhất
             U_proc, _, Vh_proc = torch.linalg.svd(M_norm @ E.T)
-            Q_rot = U_proc @ Vh_proc # Ma trận xoay: (N-1, N-1)
-            
-            # Xoay toàn bộ trục không gian Discriminative (Áp dụng xoay vào Q_disc)
+            Q_rot  = U_proc @ Vh_proc                       # (N-1, N-1)
             Q_disc = Q_disc @ Q_rot
         # =====================================================================
-        
-        # 2. Bảo toàn Không gian Rỗng (Null Space)
+
+        # Null-Space Preservation
         num_null_dims = self.in_dim - Q_disc.shape[1]
-        
+
         if num_null_dims > 0:
-            I = torch.eye(self.in_dim, device=self.device)
-            P_ortho = I - Q_disc @ Q_disc.T
-            
-            # Dùng eigh thay SVD: P_ortho là ma trận symmetric PSD → nhanh hơn 3-5x
-            # eigenvalues ≈ 0 (discriminative dims) hoặc ≈ 1 (null space dims)
+            I_d     = torch.eye(self.in_dim, device=self.device)
+            P_ortho = I_d - Q_disc @ Q_disc.T
+            # eigh trên symmetric PSD matrix: nhanh hơn SVD 3-5x
             eigvals, eigvecs = torch.linalg.eigh(P_ortho)
-            # Lấy eigenvectors có eigenvalue lớn nhất (≈1) = null space
-            Q_null = eigvecs[:, -num_null_dims:]
-            
-            R_full = torch.cat([Q_disc, Q_null], dim=1)
+            Q_null  = eigvecs[:, -num_null_dims:]           # Eigenvalues ≈ 1 = null space
+            R_full  = torch.cat([Q_disc, Q_null], dim=1)
         else:
             R_full = Q_disc
-            
+
         actual_out_dim = min(output_dim, self.in_dim)
         R = R_full[:, :actual_out_dim].T
         return R
