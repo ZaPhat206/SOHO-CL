@@ -4,6 +4,13 @@ from methods.base_cl import BaseCL
 from models.soho import SOHO
 from utils.train_utils import feature_extract, target2onehot
 
+# Optional: Diagnostic logger (tắt khi không cần)
+try:
+    from utils.diagnostic_logger import DiagnosticLogger
+    _DIAGNOSTIC_AVAILABLE = True
+except ImportError:
+    _DIAGNOSTIC_AVAILABLE = False
+
 def select_ridge_parameter(Features, Y, ridge_lower, ridge_upper):
     X = Features
     U, S, Vh = torch.linalg.svd(X, full_matrices=False)
@@ -37,12 +44,16 @@ class SOHOCL(BaseCL):
         self.ridge_upper = ridge_upper
         
         self.Wo = None
+        self.G_global = None  # Expose for diagnostic logger
         
         # In SOHO, since projection matrix R changes dynamically per task, 
         # and WTA is a non-linear operation, we must store the backbone features 
         # to re-project and re-solve Ridge accurately at each step.
         self.memory_features = []
         self.memory_labels = []
+        
+        # Diagnostic logger — gán từ bên ngoài: agent._logger = DiagnosticLogger()
+        self._logger = None
 
     def train_task(self, task_id: int, train_loader):
         import time
@@ -107,9 +118,17 @@ class SOHOCL(BaseCL):
         G_reg = G_global + best_lam * torch.eye(G_global.size(0), device=self.device)
         L = torch.linalg.cholesky(G_reg)
         self.Wo = torch.cholesky_solve(Q_global, L)
+        self.G_global = G_global  # Expose for diagnostic
         
         training_end = time.time()
         train_time = training_end - training_start
+        
+        # Gọi diagnostic logger nếu được gắn vào
+        if self._logger is not None:
+            self._logger.log_task(
+                task_id, self.soho, self,
+                new_embeddings, new_labels, best_lam, None
+            )
         
         return best_lam, extract_time, train_time
 
