@@ -61,6 +61,7 @@ def load_dataset(args, domain_name=None, train=None):
     num_tasks = args.num_tasks
     batch_size = args.batch_size
     data_augmentation = args.data_augmentation
+    num_workers = getattr(args, "num_workers", 8)
 
     # Build transformations
     is_cifar = dataset == "CIFAR-100"
@@ -134,10 +135,10 @@ def load_dataset(args, domain_name=None, train=None):
             indices=[index for index, label in enumerate(full_test_dataset.targets) if label in classes_in_task]
         )
 
-        train_loader[i] = DataLoader(train_subset, batch_size=batch_size, shuffle=True, 
-                                     num_workers=8, pin_memory=True)
-        test_loader[i] = DataLoader(test_subset, batch_size=batch_size, shuffle=False, 
-                                    num_workers=8, pin_memory=True)
+        train_loader[i] = DataLoader(train_subset, batch_size=batch_size, shuffle=True,
+                                     num_workers=num_workers, pin_memory=True)
+        test_loader[i] = DataLoader(test_subset, batch_size=batch_size, shuffle=False,
+                                    num_workers=num_workers, pin_memory=True)
         # train_loader[i] = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         # test_loader[i] = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
 
