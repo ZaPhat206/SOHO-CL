@@ -6,6 +6,14 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, Subset, ConcatDataset, Dataset
 
 
+def resolve_cifar100_directory(root: str) -> str:
+    """Accept either ``root/cifar-100`` or root itself with CIFAR files."""
+    import os
+    if all(os.path.isfile(os.path.join(root, name)) for name in ("meta", "train", "test")):
+        return root
+    return os.path.join(root, "cifar-100")
+
+
 class CustomDataset(Dataset):
     def __init__(self, data, targets, transform=None):
         self.data = data
@@ -71,7 +79,7 @@ def load_dataset(args, domain_name=None, train=None):
         if not os.path.exists(target_dir):
             os.makedirs("./data", exist_ok=True)
             # Kaggle luôn tự động chuyển tên thư mục thành chữ thường (cifar-100) trên ổ cứng!
-            user_cifar = f"{root}/cifar-100"
+            user_cifar = resolve_cifar100_directory(root)
             
             if os.path.exists(user_cifar):
                 print(f"📦 Tìm thấy bản sao CIFAR-100 tại {user_cifar}! Tạo cầu nối (Symlink)...")
