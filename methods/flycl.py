@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import time
 from methods.base_cl import BaseCL
 from models.flyhash import FlyHash
 from utils.train_utils import feature_extract, target2onehot
@@ -71,7 +72,10 @@ class FlyCL(BaseCL):
         return best_lam, extract_time, train_time
 
     def eval_task(self, task_id: int, test_loader):
+        extract_start = time.time()
         test_embeddings, test_labels = feature_extract(self.backbone, test_loader, self.device)
+        self.last_eval_feature_extract_time = time.time() - extract_start
+        classifier_start = time.time()
         test_embeddings = self.flyhash(test_embeddings, self.coding_level, absolute_wta=False)
         
         # Use sparse matrix multiplication for inference if embeddings are sparsified
@@ -79,5 +83,30 @@ class FlyCL(BaseCL):
         output = torch.sparse.mm(test_embeddings_sparse, self.Wo)
         
         predicts = torch.topk(output, k=1, dim=1, largest=True, sorted=True)[1].squeeze()
+        self.last_eval_classifier_time = time.time() - classifier_start
         test_accuracy = np.mean(predicts.cpu().numpy() == test_labels.cpu().numpy()) * 100
         return test_accuracy
+
+    def persistent_state_summary(self):
+        """Non-functional instrumentation; frozen backbone is intentionally excluded."""
+        tensors = {
+            "flyhash.projection_matrix": self.flyhash.projection_matrix,
+            "G_global": self.G_global,
+            "Q_global": self.Q_global,
+        }
+        if self.Wo is not None:
+            tensors["Wo"] = self.Wo
+        entries = []
+        for name, tensor in tensors.items():
+            if tensor.layout == torch.strided:
+                byte_count = tensor.numel() * tensor.element_size()
+            elif tensor.layout == torch.sparse_csc:
+                byte_count = (
+                    tensor.ccol_indices().numel() * tensor.ccol_indices().element_size()
+                    + tensor.row_indices().numel() * tensor.row_indices().element_size()
+                    + tensor.values().numel() * tensor.values().element_size()
+                )
+            else:
+                raise ValueError(f"Unsupported persistent tensor layout: {tensor.layout}")
+            entries.append({"name": name, "shape": tuple(tensor.shape), "bytes": byte_count})
+        return {"tensors": entries, "tensor_bytes": sum(entry["bytes"] for entry in entries)}

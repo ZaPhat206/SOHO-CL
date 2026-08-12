@@ -14,6 +14,11 @@ SOHO-CL is an advanced continual learning framework.
 
 ## Getting Started
 
+## T-SOHO research prototype
+
+Run synthetic CPU validation with `python -m pytest -q` and `python tools/tsoho_runner.py --tiny-synthetic`.
+For the Kaggle Phase-4 workflow, open `notebooks/phase4_tsoho_kaggle.ipynb` and follow `docs/research/KAGGLE_PHASE4_RUNBOOK.md`. For Colab CIFAR-100 with train-only configuration selection, use `notebooks/tsoho_cifar100_colab.ipynb` and `docs/research/COLAB_CIFAR100_RUNBOOK.md`.
+
 1. **Install Dependencies:**
    ```bash
    pip install -r requirements.txt

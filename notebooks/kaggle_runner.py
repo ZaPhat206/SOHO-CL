@@ -28,7 +28,7 @@ DATASET_PROFILES = {
         "model_name":   "vit_base_patch16_224_in21k",  # BẮT BUỘC IN-21K!
         "data_aug":     "vit",
         "flycl":  {"cl": 0.3,  "r_lower": 4,  "expand_dim": 10000, "density": 0.3},
-        "sohocl": {"cl": 0.25, "r_lower": -2, "expand_dim": 10000, "density": 0.1},
+        "sohocl": {"cl": 0.25, "r_lower": 1, "expand_dim": 10000, "density": 0.1},
     },
 }
 
@@ -106,6 +106,7 @@ def run_experiment(method, dataset, num_tasks=None, olda_dim=768, use_etf=True):
                "Tasks": n_tasks, "Model": model_name}
     try:
         metrics["AA (%)"]           = float(output.split("Accumulated Accuracy\n")[1].split("\n")[0])
+        metrics["A_T (%)"]          = float(output.split("Last Stage Accuracy (A_T)\n")[1].split("\n")[0])
         metrics["LA (%)"]           = float(output.split("Learning Accuracy (LA): ")[1].split("\n")[0])
         metrics["Forgetting (%)"]   = float(output.split("Forgetting (F): ")[1].split("%")[0])
         metrics["BWT (%)"]          = float(output.split("Backward Transfer (BWT): ")[1].split("%")[0])
@@ -146,5 +147,5 @@ if __name__ == "__main__":
 
     # Hiện bảng so sánh
     df = pd.DataFrame(all_results)
-    cols = ["Method", "Dataset", "Tasks", "AA (%)", "LA (%)", "Forgetting (%)", "Memory (MB)", "Avg Train Time (s)"]
+    cols = ["Method", "Dataset", "Tasks", "AA (%)", "A_T (%)", "LA (%)", "Forgetting (%)", "Memory (MB)", "Avg Train Time (s)"]
     display(df[[c for c in cols if c in df.columns]].to_markdown(index=False))
