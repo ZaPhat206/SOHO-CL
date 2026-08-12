@@ -1,0 +1,9 @@
+data/
+feature_cache/
+outputs/
+checkpoints/
+*.safetensors
+*.pt
+*.pth
+__pycache__/
+.pytest_cache/

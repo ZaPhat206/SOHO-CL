@@ -1,0 +1,13 @@
+{
+  "method": "streaming_raw_ridge",
+  "dataset": "CIFAR-100",
+  "num_classes": 100,
+  "num_tasks": 10,
+  "model_name": "vit_base_patch16_224",
+  "embedding_dim": 768,
+  "seed": 1993,
+  "batch_size": 128,
+  "data_augmentation": "vit",
+  "ridge_lower": 6,
+  "ridge_upper": 10
+}
