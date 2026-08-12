@@ -42,6 +42,18 @@ def test_selection_uses_cached_training_features_not_test_set(tmp_path):
     assert selection["best"]["uses_test_set"] is False
 
 
+def test_selection_does_not_open_test_cache(tmp_path):
+    args = _args(tmp_path)
+    experiment_runner.tiny(args)
+    test_path = tmp_path / "cache" / "test.pt"
+    test_path.rename(tmp_path / "cache" / "test.hidden")
+    args.search_methods = "sft_raw_ridge"
+    args.search_ranks, args.search_lambdas = "1", "0.1"
+    args.validation_fraction, args.selection_output = .2, str(tmp_path / "selection-no-test.json")
+    experiment_runner.select_config(args)
+    assert (tmp_path / "selection-no-test.json").is_file()
+
+
 def test_sft_cache_runner_and_train_only_selection(tmp_path):
     args = _args(tmp_path)
     args.method = "confusion_fisher_soft"

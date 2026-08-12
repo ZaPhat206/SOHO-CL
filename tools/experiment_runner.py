@@ -51,12 +51,14 @@ def save_cache(d,train_x,train_y,test_x,test_y,args,checkpoint_hash=None):
  try: commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip()
  except Exception: commit=None
  dump(m,{"schema_version":SCHEMA_VERSION,"dataset":args.dataset,"dataset_version":"torchvision-cifar100","backbone_model":args.model_name,"checkpoint_sha256":checkpoint_hash,"preprocessing":args.data_augmentation,"resolved_data_config":{"input_size":[3,224,224],"normalization":"vit"},"feature_dim":int(train_x.shape[1]),"dtype":str(train_x.dtype),"split_sizes":{"train":int(train_x.shape[0]),"test":int(test_x.shape[0])},"train_shape":list(train_x.shape),"test_shape":list(test_x.shape),"train_labels_shape":list(train_y.shape),"test_labels_shape":list(test_y.shape),"finite":bool(torch.isfinite(train_x).all() and torch.isfinite(test_x).all()),"git_commit":commit})
-def validate_cache(d,args):
+def validate_cache(d,args,load_test=True):
+ """Validate a feature cache, optionally without opening held-out test data."""
  m,t,v=paths(d)
- if not all(x.is_file() for x in (m,t,v)): raise FileNotFoundError("cache requires metadata.json, train.pt, test.pt")
- meta=json.loads(m.read_text()); train,test=torch.load(t,weights_only=True),torch.load(v,weights_only=True)
+ required=(m,t,v) if load_test else (m,t)
+ if not all(x.is_file() for x in required): raise FileNotFoundError("cache requires metadata.json, train.pt" + (", test.pt" if load_test else ""))
+ meta=json.loads(m.read_text()); train=torch.load(t,weights_only=True);test=torch.load(v,weights_only=True) if load_test else None
  if meta.get("schema_version")!=SCHEMA_VERSION or meta.get("dataset")!=args.dataset or meta.get("backbone_model")!=args.model_name: raise ValueError("cache metadata mismatch")
- for s in (train,test):
+ for s in (train,) if test is None else (train,test):
   if set(s)!={"features","labels"} or s["features"].ndim!=2 or s["labels"].ndim!=1 or s["features"].shape[0]!=s["labels"].shape[0] or not bool(torch.isfinite(s["features"]).all()): raise ValueError("invalid cache")
  return train,test,meta
 def split(labels,order,tasks):
@@ -106,7 +108,7 @@ def train_validation_indices(labels,task_indices,seed,fraction):
  return training,validation
 def select_config(args):
  """Rank/lambda selection from cached *training* features only; no test access."""
- train,_,meta=validate_cache(args.feature_cache_dir,args); order=random.Random(args.seed).sample(list(range(args.num_classes)),args.num_classes); tasks=split(train["labels"],order,args.num_tasks); train_parts,val_parts=train_validation_indices(train["labels"],tasks,args.seed,args.validation_fraction)
+ train,_,meta=validate_cache(args.feature_cache_dir,args,load_test=False); order=random.Random(args.seed).sample(list(range(args.num_classes)),args.num_classes); tasks=split(train["labels"],order,args.num_tasks); train_parts,val_parts=train_validation_indices(train["labels"],tasks,args.seed,args.validation_fraction)
  ranks=[int(x) for x in args.search_ranks.split(",")];lambdas=[float(x) for x in args.search_lambdas.split(",")];kappas=[float(x) for x in getattr(args,"search_kappas",str(getattr(args,"fisher_kappa",1.0))).split(",")];deltas=[float(x) for x in getattr(args,"search_deltas",str(getattr(args,"fisher_delta",.1))).split(",")];results=[]
  for method in args.search_methods.split(","):
   if method not in METHODS: raise ValueError(f"unknown search method {method!r}; choices: {METHODS}")
