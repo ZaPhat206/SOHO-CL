@@ -1,0 +1,13 @@
+{
+  "method": "confusion_fisher_soft",
+  "ridge_lambda": 0.1,
+  "fisher_kappa": 0.1,
+  "fisher_delta": 0.1,
+  "fisher_scatter_epsilon": 0.0001,
+  "seed": 1993,
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "num_classes": 100,
+  "num_tasks": 10,
+  "device": "cuda"
+}
