@@ -120,7 +120,7 @@ def select_config(args):
       for task in range(args.num_tasks):
        learner.update(train["features"][train_parts[task]],train["labels"][train_parts[task]])
        for previous in range(task+1):
-        logits=learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float()*100))
+        logits=learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float().mean()*100))
       results.append({"method":method,"rank":rank,"ridge_lambda":ridge_lambda,"fisher_kappa":kappa,"fisher_delta":delta,"validation_average_accuracy":sum(scores)/len(scores),"uses_test_set":False})
  best=max(results,key=lambda x:x["validation_average_accuracy"]);out=Path(args.selection_output or Path(args.output_dir)/"selection.json");out.parent.mkdir(parents=True,exist_ok=True);dump(out,{"selection_protocol":"stratified held-out subset of cached training features only","validation_fraction":args.validation_fraction,"cache_metadata":meta,"best":best,"candidates":results});print(json.dumps(best))
 def tiny(args):

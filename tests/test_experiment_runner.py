@@ -73,6 +73,7 @@ def test_sft_cache_runner_and_train_only_selection(tmp_path):
     selection = json.loads((tmp_path / "sft-selection.json").read_text())
     assert selection["best"]["uses_test_set"] is False
     assert {candidate["method"] for candidate in selection["candidates"]} == set(args.search_methods.split(","))
+    assert all(isinstance(candidate["validation_average_accuracy"], float) for candidate in selection["candidates"])
 
 
 def test_forgetting_uses_maximum_over_later_stages():
