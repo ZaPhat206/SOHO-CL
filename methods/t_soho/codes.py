@@ -2,7 +2,9 @@ import torch
 
 
 def effective_rank(requested_rank, classes):
-    return max(0, min(int(requested_rank), max(classes - 1, 0)))
+    # Strict low rank: r < C_seen - 1.  With fewer than three classes, code
+    # methods take the documented raw-Ridge fallback rather than full rank.
+    return max(0, min(int(requested_rank), max(classes - 2, 0)))
 
 
 def _orient(rows):

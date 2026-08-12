@@ -62,8 +62,32 @@ def extract(args):
  class A: pass
  meta=A();meta.dataset=args.dataset;meta.model_name=args.model_name;meta.data_augmentation=args.data_augmentation
  save_cache(args.feature_cache_dir,torch.cat(train_x),torch.cat(train_y),torch.cat(test_x),torch.cat(test_y),meta,checkpoint_hash)
+def train_validation_indices(labels,task_indices,seed,fraction):
+ """Deterministic stratified train/validation split; never reads test features."""
+ if not 0 < fraction < 1: raise ValueError("validation_fraction must be in (0,1)")
+ generator=torch.Generator().manual_seed(seed); training=[]; validation=[]
+ for indices in task_indices:
+  task_labels=labels[indices]; train_parts=[]; val_parts=[]
+  for cls in torch.unique(task_labels):
+   cls_indices=indices[task_labels==cls]; perm=cls_indices[torch.randperm(len(cls_indices),generator=generator)]; n_val=max(1,int(len(perm)*fraction)); val_parts.append(perm[:n_val]);train_parts.append(perm[n_val:])
+  training.append(torch.cat(train_parts));validation.append(torch.cat(val_parts))
+ return training,validation
+def select_config(args):
+ """Rank/lambda selection from cached *training* features only; no test access."""
+ train,_,meta=validate_cache(args.feature_cache_dir,args); order=random.Random(args.seed).sample(list(range(args.num_classes)),args.num_classes); tasks=split(train["labels"],order,args.num_tasks); train_parts,val_parts=train_validation_indices(train["labels"],tasks,args.seed,args.validation_fraction)
+ ranks=[int(x) for x in args.search_ranks.split(",")];lambdas=[float(x) for x in args.search_lambdas.split(",")];results=[]
+ for method in args.search_methods.split(","):
+  for rank in ([0] if method=="raw_ridge" else ranks):
+   for ridge_lambda in lambdas:
+    learner=create_learner(method=method,feature_dim=train["features"].shape[1],ridge_lambda=ridge_lambda,requested_rank=rank,seed=args.seed,device=args.device);scores=[]
+    for task in range(args.num_tasks):
+     learner.update(train["features"][train_parts[task]],train["labels"][train_parts[task]])
+     for previous in range(task+1):
+      logits=learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float().mean()*100))
+    results.append({"method":method,"rank":rank,"ridge_lambda":ridge_lambda,"validation_average_accuracy":sum(scores)/len(scores),"uses_test_set":False})
+ best=max(results,key=lambda x:x["validation_average_accuracy"]);out=Path(args.selection_output or Path(args.output_dir)/"selection.json");out.parent.mkdir(parents=True,exist_ok=True);dump(out,{"selection_protocol":"stratified held-out subset of cached training features only","validation_fraction":args.validation_fraction,"cache_metadata":meta,"best":best,"candidates":results});print(json.dumps(best))
 def tiny(args):
  torch.manual_seed(args.seed); x=torch.randn(30,8); y=torch.tensor([0,1,2]*10);args.dataset="tiny";args.model_name="synthetic";args.data_augmentation="none";args.num_classes=3;args.num_tasks=3;save_cache(args.feature_cache_dir,x[:21],y[:21],x[21:],y[21:],args);run(args)
 def main():
- p=argparse.ArgumentParser();p.add_argument("--method",choices=METHODS,default="spectral_confusion_code");p.add_argument("--rank",type=int,default=8);p.add_argument("--ridge-lambda",type=float,default=1.);p.add_argument("--seed",type=int,default=1993);p.add_argument("--feature-cache-dir",required=True);p.add_argument("--output-dir",required=True);p.add_argument("--dataset",default="CIFAR-100");p.add_argument("--model-name",default="vit_base_patch16_224");p.add_argument("--root");p.add_argument("--backbone-checkpoint");p.add_argument("--backbone-checkpoint-size",type=int);p.add_argument("--backbone-checkpoint-sha256");p.add_argument("--data-augmentation",default="vit");p.add_argument("--num-classes",type=int,default=100);p.add_argument("--num-tasks",type=int,default=10);p.add_argument("--device",default="cpu");p.add_argument("--batch-size",type=int,default=128);p.add_argument("--num-workers",type=int,default=8);p.add_argument("--resume",action="store_true");p.add_argument("--tiny-synthetic",action="store_true");p.add_argument("--extract-features-only",action="store_true");a=p.parse_args();tiny(a) if a.tiny_synthetic else extract(a) if a.extract_features_only else run(a)
+ p=argparse.ArgumentParser();p.add_argument("--method",choices=METHODS,default="spectral_confusion_code");p.add_argument("--rank",type=int,default=8);p.add_argument("--ridge-lambda",type=float,default=1.);p.add_argument("--seed",type=int,default=1993);p.add_argument("--feature-cache-dir",required=True);p.add_argument("--output-dir",required=True);p.add_argument("--dataset",default="CIFAR-100");p.add_argument("--model-name",default="vit_base_patch16_224");p.add_argument("--root");p.add_argument("--backbone-checkpoint");p.add_argument("--backbone-checkpoint-size",type=int);p.add_argument("--backbone-checkpoint-sha256");p.add_argument("--data-augmentation",default="vit");p.add_argument("--num-classes",type=int,default=100);p.add_argument("--num-tasks",type=int,default=10);p.add_argument("--device",default="cpu");p.add_argument("--batch-size",type=int,default=128);p.add_argument("--num-workers",type=int,default=8);p.add_argument("--resume",action="store_true");p.add_argument("--tiny-synthetic",action="store_true");p.add_argument("--extract-features-only",action="store_true");p.add_argument("--select-config",action="store_true");p.add_argument("--search-methods",default="spectral_confusion_code");p.add_argument("--search-ranks",default="8,16,32,64");p.add_argument("--search-lambdas",default="0.01,0.1,1.0,10.0");p.add_argument("--validation-fraction",type=float,default=.1);p.add_argument("--selection-output");a=p.parse_args();tiny(a) if a.tiny_synthetic else extract(a) if a.extract_features_only else select_config(a) if a.select_config else run(a)
 if __name__=="__main__":main()

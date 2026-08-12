@@ -29,3 +29,14 @@ def test_resume_skips_completed_run(tmp_path, capsys):
     args.resume = True
     experiment_runner.run(args)
     assert "completed run already present" in capsys.readouterr().out
+
+
+def test_selection_uses_cached_training_features_not_test_set(tmp_path):
+    args = _args(tmp_path); experiment_runner.tiny(args)
+    args.search_methods = "raw_ridge,spectral_confusion_code"
+    args.search_ranks, args.search_lambdas = "1,2", "0.1,1.0"
+    args.validation_fraction, args.selection_output = .2, str(tmp_path / "selection.json")
+    experiment_runner.select_config(args)
+    selection = json.loads((tmp_path / "selection.json").read_text())
+    assert selection["selection_protocol"].endswith("only")
+    assert selection["best"]["uses_test_set"] is False

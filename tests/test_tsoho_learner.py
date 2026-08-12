@@ -37,7 +37,7 @@ def test_graph_codes_logits_state_and_seed_contracts():
     x, y = _stream(); a = create_learner(method="spectral_confusion_code", feature_dim=5, ridge_lambda=.1, requested_rank=8, seed=9); a.update(x, y)
     A, L, _ = confusion_graph(a.statistics.counts, a.statistics.sums, a.statistics.sq_sums)
     torch.testing.assert_close(A, A.T); torch.testing.assert_close(torch.diag(A), torch.zeros(3, dtype=torch.float64)); torch.testing.assert_close(L, L.T); torch.testing.assert_close(L.sum(1), torch.zeros(3, dtype=torch.float64), atol=1e-10, rtol=0)
-    assert a.E.shape == (2, 3); torch.testing.assert_close(a.E @ a.E.T, torch.eye(2, dtype=torch.float64), atol=1e-7, rtol=0); torch.testing.assert_close(a.E @ torch.ones(3, dtype=torch.float64), torch.zeros(2, dtype=torch.float64), atol=1e-7, rtol=0)
+    assert a.E.shape == (1, 3); torch.testing.assert_close(a.E @ a.E.T, torch.eye(1, dtype=torch.float64), atol=1e-7, rtol=0); torch.testing.assert_close(a.E @ torch.ones(3, dtype=torch.float64), torch.zeros(1, dtype=torch.float64), atol=1e-7, rtol=0)
     logits = a.predict_logits(x[:3]); assert logits.shape == (3, 3) and bool(torch.isfinite(logits).all())
     assert "task_id" not in inspect.signature(a.predict_logits).parameters
     clone = create_learner(method="spectral_confusion_code", feature_dim=5, ridge_lambda=.1, requested_rank=8, seed=9); clone.load_state_dict(a.state_dict()); torch.testing.assert_close(clone.predict_logits(x), a.predict_logits(x))
