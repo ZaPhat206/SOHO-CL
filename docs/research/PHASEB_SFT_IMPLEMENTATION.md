@@ -3,6 +3,10 @@
 Status: implementation and synthetic/cache smoke tests only. No CIFAR-100 test
 metric is recorded in this document.
 
+Run [sft_cl_phase_b_colab.ipynb](../../notebooks/sft_cl_phase_b_colab.ipynb)
+on a Colab GPU after pushing `feature/sft-cl-exemplar-free`. It performs the
+selection and locked evaluation procedure below in cells.
+
 ## Added components
 
 - `methods/sft_cl`: bounded `G,Q,n` statistics; standard/confusion Fisher
