@@ -50,8 +50,12 @@ load_test=False)` exclusively.
 ## Locked grids and gate
 
 The immutable manifest is
-`configs/phasei_cub_train_only_selection.json`, SHA-256
-`bdf03e0e9c48716f429ec5ec8bbc9331bd53c6d3afb1478866045b0b0faf94d3`.
+`configs/phasei_cub_train_only_selection.json`. Version 2 uses `float64`
+sufficient statistics and analytic solves. Version 1 used `float32`; its first
+`λ=0.001` raw-Ridge candidate failed Cholesky before producing any validation
+score, so it is invalidated as a numerical preflight failure rather than used
+to alter the search grid. Current manifest SHA-256:
+`e234b97080442c113578c7d477a2eecfc60ad2a9484fbea42ea1720fd9dd62d9`.
 Its exact grids are:
 
 - raw/anchor Ridge: `0.001, 0.01, 0.1, 1.0`;
@@ -102,7 +106,8 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q
 ```
 
-Result: `94 passed` in `31.73s`. Both commands emitted only the existing
+Result after the float64 numerical-preflight amendment: `95 passed` in
+`12.89s`. Both commands emitted only the existing
 PyTorch JIT deprecations and sparse CSC/invariant warnings; no warning was
 suppressed. `git diff --check` passed, the locked manifest hash was recomputed,
 and all nine notebook code cells passed Python syntax parsing.

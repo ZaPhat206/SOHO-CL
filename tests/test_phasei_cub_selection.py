@@ -64,6 +64,20 @@ def test_manifest_hash_mismatch_fails_before_dataset_or_features(tmp_path, monke
         phasei_cub_selection.run(args)
 
 
+def test_locked_cub_protocol_uses_float64_statistics_after_numerical_preflight():
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    runtime = phasei_cub_selection.runtime_args(
+        SimpleNamespace(
+            feature_cache_dir="features", gate_cache_dir="gates",
+            output_dir="output", device="cuda",
+        ),
+        manifest,
+    )
+
+    assert manifest["study_id"].endswith("_v2")
+    assert runtime.statistics_dtype == "float64"
+
+
 def test_dataset_identity_mismatch_fails_before_feature_cache(tmp_path, monkeypatch):
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     audit = valid_audit(manifest)

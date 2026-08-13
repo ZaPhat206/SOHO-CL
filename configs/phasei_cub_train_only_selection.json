@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "study_id": "phasei_cub200_train_only_selection_v1",
+  "study_id": "phasei_cub200_train_only_selection_v2",
   "status": "preregistered_not_executed",
   "dataset_identity": {
     "dataset": "CUB-200-2011",
@@ -24,7 +24,7 @@
     "synaptic_degree": 300,
     "coding_level": 0.3,
     "scatter_epsilon": 0.0001,
-    "statistics_dtype": "float32",
+    "statistics_dtype": "float64",
     "anchor_batch_size": 1024,
     "test_time_hyperparameter_search": false
   },
