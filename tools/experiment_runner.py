@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 from methods.t_soho import create_learner as create_tsoho_learner
 from methods.sft_cl import METHODS as SFT_METHODS, create_learner as create_sft_learner
+from methods.crt_soho import METHODS as CRT_METHODS, create_learner as create_crt_learner
 from methods.cached_replay_baselines import CachedFlyCL, CachedSOHOReplay
 from models.backbone import load_model
 from utils.data_utils import load_dataset
@@ -16,12 +17,13 @@ TSOHO_METHODS={"raw_ridge","random_orthogonal_code","truncated_simplex_code","sp
 # notebooks/results can resume unchanged.  `sft_raw_ridge` is the minimal
 # sufficient-statistic raw-feature control used by the new Fisher ablation.
 SFT_CACHE_METHODS={"sft_raw_ridge", *SFT_METHODS-{"raw_ridge"}}
+CRT_CACHE_METHODS={f"crt_{method}" for method in CRT_METHODS}
 CACHE_REFERENCE_METHODS={"cached_flycl","cached_soho_replay"}
-METHODS=sorted(TSOHO_METHODS | SFT_CACHE_METHODS | CACHE_REFERENCE_METHODS)
+METHODS=sorted(TSOHO_METHODS | SFT_CACHE_METHODS | CRT_CACHE_METHODS | CACHE_REFERENCE_METHODS)
 SCHEMA_VERSION=1
 
 
-def create_cached_learner(args, method, feature_dim, ridge_lambda, rank, kappa=None, delta=None):
+def create_cached_learner(args, method, feature_dim, ridge_lambda, rank, kappa=None, delta=None, residual_ridge=None, complement_ridge=None, confusion_temperature=None):
  """Dispatch cache learners without changing legacy T-SOHO semantics."""
  if method in SFT_CACHE_METHODS:
   sft_method="raw_ridge" if method=="sft_raw_ridge" else method
@@ -37,6 +39,16 @@ def create_cached_learner(args, method, feature_dim, ridge_lambda, rank, kappa=N
   return CachedSOHOReplay(feature_dim=feature_dim,expand_dim=int(getattr(args,"soho_expand_dim",10000)),density=float(getattr(args,"soho_density",.1)),
                            olda_dim=int(getattr(args,"soho_olda_dim",None) or feature_dim),use_etf=not bool(getattr(args,"soho_no_etf",False)),
                            coding_level=float(getattr(args,"soho_coding_level",.45)),ridge_lambda=ridge_lambda,seed=args.seed,device=args.device)
+ if method in CRT_CACHE_METHODS:
+  dtype={"float32":torch.float32,"float64":torch.float64}[getattr(args,"crt_statistics_dtype","float64")]
+  return create_crt_learner(method=method.removeprefix("crt_"),raw_dim=feature_dim,
+                            anchor_dim=int(getattr(args,"crt_anchor_dim",2048)),synaptic_degree=int(getattr(args,"crt_synaptic_degree",300)),
+                            coding_level=float(getattr(args,"crt_coding_level",.3)),anchor_ridge=ridge_lambda,
+                            residual_ridge=float(getattr(args,"crt_residual_ridge",1.) if residual_ridge is None else residual_ridge),
+                            complement_ridge=float(getattr(args,"crt_complement_ridge",1.) if complement_ridge is None else complement_ridge),
+                            requested_rank=max(int(rank),1),
+                            confusion_temperature=float(getattr(args,"crt_confusion_temperature",1.) if confusion_temperature is None else confusion_temperature),
+                            scatter_epsilon=float(getattr(args,"crt_scatter_epsilon",1e-4)),seed=args.seed,device=args.device,dtype=dtype)
  return create_tsoho_learner(method=method,feature_dim=feature_dim,ridge_lambda=ridge_lambda,requested_rank=rank,seed=args.seed,device=args.device)
 def dump(path,x): Path(path).write_text(json.dumps(x,indent=2,default=str),encoding="utf-8")
 def paths(d):
@@ -76,7 +88,7 @@ def run(args):
   start=time.perf_counter(); l.update(train["features"][ix],train["labels"][ix]); timing.append({"task":task,"update_seconds":time.perf_counter()-start}); row=[]
   for old in range(task+1):
    start=time.perf_counter(); logits=l.predict_logits(test["features"][te[old]]); pred=torch.tensor([l.class_ids[i] for i in logits.argmax(1).tolist()]); row.append(float((pred==test["labels"][te[old]]).float().mean()*100)); timing.append({"task":task,"eval_task":old,"inference_seconds":time.perf_counter()-start})
-  matrix.append(row); states.append({"task":task,"persistent_state_bytes":l.persistent_state_bytes()}); diag.append({"task":task,"effective_rank":l.diagnostics.get("effective_rank"),"tau":l.diagnostics.get("tau"),"eigenvalues":l.diagnostics.get("eigenvalues").tolist() if isinstance(l.diagnostics.get("eigenvalues"),torch.Tensor) else None,"gains":l.diagnostics.get("gains").tolist() if isinstance(l.diagnostics.get("gains"),torch.Tensor) else None,"solver_residual_max":l.diagnostics.get("solver_residual_max")})
+  matrix.append(row); states.append({"task":task,"persistent_state_bytes":l.persistent_state_bytes()}); diag.append({"task":task,"effective_rank":l.diagnostics.get("effective_rank"),"tau":l.diagnostics.get("tau"),"eigenvalues":l.diagnostics.get("eigenvalues").tolist() if isinstance(l.diagnostics.get("eigenvalues"),torch.Tensor) else None,"gains":l.diagnostics.get("gains").tolist() if isinstance(l.diagnostics.get("gains"),torch.Tensor) else None,"solver_residual_max":l.diagnostics.get("solver_residual_max"),"solver_relative_residual_max":l.diagnostics.get("solver_relative_residual_max"),"geometry":l.diagnostics.get("geometry"),"residualized":l.diagnostics.get("residualized"),"affinity_min":l.diagnostics.get("affinity_min"),"affinity_median":l.diagnostics.get("affinity_median"),"affinity_max":l.diagnostics.get("affinity_max")})
   torch.save({"next_task":task+1,"learner":l.state_dict(),"matrix":matrix,"states":states,"timing":timing,"diagnostics":diag},progress)
  def writecsv(name,rows):
   fields=sorted({k for r in rows for k in r});
@@ -109,26 +121,29 @@ def train_validation_indices(labels,task_indices,seed,fraction):
 def select_config(args):
  """Rank/lambda selection from cached *training* features only; no test access."""
  train,_,meta=validate_cache(args.feature_cache_dir,args,load_test=False); order=random.Random(args.seed).sample(list(range(args.num_classes)),args.num_classes); tasks=split(train["labels"],order,args.num_tasks); train_parts,val_parts=train_validation_indices(train["labels"],tasks,args.seed,args.validation_fraction)
- ranks=[int(x) for x in args.search_ranks.split(",")];lambdas=[float(x) for x in args.search_lambdas.split(",")];kappas=[float(x) for x in getattr(args,"search_kappas",str(getattr(args,"fisher_kappa",1.0))).split(",")];deltas=[float(x) for x in getattr(args,"search_deltas",str(getattr(args,"fisher_delta",.1))).split(",")];results=[]
+ ranks=[int(x) for x in args.search_ranks.split(",")];lambdas=[float(x) for x in args.search_lambdas.split(",")];kappas=[float(x) for x in getattr(args,"search_kappas",str(getattr(args,"fisher_kappa",1.0))).split(",")];deltas=[float(x) for x in getattr(args,"search_deltas",str(getattr(args,"fisher_delta",.1))).split(",")];residual_ridges=[float(x) for x in getattr(args,"search_crt_residual_ridges","0.01,0.1,1.0").split(",")];complement_ridges=[float(x) for x in getattr(args,"search_crt_complement_ridges","0.01,0.1,1.0").split(",")];temperatures=[float(x) for x in getattr(args,"search_crt_temperatures","0.25,0.5,1.0").split(",")];results=[]
  for method in args.search_methods.split(","):
   if method not in METHODS: raise ValueError(f"unknown search method {method!r}; choices: {METHODS}")
-  for rank in ([0] if method in {"raw_ridge","sft_raw_ridge","cached_flycl","cached_soho_replay"} or method.endswith("soft") else ranks):
+  for rank in ([0] if method in {"raw_ridge","sft_raw_ridge","cached_flycl","cached_soho_replay","crt_anchor_only","crt_full_raw_residual"} or method.endswith("soft") else ranks):
    for ridge_lambda in lambdas:
-    for kappa in (kappas if "fisher" in method else [None]):
-     for delta in (deltas if method.endswith("soft") else [None]):
-      learner=create_cached_learner(args,method,train["features"].shape[1],ridge_lambda,rank,kappa,delta);scores=[]
-      for task in range(args.num_tasks):
-       learner.update(train["features"][train_parts[task]],train["labels"][train_parts[task]])
-       for previous in range(task+1):
-        logits=learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float().mean()*100))
-      results.append({"method":method,"rank":rank,"ridge_lambda":ridge_lambda,"fisher_kappa":kappa,"fisher_delta":delta,"validation_average_accuracy":sum(scores)/len(scores),"uses_test_set":False})
+    for kappa in (kappas if method in SFT_CACHE_METHODS and "fisher" in method else [None]):
+     for delta in (deltas if method in SFT_CACHE_METHODS and method.endswith("soft") else [None]):
+      for residual_ridge in (residual_ridges if method in CRT_CACHE_METHODS and method!="crt_anchor_only" else [None]):
+       for complement_ridge in (complement_ridges if method in CRT_CACHE_METHODS and method not in {"crt_anchor_only","crt_confusion_no_residualization"} else [None]):
+        for temperature in (temperatures if method in {"crt_confusion_residual","crt_shuffled_confusion_residual","crt_confusion_no_residualization"} else [None]):
+         learner=create_cached_learner(args,method,train["features"].shape[1],ridge_lambda,rank,kappa,delta,residual_ridge,complement_ridge,temperature);scores=[]
+         for task in range(args.num_tasks):
+          learner.update(train["features"][train_parts[task]],train["labels"][train_parts[task]])
+          for previous in range(task+1):
+           logits=learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float().mean()*100))
+         results.append({"method":method,"rank":rank,"ridge_lambda":ridge_lambda,"fisher_kappa":kappa,"fisher_delta":delta,"crt_residual_ridge":residual_ridge,"crt_complement_ridge":complement_ridge,"crt_confusion_temperature":temperature,"validation_average_accuracy":sum(scores)/len(scores),"uses_test_set":False})
  best=max(results,key=lambda x:x["validation_average_accuracy"]);out=Path(args.selection_output or Path(args.output_dir)/"selection.json");out.parent.mkdir(parents=True,exist_ok=True);dump(out,{"selection_protocol":"stratified held-out subset of cached training features only","validation_fraction":args.validation_fraction,"cache_metadata":meta,"best":best,"candidates":results});print(json.dumps(best))
 def tiny(args):
  torch.manual_seed(args.seed); x=torch.randn(30,8); y=torch.tensor([0,1,2]*10);args.dataset="tiny";args.model_name="synthetic";args.data_augmentation="none";args.num_classes=3;args.num_tasks=3;save_cache(args.feature_cache_dir,x[:21],y[:21],x[21:],y[21:],args);run(args)
 def main():
  config_probe=argparse.ArgumentParser(add_help=False);config_probe.add_argument("--config")
  configured,_=config_probe.parse_known_args()
- p=argparse.ArgumentParser();p.add_argument("--config");p.add_argument("--method",choices=METHODS,default="spectral_confusion_code");p.add_argument("--rank",type=int,default=8);p.add_argument("--ridge-lambda",type=float,default=1.);p.add_argument("--fisher-kappa",type=float,default=1.0);p.add_argument("--fisher-delta",type=float,default=.1);p.add_argument("--fisher-scatter-epsilon",type=float,default=1e-4);p.add_argument("--fly-expand-dim",type=int,default=10000);p.add_argument("--fly-synaptic-degree",type=int,default=300);p.add_argument("--fly-coding-level",type=float,default=.3);p.add_argument("--soho-expand-dim",type=int,default=10000);p.add_argument("--soho-density",type=float,default=.1);p.add_argument("--soho-olda-dim",type=int);p.add_argument("--soho-coding-level",type=float,default=.45);p.add_argument("--soho-no-etf",action="store_true");p.add_argument("--seed",type=int,default=1993);p.add_argument("--feature-cache-dir",required=True);p.add_argument("--output-dir",required=True);p.add_argument("--dataset",default="CIFAR-100");p.add_argument("--model-name",default="vit_base_patch16_224");p.add_argument("--root");p.add_argument("--backbone-checkpoint");p.add_argument("--backbone-checkpoint-size",type=int);p.add_argument("--backbone-checkpoint-sha256");p.add_argument("--data-augmentation",default="vit");p.add_argument("--num-classes",type=int,default=100);p.add_argument("--num-tasks",type=int,default=10);p.add_argument("--device",default="cpu");p.add_argument("--batch-size",type=int,default=128);p.add_argument("--num-workers",type=int,default=8);p.add_argument("--resume",action="store_true");p.add_argument("--tiny-synthetic",action="store_true");p.add_argument("--extract-features-only",action="store_true");p.add_argument("--select-config",action="store_true");p.add_argument("--search-methods",default="spectral_confusion_code");p.add_argument("--search-ranks",default="8,16,32,64");p.add_argument("--search-lambdas",default="0.01,0.1,1.0,10.0");p.add_argument("--search-kappas",default="0.01,0.1,1.0");p.add_argument("--search-deltas",default="0.01,0.1,0.5");p.add_argument("--validation-fraction",type=float,default=.1);p.add_argument("--selection-output")
+ p=argparse.ArgumentParser();p.add_argument("--config");p.add_argument("--method",choices=METHODS,default="spectral_confusion_code");p.add_argument("--rank",type=int,default=8);p.add_argument("--ridge-lambda",type=float,default=1.);p.add_argument("--fisher-kappa",type=float,default=1.0);p.add_argument("--fisher-delta",type=float,default=.1);p.add_argument("--fisher-scatter-epsilon",type=float,default=1e-4);p.add_argument("--fly-expand-dim",type=int,default=10000);p.add_argument("--fly-synaptic-degree",type=int,default=300);p.add_argument("--fly-coding-level",type=float,default=.3);p.add_argument("--soho-expand-dim",type=int,default=10000);p.add_argument("--soho-density",type=float,default=.1);p.add_argument("--soho-olda-dim",type=int);p.add_argument("--soho-coding-level",type=float,default=.45);p.add_argument("--soho-no-etf",action="store_true");p.add_argument("--crt-anchor-dim",type=int,default=2048);p.add_argument("--crt-synaptic-degree",type=int,default=300);p.add_argument("--crt-coding-level",type=float,default=.3);p.add_argument("--crt-residual-ridge",type=float,default=1.);p.add_argument("--crt-complement-ridge",type=float,default=1.);p.add_argument("--crt-confusion-temperature",type=float,default=1.);p.add_argument("--crt-scatter-epsilon",type=float,default=1e-4);p.add_argument("--crt-statistics-dtype",choices=("float32","float64"),default="float64");p.add_argument("--seed",type=int,default=1993);p.add_argument("--feature-cache-dir",required=True);p.add_argument("--output-dir",required=True);p.add_argument("--dataset",default="CIFAR-100");p.add_argument("--model-name",default="vit_base_patch16_224");p.add_argument("--root");p.add_argument("--backbone-checkpoint");p.add_argument("--backbone-checkpoint-size",type=int);p.add_argument("--backbone-checkpoint-sha256");p.add_argument("--data-augmentation",default="vit");p.add_argument("--num-classes",type=int,default=100);p.add_argument("--num-tasks",type=int,default=10);p.add_argument("--device",default="cpu");p.add_argument("--batch-size",type=int,default=128);p.add_argument("--num-workers",type=int,default=8);p.add_argument("--resume",action="store_true");p.add_argument("--tiny-synthetic",action="store_true");p.add_argument("--extract-features-only",action="store_true");p.add_argument("--select-config",action="store_true");p.add_argument("--search-methods",default="spectral_confusion_code");p.add_argument("--search-ranks",default="8,16,32,64");p.add_argument("--search-lambdas",default="0.01,0.1,1.0,10.0");p.add_argument("--search-kappas",default="0.01,0.1,1.0");p.add_argument("--search-deltas",default="0.01,0.1,0.5");p.add_argument("--search-crt-residual-ridges",default="0.01,0.1,1.0");p.add_argument("--search-crt-complement-ridges",default="0.01,0.1,1.0");p.add_argument("--search-crt-temperatures",default="0.25,0.5,1.0");p.add_argument("--validation-fraction",type=float,default=.1);p.add_argument("--selection-output")
  if configured.config:
   payload=json.loads(Path(configured.config).read_text(encoding="utf-8"))
   if not isinstance(payload,dict): raise ValueError("config must be a JSON object")
