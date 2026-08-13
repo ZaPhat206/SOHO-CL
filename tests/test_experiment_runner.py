@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from tools import experiment_runner
 
@@ -54,6 +55,23 @@ def test_selection_does_not_open_test_cache(tmp_path):
     args.validation_fraction, args.selection_output = .2, str(tmp_path / "selection-no-test.json")
     experiment_runner.select_config(args)
     assert (tmp_path / "selection-no-test.json").is_file()
+
+
+def test_train_only_feature_cache_contains_no_heldout_tensor(tmp_path):
+    args = _args(tmp_path)
+    args.data_augmentation = "vit"
+    cache = tmp_path / "train-only-cache"
+    features = torch.randn(12, 8)
+    labels = torch.arange(3).repeat_interleave(4)
+
+    experiment_runner.save_train_cache(cache, features, labels, args, 7, "checkpoint-hash")
+    train, test, metadata = experiment_runner.validate_cache(cache, args, load_test=False)
+
+    assert test is None
+    assert train["features"].shape == (12, 8)
+    assert not (cache / "test.pt").exists()
+    assert metadata["test_features_materialized"] is False
+    assert metadata["split_sizes"] == {"train": 12, "test": 7}
 
 
 def test_sft_cache_runner_and_train_only_selection(tmp_path):

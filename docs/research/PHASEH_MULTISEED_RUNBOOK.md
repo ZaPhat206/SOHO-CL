@@ -1,7 +1,7 @@
 # Phase H-B — locked multi-seed Colab runbook
 
 Status: runner/notebook implementation gate **PASS**. The five-seed CIFAR-100
-study has not been executed.
+study is complete and frozen in `PHASEH_CIFAR100_RESULTS.md`.
 
 Protocol amendment 1 was registered before observing any Phase H result. The
 paper value `93.89` is now an external reproduction diagnostic, not an
@@ -94,5 +94,5 @@ The warnings were 18 PyTorch JIT deprecations, one sparse-CSC beta warning,
 and one sparse-invariant warning. They were not suppressed and no test failed.
 The exact supplied Phase G ZIP was also checked locally: its ZIP SHA-256,
 inner gate SHA-256, and selected Schur/raw configurations all passed the
-locked authorization checks. These are correctness/integrity checks only;
-they do not substitute for the pending five-seed CIFAR-100 run.
+locked authorization checks. See `PHASEH_CIFAR100_RESULTS.md` for the completed
+artifact audit, numerical results, limitations, and frozen interpretation.

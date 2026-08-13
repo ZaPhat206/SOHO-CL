@@ -14,6 +14,30 @@ def resolve_cifar100_directory(root: str) -> str:
     return os.path.join(root, "cifar-100")
 
 
+def resolve_cub200_directory(root: str) -> str:
+    """Resolve supported processed CUB layouts to the directory with train/test."""
+    import os
+
+    candidates = (
+        root,
+        os.path.join(root, "cub"),
+        os.path.join(root, "cub-200-2011"),
+        os.path.join(root, "cub-200-2011", "cub"),
+    )
+    matches = [
+        candidate for candidate in candidates
+        if os.path.isdir(os.path.join(candidate, "train"))
+        and os.path.isdir(os.path.join(candidate, "test"))
+    ]
+    unique = list(dict.fromkeys(os.path.abspath(candidate) for candidate in matches))
+    if len(unique) != 1:
+        raise FileNotFoundError(
+            f"expected exactly one processed CUB train/test root below {root!r}; "
+            f"found {unique}"
+        )
+    return unique[0]
+
+
 class CustomDataset(Dataset):
     def __init__(self, data, targets, transform=None):
         self.data = data
@@ -93,7 +117,7 @@ def load_dataset(args, domain_name=None, train=None):
         full_test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=test_transform)
     elif dataset == "CUB-200-2011":
         # Hỗ trợ cả cấu trúc Local (root/cub/train) và Kaggle (root/cub-200-2011/cub/train)
-        cub_base = f"{root}/cub-200-2011/cub" if os.path.exists(f"{root}/cub-200-2011/cub") else f"{root}/cub"
+        cub_base = resolve_cub200_directory(root)
         full_train_dataset = datasets.ImageFolder(root=f"{cub_base}/train/", transform=train_transform)
         full_test_dataset = datasets.ImageFolder(root=f"{cub_base}/test/", transform=test_transform)
     elif dataset == "VTAB":

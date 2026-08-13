@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "study_id": "phasei_cub200_train_only_selection_v1",
+  "status": "preregistered_not_executed",
+  "dataset_identity": {
+    "dataset": "CUB-200-2011",
+    "dataset_identity_sha256": "e374af9b576cb6b3503198ef3ea30fd0aa9d2e18c230ff8064e21d4f644af2ca",
+    "class_mapping_sha256": "caf25ffd97632fcd7dc306425ce88cb5717e653e4d73ccab92c242c0c60ebf83",
+    "train_content_manifest_sha256": "7bddb46ccf7575d0e9ab8976c76a66a58c80dbb09d425bd64aaf5d16e1486f30",
+    "test_content_manifest_sha256": "465f45136552a2e57d9d7cc1a35b5b0ad7148ebebe6e85a502193695c6ca4b19",
+    "num_classes": 200,
+    "train_images": 5994,
+    "test_images": 5794
+  },
+  "shared_protocol": {
+    "backbone": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "preprocessing": "vit",
+    "feature_dim": 768,
+    "num_tasks": 20,
+    "selection_seed": 1993,
+    "validation_fraction": 0.2,
+    "anchor_dim": 1024,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "scatter_epsilon": 0.0001,
+    "statistics_dtype": "float32",
+    "anchor_batch_size": 1024,
+    "test_time_hyperparameter_search": false
+  },
+  "fixed_transfer_from_cifar100": {
+    "raw_ridge": {"ridge_lambda": 0.01},
+    "anchor_only": {"anchor_ridge": 0.01},
+    "full_raw_residual": {"anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1},
+    "schur_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1},
+    "fisher_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1},
+    "random_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1}
+  },
+  "equal_budget_train_only_search": {
+    "raw_ridges": [0.001, 0.01, 0.1, 1.0],
+    "anchor_ridges": [0.001, 0.01, 0.1, 1.0],
+    "residual_ridges": [0.01, 0.1, 1.0],
+    "complement_ridges": [0.01, 0.1, 1.0],
+    "ranks": [32, 64, 128],
+    "low_rank_methods": ["schur_residual", "fisher_residual", "random_residual"],
+    "low_rank_candidates_per_method": 27,
+    "selection_metric": "validation_average_incremental_accuracy",
+    "tie_break": "first_in_preregistered_grid_order"
+  },
+  "selection_gates": {
+    "maximum_relative_solver_residual": 0.0001,
+    "minimum_full_gain_over_anchor_percentage_points": 0.1,
+    "maximum_schur_gap_to_full_percentage_points": 0.5,
+    "minimum_schur_gain_over_raw_percentage_points": 0.1,
+    "minimum_schur_gain_over_strongest_low_rank_control_percentage_points": 0.1
+  },
+  "excluded_from_selection": {
+    "confusion_geometry": "falsified by matched/shuffled controls in Phases B and E",
+    "held_out_test": "forbidden until the train-only artifact is audited and explicitly authorized",
+    "flycl_and_soho": "their baseline policies are evaluated only after authorization; they are not used to select CRT hyperparameters"
+  }
+}
