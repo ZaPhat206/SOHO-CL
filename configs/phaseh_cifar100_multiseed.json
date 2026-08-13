@@ -28,7 +28,7 @@
     "soho_replay": {"config": "configs/soho_replay_fidelity_cifar100.json", "ridge_policy": "current_soho_replay_sample_gcv", "exemplar_free": false}
   },
   "reporting": {
-    "metrics": ["accuracy_after_each_task", "final_accuracy", "average_incremental_accuracy", "forgetting", "persistent_state_bytes"],
+    "metrics": ["accuracy_after_each_task", "final_accuracy", "average_incremental_accuracy", "forgetting", "persistent_state_bytes", "total_update_seconds", "total_inference_seconds", "peak_runtime_memory_bytes"],
     "paired_differences": ["schur_residual-raw_ridge", "schur_residual-fisher_residual", "schur_residual-random_residual", "schur_residual-full_raw_residual"],
     "report_every_seed": true,
     "summary": "mean_std_and_paired_95_percent_t_interval"
@@ -36,6 +36,8 @@
   "stopping_rules": {
     "fly_reference_average_incremental_accuracy": 93.89,
     "fly_reference_tolerance_percentage_points": 0.5,
+    "fly_reference_gate_seed": 1993,
+    "fly_reference_gate_metric": "average_incremental_accuracy",
     "stop_on_fly_discrepancy": true,
     "no_new_dataset_before_review": true
   }
