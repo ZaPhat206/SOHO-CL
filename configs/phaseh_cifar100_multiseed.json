@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "study_id": "phaseh_schur_matched_multiseed_cifar100",
+  "study_id": "phaseh_schur_matched_multiseed_cifar100_amendment1",
   "status": "preregistered_not_executed",
   "phase_g_evidence": {
     "gate_results_sha256": "acbad4940f6a91d79726651c5aa9b61dfe3a3b443e5c31178287e5c528c0fba1",
@@ -38,7 +38,8 @@
     "fly_reference_tolerance_percentage_points": 0.5,
     "fly_reference_gate_seed": 1993,
     "fly_reference_gate_metric": "average_incremental_accuracy",
-    "stop_on_fly_discrepancy": true,
+    "fly_reference_role": "external_paper_diagnostic_only",
+    "stop_on_fly_discrepancy": false,
     "no_new_dataset_before_review": true
   }
 }

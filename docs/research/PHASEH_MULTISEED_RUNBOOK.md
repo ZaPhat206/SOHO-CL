@@ -3,6 +3,17 @@
 Status: runner/notebook implementation gate **PASS**. The five-seed CIFAR-100
 study has not been executed.
 
+Protocol amendment 1 was registered before observing any Phase H result. The
+paper value `93.89` is now an external reproduction diagnostic, not an
+acceptance gate for the matched internal study. A single seed from the current
+source/runtime is not statistically equivalent to the paper's reported mean,
+and checkpoint/environment/source differences can affect absolute accuracy.
+The runner always records the discrepancy and continues all locked methods.
+If it exceeds `0.5` points, the run must not be called a paper reproduction;
+it remains usable as a shared-cache, paired internal comparison. No method,
+seed, rank, Ridge value, feature, or evaluation metric changed in this
+amendment.
+
 Use `notebooks/phaseh_multiseed_cifar100_colab.ipynb` from branch
 `feature/crt-soho`. Before running, place the exact returned Phase G artifact
 at `MyDrive/T-SOHO/schur_locked_heldout_results.zip`. Its required SHA-256 is
@@ -14,16 +25,23 @@ Run all eight cells in order. Edit paths only in Cell 2. The notebook:
 2. verifies Phase G evidence before opening the feature cache;
 3. restores the shared cache from Drive, or extracts and saves it once;
 4. runs the focused correctness suite;
-5. runs FLY seed 1993 first;
-6. stops immediately if FLY AA differs from `93.89` by more than `0.5` points;
-7. otherwise completes the locked five-seed/eight-method grid;
+5. runs all methods in their declared normal order;
+6. records whether FLY AA differs from `93.89` by more than `0.5` points;
+7. completes the locked five-seed/eight-method grid regardless of that
+   external-reference discrepancy;
 8. reports mean/std and paired 95% t intervals and downloads a ZIP.
 
 Progress is deliberately compact:
 
 ```text
+[start | seed 2/5=2025 | method 4/8=schur_residual] device=cuda
+[seed 2/5 | method 4/8=schur_residual | task 7/10] stage=UPDATE
+[seed 2/5 | method 4/8=schur_residual | task 7/10] stage=EVAL seen_tasks=7
 [seed 2/5 | method 4/8 | task 7/10] elapsed=00:01:42 unit_eta=00:00:43 study_eta=01:18:20
 ```
+
+An `UPDATE` line may remain visible while a large analytic Gram/Cholesky solve
+is running; it is not by itself evidence that Colab has frozen.
 
 One JSON is atomically stored on Drive after each complete seed/method unit.
 After a disconnect, rerun Cells 3–7; validated complete units are skipped. An
@@ -40,8 +58,8 @@ cannot accept rank, Ridge, seed, or method-search arguments.
 The feature cache is experiment infrastructure. FLY and Schur are
 exemplar-free in learner state; the matched current-SOHO control is not and
 reports all replay bytes. Do not use the displayed test results to change
-seeds, ranks, Ridge ranges, anchor parameters, preprocessing or stopping
-rules. Do not proceed to another dataset until the returned ZIP is audited.
+seeds, ranks, Ridge ranges, anchor parameters, or preprocessing. Do not proceed
+to another dataset until the returned ZIP is audited.
 
 Runtime columns measure only classifier learner update/inference inside this
 cached-feature runner. `peak_runtime_memory_bytes` is PyTorch CUDA allocated
@@ -59,7 +77,8 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q tests/test_phaseh_multiseed.py tests/test_cached_replay_baselines.py tests/test_experiment_runner.py
 ```
 
-Result: `24 passed`, exit code `0`, pytest runtime `5.81s`.
+Result after protocol amendment: `24 passed`, exit code `0`, pytest runtime
+`5.56s`.
 
 Exact full-suite command:
 
@@ -68,7 +87,8 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q
 ```
 
-Result: `82 passed`, exit code `0`, pytest runtime `8.29s`.
+Result after protocol amendment: `82 passed`, exit code `0`, pytest runtime
+`8.31s`.
 
 The warnings were 18 PyTorch JIT deprecations, one sparse-CSC beta warning,
 and one sparse-invariant warning. They were not suppressed and no test failed.

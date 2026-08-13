@@ -95,7 +95,8 @@ sparse-invariant warning. No warning was suppressed and no test failed.
 ## Next gate
 
 Only after focused and full tests pass may a separate Phase H-B runner and
-Colab notebook execute the preregistered five-seed study. If matched FLY
-average incremental accuracy differs from its `93.89` reference by more than
-`0.5` percentage points, stop before interpreting Schur comparisons and run a
-protocol discrepancy audit.
+Colab notebook execute the preregistered five-seed study. This original
+stopping proposal was superseded before Phase H execution by the transparent
+amendment in `PHASEH_MULTISEED_RUNBOOK.md`: the `93.89` paper value remains a
+reported reproduction diagnostic but does not stop the matched internal
+comparison.

@@ -31,7 +31,7 @@ from methods.sft_cl import create_learner as create_sft_learner
 from tools.experiment_runner import forgetting_from_matrix, split, validate_cache
 
 
-EXPECTED_MANIFEST_SHA256 = "4dc4740611b7e8dffffd33204b9d7b0ccc77b3d970cd2f8387f8b55a31392d66"
+EXPECTED_MANIFEST_SHA256 = "cdfb716707215aa9f2101b1a49f833a1f547706d50b30ac4a774625ae63c6495"
 METHODS = (
     "raw_ridge",
     "anchor_only",
@@ -92,14 +92,15 @@ def load_locked_manifest(path: str | Path) -> tuple[dict, str]:
     rules = manifest.get("stopping_rules", {})
     if (
         manifest.get("schema_version") != 1
-        or manifest.get("study_id") != "phaseh_schur_matched_multiseed_cifar100"
+        or manifest.get("study_id") != "phaseh_schur_matched_multiseed_cifar100_amendment1"
         or manifest.get("status") != "preregistered_not_executed"
         or tuple(manifest.get("methods", {})) != METHODS
         or shared.get("seeds") != [1993, 2025, 3407, 4421, 5501]
         or shared.get("test_time_hyperparameter_search") is not False
         or rules.get("fly_reference_gate_seed") != 1993
         or rules.get("fly_reference_gate_metric") != "average_incremental_accuracy"
-        or rules.get("stop_on_fly_discrepancy") is not True
+        or rules.get("fly_reference_role") != "external_paper_diagnostic_only"
+        or rules.get("stop_on_fly_discrepancy") is not False
     ):
         raise ValueError("Phase H manifest contract mismatch")
     return manifest, digest
@@ -325,6 +326,23 @@ class Progress:
             flush=True,
         )
 
+    def begin(self, seed_index, seed_total, method_index, method_total,
+              seed, method):
+        print(
+            f"[start | seed {seed_index}/{seed_total}={seed} | "
+            f"method {method_index}/{method_total}={method}] device={self.device}",
+            flush=True,
+        )
+
+    def stage(self, seed_index, seed_total, method_index, method_total,
+              task_index, task_total, method, stage, detail=""):
+        suffix = f" {detail}" if detail else ""
+        print(
+            f"[seed {seed_index}/{seed_total} | method {method_index}/{method_total}="
+            f"{method} | task {task_index}/{task_total}] stage={stage}{suffix}",
+            flush=True,
+        )
+
     def complete(self, seed, method, result, seconds):
         self.completed_units += 1
         self.unit_seconds.append(seconds)
@@ -350,7 +368,16 @@ def evaluate_method(method: str, manifest: dict, baselines: dict, seed: int,
         torch.cuda.reset_peak_memory_stats(torch_device)
     matrix, update_seconds, inference_seconds, diagnostics = [], [], [], []
     unit_started = time.perf_counter()
+    progress.begin(
+        seed_index, len(manifest["shared_protocol"]["seeds"]), method_index,
+        len(METHODS), seed, method,
+    )
     for task in range(manifest["shared_protocol"]["num_tasks"]):
+        progress.stage(
+            seed_index, len(manifest["shared_protocol"]["seeds"]), method_index,
+            len(METHODS), task + 1, manifest["shared_protocol"]["num_tasks"],
+            method, "UPDATE",
+        )
         _sync(torch_device)
         started = time.perf_counter()
         learner.update(
@@ -358,6 +385,11 @@ def evaluate_method(method: str, manifest: dict, baselines: dict, seed: int,
         )
         _sync(torch_device)
         update_seconds.append(time.perf_counter() - started)
+        progress.stage(
+            seed_index, len(manifest["shared_protocol"]["seeds"]), method_index,
+            len(METHODS), task + 1, manifest["shared_protocol"]["num_tasks"],
+            method, "EVAL", f"seen_tasks={task + 1}",
+        )
         row = []
         for previous in range(task + 1):
             _sync(torch_device)
@@ -538,10 +570,7 @@ def run(args) -> dict:
         print(f"[resume] validated {len(completed)}/{total_units} completed units", flush=True)
 
     reference_seed = manifest["stopping_rules"]["fly_reference_gate_seed"]
-    work = [(reference_seed, REFERENCE_METHOD)] + [
-        (seed, method) for seed in seeds for method in METHODS
-        if (seed, method) != (reference_seed, REFERENCE_METHOD)
-    ]
+    work = [(seed, method) for seed in seeds for method in METHODS]
     indexed_results = {(item["seed"], item["method"]): item for item in completed}
     for seed, method in work:
         seed_index = seeds.index(seed) + 1
@@ -580,25 +609,18 @@ def run(args) -> dict:
                 "reference": rules["fly_reference_average_incremental_accuracy"],
                 "absolute_difference_percentage_points": difference,
                 "tolerance_percentage_points": rules["fly_reference_tolerance_percentage_points"],
-                "pass": difference <= rules["fly_reference_tolerance_percentage_points"],
+                "within_reported_tolerance": difference <= rules["fly_reference_tolerance_percentage_points"],
+                "role": rules["fly_reference_role"],
+                "stops_internal_study": rules["stop_on_fly_discrepancy"],
             }
             _atomic_dump(output_dir / "fly_reference_gate.json", gate)
             print(
-                f"[FLY gate] observed={gate['observed']:.4f} "
+                f"[FLY diagnostic] observed={gate['observed']:.4f} "
                 f"reference={gate['reference']:.4f} diff={difference:.4f} "
-                f"status={'PASS' if gate['pass'] else 'FAIL'}",
+                f"paper_match={'YES' if gate['within_reported_tolerance'] else 'NO'} "
+                f"action=CONTINUE",
                 flush=True,
             )
-            if not gate["pass"]:
-                stopped = {
-                    "status": "stopped_fly_reference_discrepancy",
-                    "fly_reference_gate": gate,
-                    "completed_units": len(indexed_results),
-                    "test_cache_opened": True,
-                    "hyperparameter_search_performed": False,
-                }
-                _atomic_dump(output_dir / "STOPPED_FLY_DISCREPANCY.json", stopped)
-                return stopped
 
     results = [indexed_results[(seed, method)] for seed in seeds for method in METHODS]
     aggregate = _aggregate(results, manifest)

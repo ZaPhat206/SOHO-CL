@@ -132,11 +132,16 @@ def _runner_manifest():
             "fly_reference_gate_metric": "average_incremental_accuracy",
             "fly_reference_average_incremental_accuracy": 93.89,
             "fly_reference_tolerance_percentage_points": .5,
+            "fly_reference_role": "external_paper_diagnostic_only",
+            "stop_on_fly_discrepancy": False,
+        },
+        "reporting": {
+            "paired_differences": ["schur_residual-raw_ridge"],
         },
     }
 
 
-def test_fly_discrepancy_stops_after_first_unit_and_resume_skips_compute(tmp_path, monkeypatch):
+def test_fly_discrepancy_is_diagnostic_in_normal_study_order(tmp_path, monkeypatch):
     manifest = _runner_manifest()
     cache = {
         "features": torch.randn(100, 4),
@@ -161,7 +166,8 @@ def test_fly_discrepancy_stops_after_first_unit_and_resume_skips_compute(tmp_pat
 
     def fake_evaluate(method, *args, **kwargs):
         calls.append(method)
-        result = _synthetic_result(1993, method)
+        seed = args[2]
+        result = _synthetic_result(seed, method)
         result["average_incremental_accuracy"] = 80.0
         matrix = [[80.0] * (stage + 1) for stage in range(10)]
         result.update(
@@ -182,28 +188,31 @@ def test_fly_discrepancy_stops_after_first_unit_and_resume_skips_compute(tmp_pat
     (tmp_path / "cache").mkdir()
     (tmp_path / "cache" / "train.pt").write_bytes(b"synthetic")
 
-    first = phaseh_multiseed.run(args)
+    result = phaseh_multiseed.run(args)
 
-    assert first["status"] == "stopped_fly_reference_discrepancy"
-    assert calls == ["flycl"]
-    assert (tmp_path / "output" / "STOPPED_FLY_DISCREPANCY.json").is_file()
-
-    monkeypatch.setattr(
-        phaseh_multiseed, "evaluate_method",
-        lambda *call_args, **call_kwargs: pytest.fail("resume recomputed FLY"),
-    )
-    second = phaseh_multiseed.run(args)
-    assert second["status"] == "stopped_fly_reference_discrepancy"
+    assert result["status"] == "complete"
+    assert calls[0] == "raw_ridge"
+    assert calls[phaseh_multiseed.METHODS.index("flycl")] == "flycl"
+    assert len(calls) == len(phaseh_multiseed.METHODS) * 5
+    gate = json.loads((tmp_path / "output" / "fly_reference_gate.json").read_text())
+    assert gate["within_reported_tolerance"] is False
+    assert gate["stops_internal_study"] is False
+    assert gate["role"] == "external_paper_diagnostic_only"
+    assert not (tmp_path / "output" / "STOPPED_FLY_DISCREPANCY.json").exists()
 
 
 def test_progress_line_is_concise(capsys):
     progress = phaseh_multiseed.Progress(40)
+    progress.begin(1, 5, 2, 8, 1993, "flycl")
+    progress.stage(1, 5, 2, 8, 4, 10, "flycl", "EVAL", "seen_tasks=4")
     progress.task(1, 5, 2, 8, 4, 10, progress.started)
 
-    line = capsys.readouterr().out.strip()
-    assert "seed 1/5 | method 2/8 | task 4/10" in line
-    assert "unit_eta=" in line and "study_eta=" in line
-    assert len(line) < 180
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert "start | seed 1/5=1993 | method 2/8=flycl" in lines[0]
+    assert "stage=EVAL seen_tasks=4" in lines[1]
+    assert "seed 1/5 | method 2/8 | task 4/10" in lines[2]
+    assert "unit_eta=" in lines[2] and "study_eta=" in lines[2]
+    assert all(len(line) < 180 for line in lines)
 
 
 def test_corrupt_completed_result_is_rejected(tmp_path):
