@@ -1,0 +1,2 @@
+# Documentation pointer only; the experiment runner consumes JSON configs.
+# See flycl_fidelity_cifar100.json for the locked cache-native FLY protocol.

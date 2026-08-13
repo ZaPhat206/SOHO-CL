@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "study_id": "phaseh_schur_matched_multiseed_cifar100",
+  "status": "preregistered_not_executed",
+  "phase_g_evidence": {
+    "gate_results_sha256": "acbad4940f6a91d79726651c5aa9b61dfe3a3b443e5c31178287e5c528c0fba1",
+    "heldout_zip_sha256": "9ecaa259deb998f36abdd8052145b17a0ce84adeeb2168b29a83c039868cbc77"
+  },
+  "shared_protocol": {
+    "dataset": "CIFAR-100",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "backbone": "vit_base_patch16_224",
+    "preprocessing": "vit",
+    "feature_dim": 768,
+    "num_classes": 100,
+    "num_tasks": 10,
+    "seeds": [1993, 2025, 3407, 4421, 5501],
+    "test_time_hyperparameter_search": false
+  },
+  "methods": {
+    "raw_ridge": {"ridge_lambda": 0.01, "exemplar_free": true},
+    "anchor_only": {"anchor_dim": 1024, "synaptic_degree": 300, "coding_level": 0.3, "anchor_ridge": 0.01, "exemplar_free": true},
+    "full_raw_residual": {"anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1, "exemplar_free": true},
+    "schur_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1, "exemplar_free": true},
+    "fisher_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1, "exemplar_free": true},
+    "random_residual": {"rank": 64, "anchor_ridge": 0.01, "residual_ridge": 0.1, "complement_ridge": 0.1, "exemplar_free": true},
+    "flycl": {"config": "configs/flycl_fidelity_cifar100.json", "ridge_policy": "original_current_task_gcv", "exemplar_free": true},
+    "soho_replay": {"config": "configs/soho_replay_fidelity_cifar100.json", "ridge_policy": "current_soho_replay_sample_gcv", "exemplar_free": false}
+  },
+  "reporting": {
+    "metrics": ["accuracy_after_each_task", "final_accuracy", "average_incremental_accuracy", "forgetting", "persistent_state_bytes"],
+    "paired_differences": ["schur_residual-raw_ridge", "schur_residual-fisher_residual", "schur_residual-random_residual", "schur_residual-full_raw_residual"],
+    "report_every_seed": true,
+    "summary": "mean_std_and_paired_95_percent_t_interval"
+  },
+  "stopping_rules": {
+    "fly_reference_average_incremental_accuracy": 93.89,
+    "fly_reference_tolerance_percentage_points": 0.5,
+    "stop_on_fly_discrepancy": true,
+    "no_new_dataset_before_review": true
+  }
+}

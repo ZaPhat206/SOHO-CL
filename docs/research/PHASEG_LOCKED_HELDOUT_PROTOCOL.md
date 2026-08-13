@@ -112,3 +112,35 @@ Warnings were 18 PyTorch JIT deprecations, one sparse-CSC beta warning and one
 sparse-invariant warning. No warning was suppressed and no test failed. The
 notebook JSON check reported eight cells under schema 4.5 with no saved code
 cell execution state. No CIFAR-100 held-out evaluation was run locally.
+
+## Executed held-out result
+
+The user returned `schur_locked_heldout_results.zip`. Direct archive audit
+recorded ZIP SHA-256
+`9ecaa259deb998f36abdd8052145b17a0ce84adeeb2168b29a83c039868cbc77`.
+Its bundled gate artifact has SHA-256
+`acbad4940f6a91d79726651c5aa9b61dfe3a3b443e5c31178287e5c528c0fba1`,
+matching both lock manifests. The train-only gate records
+`test_cache_opened=false`; final evaluation records
+`hyperparameter_search_performed=false`, all 50,000 training samples, ten
+5,000-sample tasks, and one permutation of all 100 classes.
+
+| Method | Final accuracy | Average incremental accuracy | Forgetting | State bytes |
+|---|---:|---:|---:|---:|
+| full raw residual | 87.6800 | 92.5251 | 5.2556 | 20,330,904 |
+| Schur residual, rank 64 | 87.3700 | 92.4478 | 5.5778 | 15,003,032 |
+| raw Ridge | 87.1500 | 92.2554 | 5.5778 | 2,974,096 |
+| strongest low-rank control (shuffled confusion) | 86.4700 | 92.0848 | 6.1889 | 15,003,032 |
+| standard Fisher residual | 86.4500 | 92.0816 | 6.2000 | 15,003,032 |
+| random residual | 85.9700 | 91.3557 | 6.0111 | 15,003,032 |
+| anchor only | 85.5600 | 91.1669 | 6.2556 | 14,518,680 |
+
+Schur exceeded raw Ridge by `0.1924` percentage points in average incremental
+accuracy and the strongest selected low-rank control by `0.3630` points. It
+was `0.0773` points below full residual while using `5,327,872` fewer state
+bytes (`26.2%` less). Final retained correction energy was `0.808464`; maximum
+relative solver residual was `4.34e-6`.
+
+This is a positive single-seed result, not a variance estimate or paper-level
+claim. It does not authorize retuning on CIFAR-100 test data. Phase H locks
+these method parameters and requires matched multi-seed FLY/SOHO controls.

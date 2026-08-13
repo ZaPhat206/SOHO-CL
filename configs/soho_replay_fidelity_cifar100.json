@@ -1,0 +1,18 @@
+{
+  "method": "cached_soho_replay_fidelity",
+  "soho_expand_dim": 10000,
+  "soho_density": 0.1,
+  "soho_olda_dim": 768,
+  "soho_coding_level": 0.25,
+  "soho_no_etf": false,
+  "soho_ridge_lower": -2,
+  "soho_ridge_upper": 10,
+  "soho_replay_chunk_size": 2000,
+  "soho_gcv_sample_size": 3000,
+  "seed": 1993,
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "num_classes": 100,
+  "num_tasks": 10,
+  "device": "cuda"
+}

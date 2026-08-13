@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from tools import experiment_runner
 
 
@@ -111,3 +113,72 @@ def test_forgetting_uses_maximum_over_later_stages():
     # protocol mean is 15 rather than 10 from only introduction-stage scores.
     matrix = [[80.0], [95.0, 90.0], [70.0, 85.0, 92.0]]
     assert experiment_runner.forgetting_from_matrix(matrix) == 15.0
+
+
+def test_fidelity_baselines_have_explicit_dispatch_and_internal_gcv(tmp_path):
+    args = _args(tmp_path)
+    args.fly_expand_dim = 16
+    args.fly_synaptic_degree = 3
+    args.fly_coding_level = .25
+    args.fly_ridge_lower = -1
+    args.fly_ridge_upper = 2
+    fly = experiment_runner.create_cached_learner(
+        args, "cached_flycl_fidelity", 5, ridge_lambda=999.0, rank=0
+    )
+    assert fly.diagnostics["ridge_policy"] == "original_current_task_gcv"
+    assert fly.is_exemplar_free is True
+
+    args.soho_expand_dim = 16
+    args.soho_density = .4
+    args.soho_olda_dim = 5
+    args.soho_coding_level = .25
+    args.soho_ridge_lower = -1
+    args.soho_ridge_upper = 2
+    args.soho_replay_chunk_size = 8
+    args.soho_gcv_sample_size = 12
+    soho = experiment_runner.create_cached_learner(
+        args, "cached_soho_replay_fidelity", 5, ridge_lambda=999.0, rank=0
+    )
+    assert soho.diagnostics["ridge_policy"] == "current_soho_replay_sample_gcv"
+    assert soho.is_exemplar_free is False
+
+
+def test_fidelity_baselines_cannot_be_tested_in_external_search_grid(tmp_path):
+    args = _args(tmp_path)
+    experiment_runner.tiny(args)
+    args.output_dir = str(tmp_path / "selection")
+    args.search_methods = "cached_flycl_fidelity"
+    args.search_ranks = "1"
+    args.search_lambdas = "0.1"
+    args.validation_fraction = .2
+    args.selection_output = str(tmp_path / "forbidden.json")
+
+    with pytest.raises(ValueError, match="locked internal GCV policy"):
+        experiment_runner.select_config(args)
+
+
+def test_fidelity_baselines_complete_cache_runner_and_disclose_state(tmp_path):
+    for method in ("cached_flycl_fidelity", "cached_soho_replay_fidelity"):
+        args = _args(tmp_path / method)
+        args.method = method
+        args.fly_expand_dim = args.soho_expand_dim = 16
+        args.fly_synaptic_degree = 3
+        args.fly_coding_level = args.soho_coding_level = .25
+        args.fly_ridge_lower = args.soho_ridge_lower = -1
+        args.fly_ridge_upper = args.soho_ridge_upper = 2
+        args.soho_density = .4
+        args.soho_olda_dim = 8
+        args.soho_replay_chunk_size = 8
+        args.soho_gcv_sample_size = 12
+
+        experiment_runner.tiny(args)
+
+        metrics = json.loads((tmp_path / method / "out" / "metrics.json").read_text())
+        diagnostics = json.loads(
+            (tmp_path / method / "out" / "code_diagnostics.json").read_text()
+        )
+        assert metrics["exemplar_free"] is (method == "cached_flycl_fidelity")
+        assert all(item["selected_ridge"] in (0.1, 1.0, 10.0) for item in diagnostics)
+        if method == "cached_soho_replay_fidelity":
+            assert diagnostics[-1]["retained_sample_count"] == 21
+            assert diagnostics[-1]["replay_required"] is True
