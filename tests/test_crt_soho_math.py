@@ -9,7 +9,11 @@ from methods.crt_soho.geometry import (
     shuffled_affinity,
 )
 from methods.crt_soho.learner import METHODS, CRTSOHOLearner
-from methods.crt_soho.solver import reconstruct_residual_statistics, solve_block_ridge
+from methods.crt_soho.solver import (
+    reconstruct_residual_statistics,
+    schur_residual_directions,
+    solve_block_ridge,
+)
 from methods.crt_soho.statistics import DualViewStatistics
 
 
@@ -89,6 +93,49 @@ def test_block_solver_equals_direct_augmented_ridge_oracle():
     assert equation_error < 1e-10
 
 
+def test_schur_directions_are_deterministic_orthonormal_and_energy_monotone():
+    x, phi, labels = synthetic_views()
+    statistics = accumulated_statistics(x, phi, labels)
+    rank_one = schur_residual_directions(statistics, 0.4, 0.2, 0.7, 1)
+    rank_three = schur_residual_directions(statistics, 0.4, 0.2, 0.7, 3)
+    repeated = schur_residual_directions(statistics, 0.4, 0.2, 0.7, 3)
+
+    torch.testing.assert_close(rank_three.directions.T @ rank_three.directions, torch.eye(3, dtype=DTYPE))
+    torch.testing.assert_close(rank_three.directions, repeated.directions)
+    assert rank_one.retained_correction_energy <= rank_three.retained_correction_energy
+    assert rank_three.retained_correction_energy == pytest.approx(1.0, abs=1e-12)
+    assert rank_three.effective_rank == 3
+
+
+def test_rank_one_schur_subspace_maximizes_block_ridge_correction_energy():
+    x, phi, labels = synthetic_views()
+    statistics = accumulated_statistics(x, phi, labels)
+    full = reconstruct_residual_statistics(
+        statistics, torch.eye(5, dtype=DTYPE), complement_ridge=0.4
+    )
+    anchor_system = statistics.G_pp + 0.2 * torch.eye(7, dtype=DTYPE)
+    solved_cross = torch.linalg.solve(anchor_system, full.G_pr)
+    solved_targets = torch.linalg.solve(anchor_system, statistics.Q_p)
+    schur = full.G_rr + 0.7 * torch.eye(5, dtype=DTYPE) - full.G_pr.T @ solved_cross
+    target = full.Q_r - full.G_pr.T @ solved_targets
+
+    def correction_energy(direction):
+        reduced_system = direction.T @ schur @ direction
+        reduced_target = direction.T @ target
+        return float((reduced_target.T @ torch.linalg.solve(reduced_system, reduced_target)).trace())
+
+    selected = schur_residual_directions(statistics, 0.4, 0.2, 0.7, 1).directions
+    selected_energy = correction_energy(selected)
+    generator = torch.Generator().manual_seed(103)
+    random_energies = []
+    for _ in range(50):
+        direction = torch.randn(5, 1, generator=generator, dtype=DTYPE)
+        direction /= torch.linalg.vector_norm(direction)
+        random_energies.append(correction_energy(direction))
+
+    assert selected_energy >= max(random_energies) - 1e-12
+
+
 def test_relative_confusion_is_symmetric_nonnegative_and_shuffle_preserves_edges():
     x, phi, labels = synthetic_views()
     statistics = accumulated_statistics(x, phi, labels)
@@ -142,8 +189,9 @@ def test_all_crt_methods_are_global_finite_and_task_id_free(method):
     assert model.persistent_state_bytes() > 0
 
 
-def test_checkpoint_contains_no_derived_or_sample_level_state_and_roundtrips_logits():
-    original = learner("confusion_residual")
+@pytest.mark.parametrize("method", ["confusion_residual", "schur_residual"])
+def test_checkpoint_contains_no_derived_or_sample_level_state_and_roundtrips_logits(method):
+    original = learner(method)
     x = torch.randn(36, 6, generator=torch.Generator().manual_seed(41))
     labels = torch.tensor([9, 2, 5] * 12)
     original.update(x, labels)
@@ -156,7 +204,7 @@ def test_checkpoint_contains_no_derived_or_sample_level_state_and_roundtrips_log
         "confusion_temperature", "scatter_epsilon", "seed", "anchor_projection", "statistics",
     }
     assert not any(token in str(state).lower() for token in ("sample", "replay", "historical"))
-    restored = learner("confusion_residual")
+    restored = learner(method)
     restored.load_state_dict(state)
     torch.testing.assert_close(restored.predict_logits(x[:7]), expected, atol=1e-10, rtol=1e-10)
 
@@ -192,3 +240,22 @@ def test_full_raw_residual_can_recover_information_absent_from_anchor():
 
     assert anchor_accuracy == 0.5
     assert augmented_accuracy == 1.0
+
+
+def test_full_rank_schur_reproduces_full_raw_residual_logits():
+    common = dict(
+        raw_dim=6, anchor_dim=13, synaptic_degree=3, coding_level=0.25,
+        anchor_ridge=0.2, residual_ridge=0.4, complement_ridge=0.3,
+        requested_rank=6, confusion_temperature=0.7, scatter_epsilon=1e-5,
+        seed=23, dtype=DTYPE,
+    )
+    full = CRTSOHOLearner(method="full_raw_residual", **common)
+    schur = CRTSOHOLearner(method="schur_residual", **common)
+    x = torch.randn(42, 6, generator=torch.Generator().manual_seed(91))
+    labels = torch.tensor([0, 1, 2] * 14)
+    full.update(x, labels)
+    schur.update(x, labels)
+
+    torch.testing.assert_close(schur.predict_logits(x), full.predict_logits(x), atol=1e-9, rtol=1e-9)
+    assert schur.diagnostics["effective_rank"] == 3
+    assert schur.diagnostics["retained_correction_energy"] == pytest.approx(1.0, abs=1e-12)

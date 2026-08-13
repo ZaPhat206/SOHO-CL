@@ -18,7 +18,7 @@ from .geometry import (
     relative_margin_affinity,
     shuffled_affinity,
 )
-from .solver import reconstruct_residual_statistics, solve_block_ridge
+from .solver import reconstruct_residual_statistics, schur_residual_directions, solve_block_ridge
 from .statistics import DualViewStatistics
 
 
@@ -30,6 +30,7 @@ METHODS = {
     "confusion_residual",
     "shuffled_confusion_residual",
     "confusion_no_residualization",
+    "schur_residual",
 }
 
 
@@ -160,17 +161,36 @@ class CRTSOHOLearner:
     def _residual_rank(self) -> int:
         if self.method == "full_raw_residual":
             return self.raw_dim
+        if self.method == "schur_residual":
+            return min(self.requested_rank, self.raw_dim, max(self.statistics.num_classes, 1))
         return min(self.requested_rank, self.raw_dim, max(self.statistics.num_classes - 1, 1))
 
     def _directions_and_geometry(self, raw_anchor_weights: torch.Tensor) -> tuple[torch.Tensor, dict]:
         rank = self._residual_rank()
         if self.method == "full_raw_residual":
             return torch.eye(self.raw_dim, device=self.device, dtype=self.dtype), {
-                "geometry": "identity", "effective_rank": rank,
+                "geometry": "identity", "requested_rank": self.requested_rank,
+                "effective_rank": rank,
             }
         if self.method == "random_residual":
             return random_directions(self.raw_dim, rank, self.seed, self.dtype, self.device), {
-                "geometry": "random", "effective_rank": rank,
+                "geometry": "random", "requested_rank": self.requested_rank,
+                "effective_rank": rank,
+            }
+        if self.method == "schur_residual":
+            geometry = schur_residual_directions(
+                self.statistics,
+                self.complement_ridge,
+                self.anchor_ridge,
+                self.residual_ridge,
+                rank,
+            )
+            return geometry.directions, {
+                "geometry": "schur_targeted",
+                "requested_rank": self.requested_rank,
+                "effective_rank": geometry.effective_rank,
+                "singular_values": geometry.singular_values.detach().clone(),
+                "retained_correction_energy": geometry.retained_correction_energy,
             }
 
         within, standard_between, means = raw_scatter(self.statistics)
@@ -193,6 +213,7 @@ class CRTSOHOLearner:
         )
         result = {
             "geometry": geometry,
+            "requested_rank": self.requested_rank,
             "effective_rank": rank,
             "eigenvalues": eigenvalues.detach().clone(),
         }
@@ -201,10 +222,16 @@ class CRTSOHOLearner:
                 affinity.shape[0], affinity.shape[1], 1, device=self.device
             )
             edges = affinity[rows, columns]
+            edge_mean = edges.mean()
+            probabilities = edges / edges.sum().clamp_min(torch.finfo(edges.dtype).tiny)
+            entropy = -(probabilities * probabilities.clamp_min(torch.finfo(edges.dtype).tiny).log()).sum()
+            maximum_entropy = torch.log(torch.tensor(float(edges.numel()), device=self.device, dtype=self.dtype))
             result.update(
                 affinity_min=float(edges.min().item()),
                 affinity_median=float(edges.median().item()),
                 affinity_max=float(edges.max().item()),
+                affinity_edge_cv=float((edges.std(unbiased=False) / edge_mean.clamp_min(torch.finfo(edges.dtype).tiny)).item()),
+                affinity_normalized_entropy=float((entropy / maximum_entropy.clamp_min(1)).item()),
             )
         return directions, result
 
@@ -217,6 +244,7 @@ class CRTSOHOLearner:
             self.directions = self.complement = self.residual_classifier = None
             self.diagnostics = {
                 "geometry": "anchor_only",
+                "requested_rank": self.requested_rank,
                 "effective_rank": 0,
                 "solver_residual_max": float((residual - self.statistics.Q_p).abs().max().item()),
             }

@@ -46,13 +46,15 @@ def gate_args(tmp_path):
         statistics_dtype="float64",
         anchor_batch_size=8,
         anchor_ridges="0.1,1.0",
+        raw_ridges="0.1,1.0",
         residual_ridges="0.1",
         complement_ridges="0.1",
         ranks="1,2",
         temperatures="0.5,1.0",
         minimum_full_gain=-100.0,
         maximum_low_rank_gap=100.0,
-        minimum_confusion_gain=-100.0,
+        proposal_method="schur_residual",
+        minimum_proposal_gain=-100.0,
         maximum_relative_solver_residual=1e-8,
     )
 
@@ -73,9 +75,12 @@ def test_gate_cache_and_all_stages_never_require_test_cache(tmp_path):
     assert all(candidate["uses_test_set"] is False for candidate in report["candidates"])
     assert report["gates"]["gate0_numerical_stability"]["pass"] is True
     assert (Path(args.output_dir) / "gate_results.json").is_file()
-    # 2 anchor + 1 full + 4 proposed + 2 random + 2 Fisher + 4 shuffled
-    # + 4 no-residualization candidates.
-    assert len(report["candidates"]) == 19
+    # 2 raw + 2 anchor + 1 full + 2 Schur + 2 random + 2 Fisher +
+    # 4 confusion + 4 shuffled + 4 no-residualization candidates.
+    assert len(report["candidates"]) == 23
+    assert report["selected_raw_ridge"]["method"] == "raw_ridge"
+    assert report["selected_proposal"]["method"] == "schur_residual"
+    assert report["selected_proposal"]["final_effective_rank"] <= 3
 
 
 def test_gate1_failure_stops_before_structured_candidates(tmp_path):
@@ -87,7 +92,7 @@ def test_gate1_failure_stops_before_structured_candidates(tmp_path):
     assert report["status"] == "stopped_after_gate1"
     assert report["held_out_test_authorized"] is False
     assert {candidate["method"] for candidate in report["candidates"]} == {
-        "anchor_only", "full_raw_residual",
+        "raw_ridge", "anchor_only", "full_raw_residual",
     }
 
 
@@ -108,4 +113,4 @@ def test_gate_result_is_json_serializable_and_records_thresholds(tmp_path):
     encoded = json.dumps(report)
 
     assert "minimum_full_gain" in encoded
-    assert report["selected_confusion_residual"]["rank"] in (1, 2)
+    assert report["selected_proposal"]["rank"] in (1, 2)

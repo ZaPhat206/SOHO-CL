@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from methods.crt_soho import create_learner
+from methods.crt_soho.geometry import solve_spd, symmetrize
 from methods.crt_soho.statistics import DualViewStatistics
 from tools.experiment_runner import split, train_validation_indices, validate_cache
 
@@ -230,6 +231,59 @@ def _csv_values(raw: str, cast=float) -> list:
     return values
 
 
+def _evaluate_raw_ridge(args, train: dict, validation: list[dict], snapshots: list[dict], ridge: float) -> dict:
+    started = time.perf_counter()
+    dtype = _dtype(args.statistics_dtype)
+    device = torch.device(args.device)
+    matrix = []
+    relative_residuals = []
+    final_state_bytes = 0
+    for stage, snapshot in enumerate(snapshots):
+        gram = snapshot["G_xx"].to(device=device, dtype=dtype)
+        cross = snapshot["Q_x"].to(device=device, dtype=dtype)
+        counts = snapshot["counts"].to(device=device, dtype=dtype)
+        system = symmetrize(gram) + ridge * torch.eye(args.raw_dim, device=device, dtype=dtype)
+        weights = solve_spd(system, cross)
+        residual_max = float((system @ weights - cross).abs().max().item())
+        relative_residuals.append(residual_max / max(float(cross.abs().max().item()), 1.0))
+        class_ids = [int(class_id) for class_id in snapshot["class_ids"]]
+        row = []
+        for task in range(stage + 1):
+            indices = validation[task]["indices"]
+            logits = train["features"][indices].to(device=device, dtype=dtype) @ weights
+            predictions = torch.tensor(
+                [class_ids[column] for column in logits.argmax(1).detach().cpu().tolist()]
+            )
+            row.append(float((predictions == train["labels"][indices]).float().mean().item() * 100))
+        matrix.append(row)
+        final_state_bytes = sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (gram, cross, counts, weights)
+        )
+    stage_means = [sum(row) / len(row) for row in matrix]
+    result = {
+        "method": "raw_ridge",
+        "ridge_lambda": ridge,
+        "rank": 0,
+        "requested_rank": 0,
+        "final_effective_rank": None,
+        "validation_average_incremental_accuracy": sum(stage_means) / len(stage_means),
+        "validation_final_accuracy": sum(matrix[-1]) / len(matrix[-1]),
+        "accuracy_matrix": matrix,
+        "persistent_state_bytes": final_state_bytes,
+        "solver_relative_residual_max": max(relative_residuals),
+        "seconds": time.perf_counter() - started,
+        "uses_test_set": False,
+    }
+    print(
+        f"candidate raw_ridge lambda={ridge} -> "
+        f"val_AA={result['validation_average_incremental_accuracy']:.4f} "
+        f"({result['seconds']:.1f}s)",
+        flush=True,
+    )
+    return result
+
+
 def _evaluate_candidate(args, train: dict, projection: torch.Tensor, validation: list[dict],
                         snapshots: list[dict], candidate: dict) -> dict:
     started = time.perf_counter()
@@ -246,6 +300,7 @@ def _evaluate_candidate(args, train: dict, projection: torch.Tensor, validation:
     matrix = []
     solver_residuals = []
     solver_relative_residuals = []
+    effective_ranks = []
     for stage, snapshot in enumerate(snapshots):
         model.restore_sufficient_statistics(snapshot, projection)
         row = []
@@ -262,9 +317,13 @@ def _evaluate_candidate(args, train: dict, projection: torch.Tensor, validation:
         matrix.append(row)
         solver_residuals.append(model.diagnostics.get("solver_residual_max"))
         solver_relative_residuals.append(model.diagnostics.get("solver_relative_residual_max"))
+        effective_ranks.append(model.diagnostics.get("effective_rank"))
     stage_means = [sum(row) / len(row) for row in matrix]
     result = {
         **candidate,
+        "requested_rank": candidate["rank"],
+        "effective_rank_by_stage": effective_ranks,
+        "final_effective_rank": effective_ranks[-1],
         "validation_average_incremental_accuracy": sum(stage_means) / len(stage_means),
         "validation_final_accuracy": sum(matrix[-1]) / len(matrix[-1]),
         "accuracy_matrix": matrix,
@@ -275,6 +334,10 @@ def _evaluate_candidate(args, train: dict, projection: torch.Tensor, validation:
         ),
         "seconds": time.perf_counter() - started,
         "uses_test_set": False,
+        "geometry": model.diagnostics.get("geometry"),
+        "retained_correction_energy": model.diagnostics.get("retained_correction_energy"),
+        "affinity_edge_cv": model.diagnostics.get("affinity_edge_cv"),
+        "affinity_normalized_entropy": model.diagnostics.get("affinity_normalized_entropy"),
     }
     print(
         f"candidate {candidate['method']} rank={candidate['rank']} "
@@ -304,6 +367,39 @@ def _candidate(method: str, anchor_ridge: float, residual_ridge: float = 1.0,
     }
 
 
+def _final_subspace_diagnostic(args, projection, snapshot, proposal: dict, controls: list[dict]) -> dict:
+    def restored(candidate):
+        model = _learner(
+            args, candidate["method"], candidate["anchor_ridge"],
+            candidate["residual_ridge"], candidate["complement_ridge"],
+            candidate["rank"], candidate["temperature"], projection,
+        )
+        model.restore_sufficient_statistics(snapshot, projection)
+        return model
+
+    proposed_model = restored(proposal)
+    result = {
+        "proposal_method": proposal["method"],
+        "proposal_effective_rank": proposed_model.diagnostics.get("effective_rank"),
+        "comparisons": [],
+    }
+    proposed_basis = proposed_model.directions
+    for candidate in controls:
+        control_model = restored(candidate)
+        control_basis = control_model.directions
+        if proposed_basis is None or control_basis is None:
+            continue
+        overlap = torch.linalg.svdvals(proposed_basis.T @ control_basis).clamp(0, 1)
+        angles = torch.rad2deg(torch.acos(overlap))
+        result["comparisons"].append({
+            "control_method": candidate["method"],
+            "control_effective_rank": control_model.diagnostics.get("effective_rank"),
+            "principal_angle_mean_degrees": float(angles.mean().item()),
+            "principal_angle_max_degrees": float(angles.max().item()),
+        })
+    return result
+
+
 def run_gates(args) -> dict:
     """Run staged validation gates and stop before any held-out test access."""
     train, _, source_metadata = validate_cache(args.feature_cache_dir, args, load_test=False)
@@ -323,6 +419,16 @@ def run_gates(args) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     all_results = []
+    minimum_proposal_gain = float(
+        getattr(args, "minimum_proposal_gain", getattr(args, "minimum_confusion_gain", 0.1))
+    )
+
+    raw_results = [
+        _evaluate_raw_ridge(args, train, validation, snapshots, ridge)
+        for ridge in _csv_values(getattr(args, "raw_ridges", args.anchor_ridges))
+    ]
+    all_results.extend(raw_results)
+    raw_best = _best(raw_results)
 
     anchor_results = [
         _evaluate_candidate(args, train, projection, validation, snapshots,
@@ -357,9 +463,10 @@ def run_gates(args) -> dict:
         "thresholds_percentage_points": {
             "minimum_full_gain": args.minimum_full_gain,
             "maximum_low_rank_gap": args.maximum_low_rank_gap,
-            "minimum_confusion_gain": args.minimum_confusion_gain,
+            "minimum_proposal_gain": minimum_proposal_gain,
         },
         "maximum_relative_solver_residual": args.maximum_relative_solver_residual,
+        "selected_raw_ridge": raw_best,
         "selected_anchor": anchor_best,
         "selected_full_raw_residual": full_best,
         "gates": {
@@ -386,15 +493,18 @@ def run_gates(args) -> dict:
         print("STOP: numerical or Gate 1 check failed. Held-out test remains forbidden.", flush=True)
         return report
 
+    proposal_method = getattr(args, "proposal_method", "confusion_residual")
+    if proposal_method not in {"confusion_residual", "schur_residual"}:
+        raise ValueError("proposal_method must be confusion_residual or schur_residual")
     ranks = _csv_values(args.ranks, int)
     temperatures = _csv_values(args.temperatures)
     proposed_results = []
     for rank in ranks:
-        for temperature in temperatures:
+        for temperature in (temperatures if proposal_method == "confusion_residual" else [1.0]):
             proposed_results.append(_evaluate_candidate(
                 args, train, projection, validation, snapshots,
                 _candidate(
-                    "confusion_residual", locked_anchor_ridge,
+                    proposal_method, locked_anchor_ridge,
                     full_best["residual_ridge"], full_best["complement_ridge"],
                     rank, temperature,
                 ),
@@ -411,7 +521,10 @@ def run_gates(args) -> dict:
                     full_best["complement_ridge"], rank, 1.0,
                 ),
             ))
-    for method in ("shuffled_confusion_residual", "confusion_no_residualization"):
+    confusion_controls = ["shuffled_confusion_residual", "confusion_no_residualization"]
+    if proposal_method != "confusion_residual":
+        confusion_controls.insert(0, "confusion_residual")
+    for method in confusion_controls:
         for rank in ranks:
             for temperature in temperatures:
                 control_results.append(_evaluate_candidate(
@@ -428,10 +541,7 @@ def run_gates(args) -> dict:
     )
     selected_controls = [
         _best([result for result in control_results if result["method"] == method])
-        for method in (
-            "random_residual", "fisher_residual", "shuffled_confusion_residual",
-            "confusion_no_residualization",
-        )
+        for method in ("random_residual", "fisher_residual", *confusion_controls)
     ]
     strongest_control = _best(selected_controls)
     confusion_gain = (
@@ -439,13 +549,13 @@ def run_gates(args) -> dict:
         - strongest_control["validation_average_incremental_accuracy"]
     )
     gate2 = low_rank_gap <= args.maximum_low_rank_gap
-    gate3 = confusion_gain >= args.minimum_confusion_gain
+    gate3 = confusion_gain >= minimum_proposal_gain
     maximum_relative_residual = max(
         candidate["solver_relative_residual_max"] for candidate in all_results
     )
     numerical_gate = maximum_relative_residual <= args.maximum_relative_solver_residual
     report.update(
-        selected_confusion_residual=proposed_best,
+        selected_proposal=proposed_best,
         selected_controls=selected_controls,
         gates={
             **report["gates"],
@@ -457,7 +567,7 @@ def run_gates(args) -> dict:
                 "pass": gate2,
                 "gap_percentage_points": low_rank_gap,
             },
-            "gate3_confusion_beats_controls": {
+            "gate3_proposal_beats_controls": {
                 "pass": gate3,
                 "gain_over_strongest_control_percentage_points": confusion_gain,
                 "strongest_control": strongest_control["method"],
@@ -467,6 +577,9 @@ def run_gates(args) -> dict:
         status="all_validation_gates_passed" if numerical_gate and gate2 and gate3 else "validation_gate_failed",
         held_out_test_authorized=bool(numerical_gate and gate1 and gate2 and gate3),
         total_seconds=time.perf_counter() - started,
+    )
+    report["final_subspace_diagnostics"] = _final_subspace_diagnostic(
+        args, projection, snapshots[-1], proposed_best, selected_controls
     )
     _dump(output_dir / "gate_results.json", report)
     if report["held_out_test_authorized"]:
@@ -497,13 +610,15 @@ def parse_args(argv=None):
     parser.add_argument("--statistics-dtype", choices=("float32", "float64"), default="float32")
     parser.add_argument("--anchor-batch-size", type=int, default=1024)
     parser.add_argument("--anchor-ridges", default="0.01,0.1,1.0")
+    parser.add_argument("--raw-ridges", default="0.01,0.1,1.0")
     parser.add_argument("--residual-ridges", default="0.01,0.1,1.0")
     parser.add_argument("--complement-ridges", default="0.01,0.1,1.0")
     parser.add_argument("--ranks", default="16,32,64,128")
     parser.add_argument("--temperatures", default="0.25,0.5,1.0")
     parser.add_argument("--minimum-full-gain", type=float, default=0.1)
     parser.add_argument("--maximum-low-rank-gap", type=float, default=0.5)
-    parser.add_argument("--minimum-confusion-gain", type=float, default=0.1)
+    parser.add_argument("--proposal-method", choices=("confusion_residual", "schur_residual"), default="confusion_residual")
+    parser.add_argument("--minimum-proposal-gain", "--minimum-confusion-gain", dest="minimum_proposal_gain", type=float, default=0.1)
     parser.add_argument("--maximum-relative-solver-residual", type=float, default=1e-4)
     args = parser.parse_args(argv)
     if not args.prepare_cache and not args.run_gates:
