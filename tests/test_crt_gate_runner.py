@@ -83,6 +83,23 @@ def test_gate_cache_and_all_stages_never_require_test_cache(tmp_path):
     assert report["selected_proposal"]["final_effective_rank"] <= 3
 
 
+def test_legacy_gate_cache_accepts_only_documented_phase_f_defaults(tmp_path):
+    args = gate_args(tmp_path)
+    args.scatter_epsilon = 1e-4
+    args.anchor_batch_size = 1024
+    manifest = crt_gate_runner.prepare_cache(args)
+    manifest["anchor"].pop("scatter_epsilon")
+    manifest["protocol"].pop("anchor_batch_size")
+    manifest_path = Path(args.gate_cache_dir) / "metadata.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    crt_gate_runner.validate_gate_cache(args)
+
+    args.scatter_epsilon = 2e-4
+    with pytest.raises(ValueError, match="legacy CRT gate cache requires scatter_epsilon"):
+        crt_gate_runner.validate_gate_cache(args)
+
+
 def test_gate1_failure_stops_before_structured_candidates(tmp_path):
     args = gate_args(tmp_path)
     crt_gate_runner.prepare_cache(args)

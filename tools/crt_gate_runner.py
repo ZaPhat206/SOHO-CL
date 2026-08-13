@@ -109,6 +109,7 @@ def _expected_cache_identity(args, train_path: Path, source_metadata: dict) -> d
             "anchor_dim": args.anchor_dim,
             "synaptic_degree": args.synaptic_degree,
             "coding_level": args.coding_level,
+            "scatter_epsilon": args.scatter_epsilon,
             "seed": args.seed,
         },
         "protocol": {
@@ -117,6 +118,7 @@ def _expected_cache_identity(args, train_path: Path, source_metadata: dict) -> d
             "validation_fraction": args.validation_fraction,
             "seed": args.seed,
             "statistics_dtype": args.statistics_dtype,
+            "anchor_batch_size": args.anchor_batch_size,
         },
     }
 
@@ -207,7 +209,18 @@ def validate_gate_cache(args, train: dict | None = None, source_metadata: dict |
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     for key, value in expected.items():
-        if manifest.get(key) != value:
+        observed = manifest.get(key)
+        # Compatibility for schema-1 caches produced by the published Phase-F
+        # notebook before these execution values were added to the manifest.
+        if key == "anchor" and isinstance(observed, dict) and "scatter_epsilon" not in observed:
+            value = dict(value)
+            if value.pop("scatter_epsilon") != 1e-4:
+                raise ValueError("legacy CRT gate cache requires scatter_epsilon=1e-4")
+        if key == "protocol" and isinstance(observed, dict) and "anchor_batch_size" not in observed:
+            value = dict(value)
+            if value.pop("anchor_batch_size") != 1024:
+                raise ValueError("legacy CRT gate cache requires anchor_batch_size=1024")
+        if observed != value:
             raise ValueError(f"CRT gate cache mismatch for {key}")
     if manifest.get("test_cache_opened") is not False:
         raise ValueError("gate cache does not certify train-only construction")

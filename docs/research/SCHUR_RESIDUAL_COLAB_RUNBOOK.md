@@ -28,3 +28,9 @@ Even if every train-only gate passes, stop after downloading
 `schur_residual_gate_results.zip` and return `gate_results.json` for review.
 The notebook intentionally has no held-out evaluation cell. Do not alter rank,
 Ridge, thresholds, anchor size, dtype, or class order based on test metrics.
+
+After review confirms all four gates passed, use
+`notebooks/schur_locked_heldout_colab.ipynb` for Phase G. Upload the exact
+Phase F JSON/ZIP; do not add or edit model hyperparameters. The notebook runs
+authorization tests before the runner's single test-cache opening path. See
+`docs/research/PHASEG_LOCKED_HELDOUT_PROTOCOL.md` for the immutable contract.
