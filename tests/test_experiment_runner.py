@@ -126,6 +126,68 @@ def test_crt_cache_runner_and_train_only_selection(tmp_path):
     assert all("crt_residual_ridge" in candidate for candidate in selection["candidates"])
 
 
+def test_pps_cache_runner_and_train_only_selection(tmp_path):
+    args = _args(tmp_path)
+    args.method = "pps_class_protected"
+    args.rank = 4
+    args.pps_anchor_dim, args.pps_synaptic_degree, args.pps_coding_level = 12, 3, .25
+    args.pps_gamma, args.pps_statistics_dtype = .7, "float64"
+    experiment_runner.tiny(args)
+    metrics = json.loads((tmp_path / "out" / "metrics.json").read_text())
+    diagnostics = json.loads((tmp_path / "out" / "code_diagnostics.json").read_text())
+    assert metrics["exemplar_free"] is True
+    assert diagnostics[-1]["geometry"] == "class_protected"
+    assert diagnostics[-1]["sketch_size"] == 4
+    assert diagnostics[-1]["gamma"] == .7
+
+    # The selection path must continue to work after test.pt is hidden.
+    (tmp_path / "cache" / "test.pt").rename(tmp_path / "cache" / "test.hidden")
+    args.output_dir = str(tmp_path / "selection-out")
+    args.search_methods = "pps_standard_fd,pps_class_protected"
+    args.search_ranks, args.search_lambdas = "3,4", "0.1"
+    args.search_pps_gammas = "0.5,1.0"
+    args.validation_fraction = .2
+    args.selection_output = str(tmp_path / "pps-selection.json")
+    experiment_runner.select_config(args)
+    selection = json.loads((tmp_path / "pps-selection.json").read_text())
+    assert selection["best"]["uses_test_set"] is False
+    assert {candidate["method"] for candidate in selection["candidates"]} == {
+        "pps_standard_fd", "pps_class_protected",
+    }
+    assert len(selection["candidates"]) == 6
+    assert all(candidate["pps_gamma"] in {None, .5, 1.0} for candidate in selection["candidates"])
+
+
+def test_full_pps_sketch_matches_exact_cached_fly_with_identical_wta_map(tmp_path):
+    args = _args(tmp_path)
+    args.fly_expand_dim = args.pps_anchor_dim = 12
+    args.fly_synaptic_degree = args.pps_synaptic_degree = 3
+    args.fly_coding_level = args.pps_coding_level = .25
+    args.pps_statistics_dtype = "float32"
+    exact = experiment_runner.create_cached_learner(
+        args, "cached_flycl", 6, ridge_lambda=.4, rank=0
+    )
+    protected = experiment_runner.create_cached_learner(
+        args, "pps_class_protected", 6, ridge_lambda=.4, rank=12, pps_gamma=1.0
+    )
+    torch.testing.assert_close(
+        exact.flyhash.projection_matrix.to_dense(),
+        protected.anchor.projection_matrix.to_dense(),
+        atol=0,
+        rtol=0,
+    )
+    features = torch.randn(36, 6, generator=torch.Generator().manual_seed(71))
+    labels = torch.tensor([5, 1, 8] * 12)
+    exact.update(features, labels)
+    protected.update(features, labels)
+    torch.testing.assert_close(
+        protected.predict_logits(features[:9]),
+        exact.predict_logits(features[:9]),
+        atol=2e-4,
+        rtol=2e-4,
+    )
+
+
 def test_forgetting_uses_maximum_over_later_stages():
     # Task 0 forgets 25 (95 -> 70), task 1 forgets 5 (90 -> 85), so the
     # protocol mean is 15 rather than 10 from only introduction-stage scores.
