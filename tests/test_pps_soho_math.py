@@ -76,7 +76,7 @@ def test_protected_tail_bound_is_no_worse_than_raw_tail_bound():
     assert float(residual_singular[k:].square().sum()) <= float(raw_singular[k:].square().sum()) + 1e-10
 
 
-def test_compact_woodbury_solver_equals_direct_structured_ridge():
+def test_compact_subspace_solver_equals_direct_structured_ridge():
     codes, labels = data()
     statistics = ClassProtectedStatistics(8, 8, dtype=DTYPE)
     statistics.update(codes, labels)
@@ -89,6 +89,22 @@ def test_compact_woodbury_solver_equals_direct_structured_ridge():
 
     torch.testing.assert_close(weights, direct, atol=1e-11, rtol=1e-11)
     assert relative < 1e-11
+
+
+def test_compact_subspace_solver_is_stable_for_float32_wta_scale():
+    generator = torch.Generator().manual_seed(93)
+    dense = 8 * torch.randn(600, 64, generator=generator)
+    _, active = dense.topk(12, dim=1)
+    codes = torch.zeros_like(dense).scatter(1, active, dense.gather(1, active))
+    labels = torch.arange(10).repeat_interleave(60)
+    for mode in ("class_protected", "global"):
+        statistics = ClassProtectedStatistics(64, 8, mode=mode, dtype=torch.float32)
+        statistics.update(codes[:270], labels[:270])
+        statistics.update(codes[270:], labels[270:])
+        weights, relative = solve_compact_ridge(statistics, ridge_lambda=0.1, gamma=1.0)
+
+        assert bool(torch.isfinite(weights).all())
+        assert relative <= 1e-4
 
 
 def test_full_sketch_gamma_one_recovers_exact_fly_ridge_logits():

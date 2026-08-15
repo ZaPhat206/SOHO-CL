@@ -13,6 +13,9 @@ from .solver import solve_compact_ridge
 from .statistics import ClassProtectedStatistics
 
 
+MAX_SOLVER_RELATIVE_RESIDUAL = 1e-4
+
+
 class _RestoredFlyHash(nn.Module):
     forward = FlyHash.forward
 
@@ -126,6 +129,11 @@ class PPSSOHOLearner:
         self.classifier, relative = solve_compact_ridge(
             self.statistics, self.ridge_lambda, self.gamma
         )
+        if relative > MAX_SOLVER_RELATIVE_RESIDUAL:
+            raise RuntimeError(
+                f"PPS-SOHO compact solver residual {relative:.3e} exceeds "
+                f"{MAX_SOLVER_RELATIVE_RESIDUAL:.1e}"
+            )
         self.diagnostics = {
             "geometry": self.mode,
             "sketch_size": self.sketch_size,
@@ -142,7 +150,7 @@ class PPSSOHOLearner:
     def predict_logits_from_codes(self, codes: torch.Tensor) -> torch.Tensor:
         if self.classifier is None:
             raise RuntimeError("update() must be called before prediction")
-        values = codes.to(device=self.device, dtype=self.dtype)
+        values = codes.to(device=self.device, dtype=self.classifier.dtype)
         if values.ndim != 2 or values.shape[1] != self.anchor_dim:
             raise ValueError(f"codes must have shape (N, {self.anchor_dim})")
         if not bool(torch.isfinite(values).all()):
@@ -214,6 +222,11 @@ class PPSSOHOLearner:
         self.classifier, relative = solve_compact_ridge(
             self.statistics, self.ridge_lambda, self.gamma
         )
+        if relative > MAX_SOLVER_RELATIVE_RESIDUAL:
+            raise RuntimeError(
+                f"PPS-SOHO compact solver residual {relative:.3e} exceeds "
+                f"{MAX_SOLVER_RELATIVE_RESIDUAL:.1e}"
+            )
         self.diagnostics = {
             "geometry": self.mode,
             "sketch_size": self.sketch_size,

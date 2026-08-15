@@ -59,12 +59,19 @@ non-negative values as a falsifiable within-class shrinkage hypothesis. Define
 A = concat_rows(sqrt(gamma) B_w, sqrt(D_n) M^T):(ell+C,H).
 ```
 
-Woodbury gives the exact sketched solution without an explicit inverse or an
+For numerical stability, form an orthonormal basis
+`U=orth(concat_columns(A^T,Q))`. The solution lies completely in this compact
+space, giving an exact sketched solve without an explicit inverse or an
 `H x H` matrix:
 
 ```text
-W = (Q - A^T solve(lambda I + A A^T, A Q)) / lambda.
+W = U solve(U^T A^T A U + lambda I, U^T Q).
 ```
+
+Sketches and class means may be stored as float32. The compact factorization
+and current classifier are promoted to float64 because the matched small-Ridge
+regime is numerically unstable in float32; state accounting uses the actual
+mixed-precision tensor sizes.
 
 Inference is global and task-free: `logits = TopK(x R^T) W`.
 
@@ -92,7 +99,7 @@ count. This is an exemplar-free claim, not a differential-privacy claim.
 3. Frequent Directions certifies
    `0 <= R_w^T R_w - B_w^T B_w <= Delta I`.
 4. The class-mean covariance `M D_n M^T` is never sketched.
-5. Compact Woodbury logits equal a direct solve of the sketched system.
+5. Compact subspace logits equal a direct solve of the sketched system.
 6. If the sketch is exact and `gamma=1`, logits equal exact FLY Ridge.
 7. Coefficient error is bounded by
    `||W_hat-W||_F <= gamma*Delta/lambda * ||W||_F`.

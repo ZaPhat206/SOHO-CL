@@ -15,8 +15,15 @@ python -m pytest -q tests/test_pps_soho_math.py tests/test_pps_soho_learner.py t
 python -m pytest -q
 ```
 
-Current focused result: 26 passed. Full repository result: 109 passed. PyTorch emitted its existing sparse-CSC beta warning
+Current focused result: 27 passed. Full repository result: 110 passed. PyTorch emitted its existing sparse-CSC beta warning
 and environment-level deprecation warnings; no PPS numerical warning occurred.
+
+The first Colab execution correctly failed the numerical gate: the original
+float32 Woodbury expression suffered cancellation at `lambda=0.1`, producing
+relative residuals above `4.9e3`. Those validation accuracies are invalid and
+must not be interpreted as a method result. The solver now uses the equivalent
+orthonormal compact-subspace system and includes a float32 WTA-scale regression
+test. The train-only pilot must be rerun from a fresh selection output.
 
 Synthetic tests use explicit `torch.float64`, fixed seeds recorded in each
 fixture, and `torch.testing.assert_close` tolerances from `1e-10` to `1e-12`

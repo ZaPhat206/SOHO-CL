@@ -185,6 +185,7 @@ def test_full_pps_sketch_matches_exact_cached_fly_with_identical_wta_map(tmp_pat
         exact.predict_logits(features[:9]),
         atol=2e-4,
         rtol=2e-4,
+        check_dtype=False,
     )
 
 
