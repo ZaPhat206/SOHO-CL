@@ -156,6 +156,13 @@ def test_pps_cache_runner_and_train_only_selection(tmp_path):
     }
     assert len(selection["candidates"]) == 6
     assert all(candidate["pps_gamma"] in {None, .5, 1.0} for candidate in selection["candidates"])
+    provenance = selection["run_provenance"]
+    assert provenance["class_order"] == [1, 2, 0]
+    assert len(provenance["class_order_sha256"]) == 64
+    assert len(provenance["training_indices_sha256"]) == 64
+    assert len(provenance["validation_indices_sha256"]) == 64
+    assert provenance["python"]
+    assert provenance["torch"]
 
 
 def test_full_pps_sketch_matches_exact_cached_fly_with_identical_wta_map(tmp_path):

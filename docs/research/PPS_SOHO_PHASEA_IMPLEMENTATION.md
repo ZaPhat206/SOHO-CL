@@ -1,6 +1,8 @@
 # PPS-SOHO Phase A implementation
 
-Status: implemented locally; CIFAR-100 train-only Colab pilot pending.
+Status: implementation complete; the numerically valid CIFAR-100 train-only
+pilot was audited and failed its accuracy gate. See
+`PPS_SOHO_PHASEA_RESULTS.md`.
 
 The new method lives under `methods/pps_soho/` and is dispatched only by
 `pps_class_protected` or its `pps_standard_fd` control. Existing baseline
@@ -23,7 +25,8 @@ float32 Woodbury expression suffered cancellation at `lambda=0.1`, producing
 relative residuals above `4.9e3`. Those validation accuracies are invalid and
 must not be interpreted as a method result. The solver now uses the equivalent
 orthonormal compact-subspace system and includes a float32 WTA-scale regression
-test. The train-only pilot must be rerun from a fresh selection output.
+test. That invalid run was replaced by the numerically valid run documented in
+the results report.
 
 Synthetic tests use explicit `torch.float64`, fixed seeds recorded in each
 fixture, and `torch.testing.assert_close` tolerances from `1e-10` to `1e-12`

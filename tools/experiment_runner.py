@@ -1,5 +1,5 @@
 """Resumable cache-based T-SOHO evaluator; full feature extraction belongs on Kaggle."""
-import argparse, csv, json, random, subprocess, sys, time
+import argparse, csv, hashlib, json, platform, random, subprocess, sys, time
 from pathlib import Path
 import torch
 ROOT=Path(__file__).resolve().parents[1]
@@ -164,6 +164,31 @@ def train_validation_indices(labels,task_indices,seed,fraction):
    cls_indices=indices[task_labels==cls]; perm=cls_indices[torch.randperm(len(cls_indices),generator=generator)]; n_val=max(1,int(len(perm)*fraction)); val_parts.append(perm[:n_val]);train_parts.append(perm[n_val:])
   training.append(torch.cat(train_parts));validation.append(torch.cat(val_parts))
  return training,validation
+def _sequence_sha256(tensors):
+ """Stable identity for a list of integer index tensors."""
+ digest=hashlib.sha256()
+ for tensor in tensors:
+  value=tensor.detach().cpu().to(torch.int64).contiguous()
+  digest.update(len(value).to_bytes(8,"little"));digest.update(value.numpy().tobytes())
+ return digest.hexdigest()
+def _selection_provenance(args,order,train_parts,val_parts):
+ """Record the runner and split identity without serializing sample-level data."""
+ try: commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True,stderr=subprocess.DEVNULL).strip()
+ except (OSError,subprocess.CalledProcessError): commit=None
+ try: dirty=bool(subprocess.check_output(["git","status","--porcelain","--untracked-files=no"],cwd=ROOT,text=True,stderr=subprocess.DEVNULL).strip())
+ except (OSError,subprocess.CalledProcessError): dirty=None
+ order_blob=",".join(str(value) for value in order).encode("ascii")
+ config_path=Path(args.config) if getattr(args,"config",None) else None
+ return {
+  "runner_git_commit":commit,"runner_git_dirty":dirty,
+  "python":platform.python_version(),"torch":torch.__version__,"cuda":torch.version.cuda,
+  "requested_device":args.device,"class_order":order,
+  "class_order_sha256":hashlib.sha256(order_blob).hexdigest(),
+  "training_indices_sha256":_sequence_sha256(train_parts),
+  "validation_indices_sha256":_sequence_sha256(val_parts),
+  "config_path":str(config_path) if config_path else None,
+  "config_sha256":hashlib.sha256(config_path.read_bytes()).hexdigest() if config_path and config_path.is_file() else None,
+ }
 def select_config(args):
  """Rank/lambda selection from cached *training* features only; no test access."""
  train,_,meta=validate_cache(args.feature_cache_dir,args,load_test=False); order=random.Random(args.seed).sample(list(range(args.num_classes)),args.num_classes); tasks=split(train["labels"],order,args.num_tasks); train_parts,val_parts=train_validation_indices(train["labels"],tasks,args.seed,args.validation_fraction)
@@ -196,10 +221,11 @@ def select_config(args):
             else: learner.update(train["features"][train_parts[task]],train["labels"][train_parts[task]])
             for previous in range(task+1):
              logits=learner.predict_logits_from_codes(pps_codes[val_parts[previous]]) if method in PPS_CACHE_METHODS else learner.predict_logits(train["features"][val_parts[previous]]);pred=torch.tensor([learner.class_ids[i] for i in logits.argmax(1).tolist()]);scores.append(float((pred==train["labels"][val_parts[previous]]).float().mean()*100))
+            print(f"UPDATE method={method} rank={rank} lambda={ridge_lambda} gamma={pps_gamma} task={task+1}/{args.num_tasks} elapsed={time.perf_counter()-candidate_started:.1f}s",flush=True)
            candidate_accuracy=sum(scores)/len(scores);candidate_seconds=time.perf_counter()-candidate_started
            results.append({"method":method,"rank":rank,"ridge_lambda":ridge_lambda,"fisher_kappa":kappa,"fisher_delta":delta,"crt_residual_ridge":residual_ridge,"crt_complement_ridge":complement_ridge,"crt_confusion_temperature":temperature,"pps_gamma":pps_gamma,"validation_average_accuracy":candidate_accuracy,"persistent_state_bytes":learner.persistent_state_bytes(),"solver_relative_residual_max":learner.diagnostics.get("solver_relative_residual_max"),"covariance_error_bound":learner.diagnostics.get("covariance_error_bound"),"candidate_seconds":candidate_seconds,"uses_test_set":False})
            print(f"DONE method={method} rank={rank} lambda={ridge_lambda} gamma={pps_gamma} val_AA={candidate_accuracy:.4f} state={learner.persistent_state_bytes()}B elapsed={candidate_seconds:.1f}s",flush=True)
- best=max(results,key=lambda x:x["validation_average_accuracy"]);out=Path(args.selection_output or Path(args.output_dir)/"selection.json");out.parent.mkdir(parents=True,exist_ok=True);dump(out,{"selection_protocol":"stratified held-out subset of cached training features only","validation_fraction":args.validation_fraction,"cache_metadata":meta,"best":best,"candidates":results});print(json.dumps(best))
+ best=max(results,key=lambda x:x["validation_average_accuracy"]);out=Path(args.selection_output or Path(args.output_dir)/"selection.json");out.parent.mkdir(parents=True,exist_ok=True);dump(out,{"selection_protocol":"stratified held-out subset of cached training features only","validation_fraction":args.validation_fraction,"cache_metadata":meta,"run_provenance":_selection_provenance(args,order,train_parts,val_parts),"best":best,"candidates":results});print(json.dumps(best))
 def tiny(args):
  torch.manual_seed(args.seed); x=torch.randn(30,8); y=torch.tensor([0,1,2]*10);args.dataset="tiny";args.model_name="synthetic";args.data_augmentation="none";args.num_classes=3;args.num_tasks=3;save_cache(args.feature_cache_dir,x[:21],y[:21],x[21:],y[21:],args);run(args)
 def main():
