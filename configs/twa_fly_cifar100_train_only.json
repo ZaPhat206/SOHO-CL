@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "study_id": "twa-fly-cifar100-train-only-phase-a",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 1993,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "validation_fraction": 0.1,
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256
+  },
+  "raw_ridge_lambda": 0.1,
+  "fly_ridge_lower": 6,
+  "fly_ridge_upper": 10,
+  "rho_candidates": [0.01, 0.1, 1.0],
+  "solver_tolerance": 0.00001,
+  "solver_max_iterations": 100,
+  "statistics_dtype": "float32",
+  "gate": {
+    "minimum_gain_over_fly_pp": 0.2,
+    "minimum_gain_over_one_way_pp": 0.1,
+    "minimum_gain_over_shuffled_pp": 0.1,
+    "maximum_state_fraction_of_fly": 1.1,
+    "maximum_solver_relative_residual": 0.00001
+  }
+}
