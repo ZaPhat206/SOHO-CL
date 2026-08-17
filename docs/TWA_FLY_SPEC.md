@@ -175,3 +175,11 @@ test or silently change the gate.
   reconstructed later from marginal `G_xx` and `G_zz` alone.
 - The result does not make dynamic Top-K linearly transportable and does not
   inherit BiCyc's feature-drift guarantees.
+
+## Post-Phase-A status
+
+The locked Phase A train-only gate failed. Agreement-only TWA-FLY is retained
+as a negative result/control and must not proceed to held-out evaluation. The
+separate D0 protocol in `docs/research/TWA_FLY_D0_PROTOCOL.md` measures raw/FLY
+error complementarity before any joint residual method is considered. D0 is not
+a continuation or post-hoc retuning of the Phase A rho search.

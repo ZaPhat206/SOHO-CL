@@ -78,6 +78,26 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _tensor_content_sha256(tensor: torch.Tensor) -> str:
+    """Hash tensor values and sparse structure without relying on torch.save."""
+    digest = hashlib.sha256()
+    digest.update(str(tensor.layout).encode("ascii"))
+    digest.update(str(tensor.dtype).encode("ascii"))
+    digest.update(json.dumps(list(tensor.shape)).encode("ascii"))
+    if tensor.layout == torch.strided:
+        parts = (tensor,)
+    elif tensor.layout == torch.sparse_csc:
+        parts = (tensor.ccol_indices(), tensor.row_indices(), tensor.values())
+    else:
+        raise ValueError(f"unsupported tensor layout {tensor.layout}")
+    for part in parts:
+        value = part.detach().cpu().contiguous()
+        digest.update(str(value.dtype).encode("ascii"))
+        digest.update(json.dumps(list(value.shape)).encode("ascii"))
+        digest.update(value.numpy().tobytes())
+    return digest.hexdigest()
+
+
 def _sequence_sha256(tensors: list[torch.Tensor]) -> str:
     digest = hashlib.sha256()
     for tensor in tensors:
@@ -159,6 +179,43 @@ def _new_learner(config: dict, feature_dim: int, method: str, rho: float, device
     )
 
 
+def _cache_probe_indices(sample_count: int, seed: int, maximum: int = 16) -> torch.Tensor:
+    count = min(int(sample_count), int(maximum))
+    if count <= 0:
+        raise ValueError("code cache cannot be probed without samples")
+    selected = random.Random(int(seed) + 982451653).sample(range(sample_count), count)
+    return torch.tensor(sorted(selected), dtype=torch.long)
+
+
+def _verify_projection_probe(
+    *, prototype: TWAFLYLearner, train: dict, indices: torch.Tensor,
+    values: torch.Tensor, seed: int,
+) -> dict:
+    sample_indices = _cache_probe_indices(len(train["features"]), seed)
+    observed_indices, observed_values = prototype.encode_sparse_fly(
+        train["features"][sample_indices]
+    )
+    cached_indices = indices[sample_indices].to(torch.long)
+    cached_values = values[sample_indices].to(observed_values.dtype)
+    if not torch.equal(observed_indices.detach().cpu().to(torch.long), cached_indices):
+        raise RuntimeError("WTA code cache projection probe index mismatch")
+    try:
+        torch.testing.assert_close(
+            observed_values.detach().cpu(), cached_values, atol=1e-6, rtol=1e-5
+        )
+    except AssertionError as error:
+        raise RuntimeError("WTA code cache projection probe value mismatch") from error
+    return {
+        "verified": True,
+        "sample_indices": sample_indices.tolist(),
+        "sample_indices_sha256": _tensor_content_sha256(sample_indices),
+        "cached_indices_sha256": _tensor_content_sha256(cached_indices),
+        "cached_values_sha256": _tensor_content_sha256(cached_values),
+        "atol": 1e-6,
+        "rtol": 1e-5,
+    }
+
+
 def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, config: dict, device):
     cache_dir.mkdir(parents=True, exist_ok=True)
     metadata_path, codes_path = cache_dir / "metadata.json", cache_dir / "train_codes.pt"
@@ -166,6 +223,10 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
     identity["source_train_sha256"] = train_sha256
     identity["sample_count"] = int(len(train["features"]))
     identity_sha256 = _sha256_bytes(json.dumps(identity, sort_keys=True).encode("utf-8"))
+    prototype = _new_learner(
+        config, train["features"].shape[1], "twa_symmetric", 0.0, device
+    )
+    projection_sha256 = _tensor_content_sha256(prototype.flyhash.projection_matrix)
     if metadata_path.exists() or codes_path.exists():
         if not (metadata_path.is_file() and codes_path.is_file()):
             raise RuntimeError("incomplete WTA code cache; choose a new code-cache-dir")
@@ -179,10 +240,28 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
         expected = (len(train["features"]), max(1, int(identity["expand_dim"] * identity["coding_level"])))
         if indices.shape != expected or values.shape != expected or not bool(torch.isfinite(values).all()):
             raise RuntimeError("WTA code cache tensor validation failed")
+        recorded_projection = metadata.get("projection", {}).get("sha256")
+        if recorded_projection is not None and recorded_projection != projection_sha256:
+            raise RuntimeError("WTA code cache projection SHA-256 mismatch")
+        probe = _verify_projection_probe(
+            prototype=prototype, train=train, indices=indices, values=values,
+            seed=config["seed"],
+        )
+        # Schema-1 caches are upgraded only after their cached rows have been
+        # reproduced from the regenerated projection. The 900 MB code tensor is
+        # not rewritten.
+        metadata.update({
+            "schema_version": 2,
+            "projection": {
+                "sha256": projection_sha256,
+                "materialization_torch": torch.__version__,
+                "probe": probe,
+            },
+        })
+        _atomic_json(metadata_path, metadata)
         print(f"WTA CACHE restored samples={expected[0]} active={expected[1]} disk={codes_path.stat().st_size}B", flush=True)
         return indices, values, metadata
 
-    prototype = _new_learner(config, train["features"].shape[1], "twa_symmetric", 0.0, device)
     sample_count = len(train["features"])
     active_size = max(1, int(prototype.fly_dim * prototype.coding_level))
     index_dtype = torch.int16 if prototype.fly_dim <= 32767 else torch.int32
@@ -205,8 +284,12 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
     temporary = codes_path.with_suffix(codes_path.suffix + ".tmp")
     torch.save({"indices": indices, "values": values}, temporary)
     os.replace(temporary, codes_path)
+    probe = _verify_projection_probe(
+        prototype=prototype, train=train, indices=indices, values=values,
+        seed=config["seed"],
+    )
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "role": "experiment_cache_not_learner_state",
         "contains_sample_level_codes": True,
         "identity": identity,
@@ -218,6 +301,11 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
         "finite": bool(torch.isfinite(values).all()),
         "codes_sha256": _sha256_file(codes_path),
         "disk_bytes": codes_path.stat().st_size,
+        "projection": {
+            "sha256": projection_sha256,
+            "materialization_torch": torch.__version__,
+            "probe": probe,
+        },
     }
     _atomic_json(metadata_path, metadata)
     print(f"WTA CACHE complete shape={tuple(indices.shape)} elapsed={(time.perf_counter()-started)/60:.1f}m", flush=True)
