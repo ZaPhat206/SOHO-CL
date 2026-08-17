@@ -62,8 +62,11 @@ learner state and must not be serialized in a checkpoint.
 ## Projection/cache invariant
 
 The WTA cache stores the exact sparse `projection.pt`; metadata records its
-SHA-256, PyTorch materialization version, and a deterministic 16-row
-re-encoding probe.
+SHA-256, PyTorch materialization version, and a deterministic 16-row numerical
+probe. The probe verifies cached values against projection scores at their
+cached indices and checks tolerant Top-K membership. It does not require exact
+CUDA Top-K boundary-index replay because equal or numerically adjacent cutoff
+scores may select different valid indices.
 A legacy cache is upgraded only after current projection outputs reproduce its
 cached active indices and values. Any projection hash or probe mismatch fails
 closed; there is no silent regeneration or fallback.

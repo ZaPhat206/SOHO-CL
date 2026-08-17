@@ -4,6 +4,7 @@ from argparse import Namespace
 import pytest
 import torch
 
+from methods.twa_fly import TWAFLYLearner
 from tools import twa_fly_diagnostic, twa_fly_pilot
 
 
@@ -157,3 +158,43 @@ def test_projection_hash_mismatch_fails_closed(tmp_path):
             train=train, train_sha256=train_sha, cache_dir=code_cache,
             config=config, device="cpu",
         )
+
+
+def test_projection_probe_accepts_an_alternate_valid_topk_tie():
+    dense_projection = torch.tensor([
+        [1.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ])
+    learner = TWAFLYLearner(
+        method="twa_symmetric", raw_dim=2, fly_dim=4, num_classes=2,
+        synaptic_degree=1, coding_level=0.5, rho=0.0, raw_ridge=0.1,
+        fly_ridge=0.1, projection=dense_projection.to_sparse_csc(),
+        device="cpu", dtype=torch.float32,
+    )
+    train = {
+        "features": torch.tensor([[1.0, 0.0]]).repeat(8, 1),
+        "labels": torch.zeros(8, dtype=torch.long),
+    }
+    observed_indices, observed_values = learner.encode_sparse_fly(train["features"])
+    cached_indices = observed_indices.clone()
+    duplicates = {0, 1, 2}
+    for row in range(len(cached_indices)):
+        selected = set(map(int, cached_indices[row].tolist()))
+        replacement = next(iter(duplicates - selected))
+        duplicate_position = next(
+            column for column, value in enumerate(cached_indices[row].tolist())
+            if int(value) in duplicates
+        )
+        cached_indices[row, duplicate_position] = replacement
+    probe = twa_fly_pilot._verify_projection_probe(
+        prototype=learner,
+        train=train,
+        indices=cached_indices,
+        values=observed_values,
+        seed=3,
+    )
+    assert probe["verified"] is True
+    assert probe["topk_index_overlap_fraction"] < 1.0
+    assert probe["maximum_topk_membership_violation"] == 0.0

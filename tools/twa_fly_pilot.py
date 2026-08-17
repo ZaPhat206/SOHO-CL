@@ -196,26 +196,49 @@ def _verify_projection_probe(
     values: torch.Tensor, seed: int,
 ) -> dict:
     sample_indices = _cache_probe_indices(len(train["features"]), seed)
-    observed_indices, observed_values = prototype.encode_sparse_fly(
-        train["features"][sample_indices]
-    )
     cached_indices = indices[sample_indices].to(torch.long)
-    cached_values = values[sample_indices].to(observed_values.dtype)
-    if not torch.equal(observed_indices.detach().cpu().to(torch.long), cached_indices):
-        raise RuntimeError("WTA code cache projection probe index mismatch")
+    cached_values = values[sample_indices]
+    features = train["features"][sample_indices].to(
+        device=prototype.device, dtype=prototype.flyhash.projection_matrix.dtype
+    )
+    projection = prototype.flyhash.projection_matrix
+    projected = (
+        torch.sparse.mm(projection, features.T).T
+        if projection.layout == torch.sparse_csc else features @ projection.T
+    )
+    device_indices = cached_indices.to(projected.device)
+    recomputed_values = projected.gather(1, device_indices).detach().cpu()
+    cached_values = cached_values.to(recomputed_values.dtype)
     try:
         torch.testing.assert_close(
-            observed_values.detach().cpu(), cached_values, atol=1e-6, rtol=1e-5
+            recomputed_values, cached_values, atol=5e-5, rtol=1e-5
         )
     except AssertionError as error:
         raise RuntimeError("WTA code cache projection probe value mismatch") from error
+    active_size = cached_indices.shape[1]
+    observed_values, observed_indices = projected.topk(active_size, dim=1, largest=True)
+    cutoff = observed_values[:, -1:]
+    tolerance = 5e-5 + 1e-5 * cutoff.abs()
+    maximum_membership_violation = float(
+        (cutoff - recomputed_values.to(cutoff.device) - tolerance).clamp_min(0).max().item()
+    )
+    if maximum_membership_violation > 0:
+        raise RuntimeError("WTA code cache projection probe Top-K membership mismatch")
+    cached_mask = torch.zeros(
+        (len(sample_indices), prototype.fly_dim), dtype=torch.bool, device=projected.device
+    )
+    cached_mask.scatter_(1, device_indices, True)
+    overlap = float(cached_mask.gather(1, observed_indices).float().mean().item())
     return {
         "verified": True,
+        "verification_semantics": "cached values match projection scores and satisfy tolerant Top-K membership",
         "sample_indices": sample_indices.tolist(),
         "sample_indices_sha256": _tensor_content_sha256(sample_indices),
         "cached_indices_sha256": _tensor_content_sha256(cached_indices),
         "cached_values_sha256": _tensor_content_sha256(cached_values),
-        "atol": 1e-6,
+        "topk_index_overlap_fraction": overlap,
+        "maximum_topk_membership_violation": maximum_membership_violation,
+        "atol": 5e-5,
         "rtol": 1e-5,
     }
 
