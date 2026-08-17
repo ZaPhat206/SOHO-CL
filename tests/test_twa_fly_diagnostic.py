@@ -119,7 +119,7 @@ def test_legacy_code_cache_is_upgraded_only_after_projection_probe(tmp_path):
     config = twa_fly_diagnostic._read_config(tmp_path / "config.json")
     train = torch.load(feature_cache / "train.pt", weights_only=True)
     train_sha = twa_fly_pilot._sha256_file(feature_cache / "train.pt")
-    _, _, metadata = twa_fly_pilot._prepare_code_cache(
+    _, _, metadata, _ = twa_fly_pilot._prepare_code_cache(
         train=train, train_sha256=train_sha, cache_dir=code_cache,
         config=config, device="cpu",
     )
@@ -127,7 +127,8 @@ def test_legacy_code_cache_is_upgraded_only_after_projection_probe(tmp_path):
     legacy["schema_version"] = 1
     legacy.pop("projection")
     (code_cache / "metadata.json").write_text(json.dumps(legacy))
-    _, _, upgraded = twa_fly_pilot._prepare_code_cache(
+    (code_cache / "projection.pt").unlink()
+    _, _, upgraded, _ = twa_fly_pilot._prepare_code_cache(
         train=train, train_sha256=train_sha, cache_dir=code_cache,
         config=config, device="cpu",
     )
@@ -135,6 +136,7 @@ def test_legacy_code_cache_is_upgraded_only_after_projection_probe(tmp_path):
     assert upgraded["projection"]["probe"]["verified"] is True
     on_disk = json.loads((code_cache / "metadata.json").read_text())
     assert on_disk["projection"]["sha256"] == upgraded["projection"]["sha256"]
+    assert (code_cache / "projection.pt").is_file()
 
 
 def test_projection_hash_mismatch_fails_closed(tmp_path):

@@ -158,7 +158,10 @@ def _projection_identity(config: dict, feature_dim: int) -> dict:
     }
 
 
-def _new_learner(config: dict, feature_dim: int, method: str, rho: float, device) -> TWAFLYLearner:
+def _new_learner(
+    config: dict, feature_dim: int, method: str, rho: float, device,
+    projection: torch.Tensor | None = None,
+) -> TWAFLYLearner:
     representation = config["representation"]
     dtype = {"float32": torch.float32, "float64": torch.float64}[config["statistics_dtype"]]
     return TWAFLYLearner(
@@ -176,6 +179,7 @@ def _new_learner(config: dict, feature_dim: int, method: str, rho: float, device
         seed=int(config["seed"]),
         device=device,
         dtype=dtype,
+        projection=projection,
     )
 
 
@@ -218,18 +222,30 @@ def _verify_projection_probe(
 
 def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, config: dict, device):
     cache_dir.mkdir(parents=True, exist_ok=True)
-    metadata_path, codes_path = cache_dir / "metadata.json", cache_dir / "train_codes.pt"
+    metadata_path = cache_dir / "metadata.json"
+    codes_path = cache_dir / "train_codes.pt"
+    projection_path = cache_dir / "projection.pt"
     identity = _projection_identity(config, train["features"].shape[1])
     identity["source_train_sha256"] = train_sha256
     identity["sample_count"] = int(len(train["features"]))
     identity_sha256 = _sha256_bytes(json.dumps(identity, sort_keys=True).encode("utf-8"))
-    prototype = _new_learner(
-        config, train["features"].shape[1], "twa_symmetric", 0.0, device
-    )
-    projection_sha256 = _tensor_content_sha256(prototype.flyhash.projection_matrix)
     if metadata_path.exists() or codes_path.exists():
         if not (metadata_path.is_file() and codes_path.is_file()):
             raise RuntimeError("incomplete WTA code cache; choose a new code-cache-dir")
+        if projection_path.exists():
+            projection = torch.load(projection_path, weights_only=True, map_location="cpu")
+            prototype = _new_learner(
+                config, train["features"].shape[1], "twa_symmetric", 0.0,
+                device, projection=projection,
+            )
+        else:
+            # A schema-1 cache can be upgraded only if the configured seed
+            # reproduces its rows. Otherwise its projection is irrecoverable.
+            prototype = _new_learner(
+                config, train["features"].shape[1], "twa_symmetric", 0.0, device
+            )
+            projection = prototype.flyhash.projection_matrix.detach().cpu()
+        projection_sha256 = _tensor_content_sha256(prototype.flyhash.projection_matrix)
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if metadata.get("identity_sha256") != identity_sha256:
             raise RuntimeError("stale WTA code cache identity; choose a new code-cache-dir")
@@ -247,6 +263,10 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
             prototype=prototype, train=train, indices=indices, values=values,
             seed=config["seed"],
         )
+        if not projection_path.exists():
+            temporary_projection = projection_path.with_suffix(projection_path.suffix + ".tmp")
+            torch.save(projection, temporary_projection)
+            os.replace(temporary_projection, projection_path)
         # Schema-1 caches are upgraded only after their cached rows have been
         # reproduced from the regenerated projection. The 900 MB code tensor is
         # not rewritten.
@@ -255,13 +275,22 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
             "projection": {
                 "sha256": projection_sha256,
                 "materialization_torch": torch.__version__,
+                "artifact": projection_path.name,
+                "disk_bytes": projection_path.stat().st_size,
                 "probe": probe,
             },
         })
         _atomic_json(metadata_path, metadata)
         print(f"WTA CACHE restored samples={expected[0]} active={expected[1]} disk={codes_path.stat().st_size}B", flush=True)
-        return indices, values, metadata
+        return indices, values, metadata, prototype.flyhash.projection_matrix
 
+    if projection_path.exists():
+        raise RuntimeError("incomplete WTA code cache; choose a new code-cache-dir")
+    prototype = _new_learner(
+        config, train["features"].shape[1], "twa_symmetric", 0.0, device
+    )
+    projection = prototype.flyhash.projection_matrix.detach().cpu()
+    projection_sha256 = _tensor_content_sha256(projection)
     sample_count = len(train["features"])
     active_size = max(1, int(prototype.fly_dim * prototype.coding_level))
     index_dtype = torch.int16 if prototype.fly_dim <= 32767 else torch.int32
@@ -284,6 +313,9 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
     temporary = codes_path.with_suffix(codes_path.suffix + ".tmp")
     torch.save({"indices": indices, "values": values}, temporary)
     os.replace(temporary, codes_path)
+    temporary_projection = projection_path.with_suffix(projection_path.suffix + ".tmp")
+    torch.save(projection, temporary_projection)
+    os.replace(temporary_projection, projection_path)
     probe = _verify_projection_probe(
         prototype=prototype, train=train, indices=indices, values=values,
         seed=config["seed"],
@@ -304,12 +336,14 @@ def _prepare_code_cache(*, train: dict, train_sha256: str, cache_dir: Path, conf
         "projection": {
             "sha256": projection_sha256,
             "materialization_torch": torch.__version__,
+            "artifact": projection_path.name,
+            "disk_bytes": projection_path.stat().st_size,
             "probe": probe,
         },
     }
     _atomic_json(metadata_path, metadata)
     print(f"WTA CACHE complete shape={tuple(indices.shape)} elapsed={(time.perf_counter()-started)/60:.1f}m", flush=True)
-    return indices, values, metadata
+    return indices, values, metadata, prototype.flyhash.projection_matrix
 
 
 def _dense_codes(indices: torch.Tensor, values: torch.Tensor, fly_dim: int, device, dtype) -> torch.Tensor:
@@ -382,7 +416,7 @@ def run(args) -> dict:
         raise ValueError("training labels do not match locked global class IDs")
     train_path = feature_cache_dir / "train.pt"
     train_sha256 = _sha256_file(train_path)
-    code_indices, code_values, code_metadata = _prepare_code_cache(
+    code_indices, code_values, code_metadata, projection = _prepare_code_cache(
         train=train, train_sha256=train_sha256, cache_dir=code_cache_dir,
         config=config, device=args.device,
     )
@@ -395,8 +429,6 @@ def run(args) -> dict:
     device = torch.device(args.device)
     raw_dim = int(train["features"].shape[1])
     fly_dim = int(config["representation"]["expand_dim"])
-    prototype = _new_learner(config, raw_dim, "twa_symmetric", 0.0, device)
-    projection = prototype.flyhash.projection_matrix
     statistics = TWAStatistics(raw_dim, fly_dim, config["num_classes"], device=device, dtype=dtype)
     shuffled_cross = torch.zeros_like(statistics.R_xz)
     result_rows = {

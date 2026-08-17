@@ -61,8 +61,9 @@ learner state and must not be serialized in a checkpoint.
 
 ## Projection/cache invariant
 
-The WTA cache metadata schema records the SHA-256 of the materialized sparse
-projection, its PyTorch version, and a deterministic 16-row re-encoding probe.
+The WTA cache stores the exact sparse `projection.pt`; metadata records its
+SHA-256, PyTorch materialization version, and a deterministic 16-row
+re-encoding probe.
 A legacy cache is upgraded only after current projection outputs reproduce its
 cached active indices and values. Any projection hash or probe mismatch fails
 closed; there is no silent regeneration or fallback.
@@ -90,4 +91,3 @@ study requires a separately locked protocol.
 $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q tests/test_twa_fly_diagnostic.py tests/test_twa_fly_pilot.py tests/test_twa_fly_math.py tests/test_twa_fly_learner.py
 ```
-

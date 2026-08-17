@@ -179,7 +179,7 @@ def run(args) -> dict:
 
     train_path = feature_cache_dir / "train.pt"
     train_sha256 = _sha256_file(train_path)
-    code_indices, code_values, code_metadata = _prepare_code_cache(
+    code_indices, code_values, code_metadata, projection = _prepare_code_cache(
         train=train, train_sha256=train_sha256, cache_dir=code_cache_dir,
         config=config, device=args.device,
     )
@@ -187,8 +187,7 @@ def run(args) -> dict:
     dtype = {"float32": torch.float32, "float64": torch.float64}[config["statistics_dtype"]]
     raw_dim = int(train["features"].shape[1])
     fly_dim = int(config["representation"]["expand_dim"])
-    prototype = _new_learner(config, raw_dim, "twa_symmetric", 0.0, device)
-    projection_sha256 = _tensor_content_sha256(prototype.flyhash.projection_matrix)
+    projection_sha256 = _tensor_content_sha256(projection)
     if projection_sha256 != code_metadata["projection"]["sha256"]:
         raise RuntimeError("runtime projection does not match verified WTA code cache")
 

@@ -106,15 +106,17 @@ def test_code_cache_restores_and_matches_dense_projection(tmp_path):
     config = twa_fly_pilot._read_config(tmp_path / "config.json")
     train = torch.load(feature_cache / "train.pt", weights_only=True)
     train_sha = twa_fly_pilot._sha256_file(feature_cache / "train.pt")
-    indices, values, metadata = twa_fly_pilot._prepare_code_cache(
+    indices, values, metadata, projection = twa_fly_pilot._prepare_code_cache(
         train=train, train_sha256=train_sha, cache_dir=code_cache, config=config, device="cpu"
     )
     learner = twa_fly_pilot._new_learner(config, 6, "twa_symmetric", 0.0, "cpu")
     dense = twa_fly_pilot._dense_codes(indices, values, 12, "cpu", torch.float64)
     torch.testing.assert_close(dense, learner.encode_fly(train["features"]))
-    restored_indices, restored_values, restored_metadata = twa_fly_pilot._prepare_code_cache(
+    restored_indices, restored_values, restored_metadata, restored_projection = twa_fly_pilot._prepare_code_cache(
         train=train, train_sha256=train_sha, cache_dir=code_cache, config=config, device="cpu"
     )
     torch.testing.assert_close(restored_indices, indices)
     torch.testing.assert_close(restored_values, values)
+    torch.testing.assert_close(restored_projection.to_dense(), projection.to_dense())
     assert restored_metadata["identity_sha256"] == metadata["identity_sha256"]
+    assert (code_cache / "projection.pt").is_file()
