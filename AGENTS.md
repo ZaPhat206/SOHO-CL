@@ -5,6 +5,7 @@
 - A learner state must not retain historical samples, images, per-example embeddings, labels, or any sample-level replay tensor.
 - Do not tune hyperparameters on a test set. Use a declared train-only/validation/GCV policy.
 - Every comparison must use the same frozen backbone, preprocessing, class order, task split, seed, and evaluation protocol.
+- New experiment protocols must explicitly use seed `2025` by default. Do not rewrite the seed in completed configs, manifests, or artifacts; historical runs remain immutable and reproducible.
 - At the end of every implementation or experiment phase, run its prescribed tests and report the exact commands and results.
 - Do not call a method exemplar-free when its checkpoint contains sample-level data, including embeddings or labels.
 - Do not start a large experiment until the preceding phase gate in `docs/EXPERIMENT_PROTOCOL.md` has passed.

@@ -165,6 +165,33 @@ def test_pps_cache_runner_and_train_only_selection(tmp_path):
     assert provenance["torch"]
 
 
+def test_cars_fly_has_explicit_dispatch_and_cache_runner_artifacts(tmp_path):
+    args = _args(tmp_path)
+    args.method = "cars_fly"
+    args.rank = 3
+    args.ridge_lambda = 0.2
+    args.cars_anchor_dim = 12
+    args.cars_synaptic_degree = 3
+    args.cars_coding_level = 0.25
+    args.cars_residual_ridge = 0.4
+    args.cars_complement_ridge = 0.3
+    args.cars_energy_threshold = 0.9
+    args.cars_min_rank = 1
+    args.cars_minimum_objective_gain = 0.0
+    args.cars_statistics_dtype = "float64"
+    experiment_runner.tiny(args)
+
+    metrics = json.loads((tmp_path / "out" / "metrics.json").read_text())
+    diagnostics = json.loads(
+        (tmp_path / "out" / "code_diagnostics.json").read_text()
+    )
+    assert metrics["exemplar_free"] is True
+    assert diagnostics[-1]["geometry"] == "adaptive_conditional_schur"
+    assert diagnostics[-1]["effective_rank"] <= 3
+    assert diagnostics[-1]["captured_energy"] is not None
+    assert diagnostics[-1]["tail_energy"] is not None
+
+
 def test_full_pps_sketch_matches_exact_cached_fly_with_identical_wta_map(tmp_path):
     args = _args(tmp_path)
     args.fly_expand_dim = args.pps_anchor_dim = 12

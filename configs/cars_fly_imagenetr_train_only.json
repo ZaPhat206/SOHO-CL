@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "study_id": "cars-fly-imagenetr-train-only-phase-a",
+  "dataset": "ImageNet-R",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 200,
+  "num_tasks": 20,
+  "validation_fraction": 0.2,
+  "statistics_dtype": "float64",
+  "representation": {
+    "anchor_dim": 1024,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 2048
+  },
+  "search": {
+    "anchor_ridges": [0.01, 0.1],
+    "residual_ridges": [0.01, 0.1],
+    "complement_ridges": [0.1],
+    "energy_thresholds": [0.8, 0.9],
+    "max_ranks": [32, 64],
+    "min_rank": 1,
+    "minimum_objective_gain": 0.0,
+    "raw_ridges": [0.01, 0.1, 1.0],
+    "confusion_temperature": 1.0
+  },
+  "fly_control": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "ridge_lower": 6,
+    "ridge_upper": 10
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00001,
+    "minimum_full_gain_pp": 0.1,
+    "minimum_control_gain_pp": 0.2,
+    "maximum_fly_gap_pp": 1.0,
+    "maximum_state_fraction_of_fly": 0.1
+  }
+}
