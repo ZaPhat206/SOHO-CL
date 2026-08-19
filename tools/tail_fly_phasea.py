@@ -59,6 +59,7 @@ CONFIG_KEYS = {
     "fly_control",
     "gates",
 }
+A3_CONFIG_KEYS = CONFIG_KEYS | {"numerics"}
 REPRESENTATION_KEYS = {
     "expand_dim",
     "synaptic_degree",
@@ -76,14 +77,16 @@ GATE_KEYS = {
     "minimum_gain_over_raw_ridge_pp",
     "maximum_state_fraction_of_exact_fly",
 }
+A3_GATE_KEYS = GATE_KEYS | {"minimum_gain_over_best_plain_tsvd_pp"}
+NUMERICS_KEYS = {"solver_dtype"}
 
 
 def _read_config(path: Path) -> dict:
     config = json.loads(path.read_text(encoding="utf-8"))
-    if set(config) != CONFIG_KEYS:
-        raise ValueError(
-            f"config keys must be exactly {sorted(CONFIG_KEYS)}"
-        )
+    keys = set(config)
+    valid_key_sets = {frozenset(CONFIG_KEYS), frozenset(A3_CONFIG_KEYS)}
+    if frozenset(keys) not in valid_key_sets:
+        raise ValueError("config keys must match the Phase A or Phase A3 schema")
     if config["schema_version"] != SCHEMA_VERSION:
         raise ValueError("unsupported TAIL-FLY config schema")
     if config["seed"] != 2025:
@@ -135,13 +138,26 @@ def _read_config(path: Path) -> dict:
         raise ValueError("invalid exact-FLY GCV range")
     if fly["statistics_dtype"] not in {"float32", "float64"}:
         raise ValueError("invalid exact-FLY dtype")
-    if set(config["gates"]) != GATE_KEYS:
+    expected_gates = A3_GATE_KEYS if "numerics" in config else GATE_KEYS
+    if set(config["gates"]) != expected_gates:
         raise ValueError("gate keys mismatch")
+    if "numerics" in config:
+        if set(config["numerics"]) != NUMERICS_KEYS:
+            raise ValueError("numerics keys mismatch")
+        if config["numerics"]["solver_dtype"] not in {"float32", "float64"}:
+            raise ValueError("solver_dtype must be float32 or float64")
     return config
 
 
 def _dtype(name: str) -> torch.dtype:
     return {"float32": torch.float32, "float64": torch.float64}[name]
+
+
+def _solver_dtype(config: dict) -> torch.dtype:
+    name = config.get("numerics", {}).get(
+        "solver_dtype", config["statistics_dtype"]
+    )
+    return _dtype(name)
 
 
 def _cache_config(config: dict) -> dict:
@@ -360,6 +376,7 @@ def _evaluate_rank(
 ) -> dict:
     representation = config["representation"]
     dtype = _dtype(config["statistics_dtype"])
+    solver_dtype = _solver_dtype(config)
     ridges = list(map(float, config["search"]["ridge_lambdas"]))
     learner = TAILFlyLearner(
         feature_dim=int(train["features"].shape[1]),
@@ -371,9 +388,14 @@ def _evaluate_rank(
         seed=int(config["seed"]),
         device=device,
         dtype=dtype,
+        solver_dtype=solver_dtype,
         projection=projection,
     )
     scores = {
+        method: {str(ridge): [] for ridge in ridges}
+        for method in ("tail_fly", "plain_tsvd_fly", "diagonal_only_fly")
+    }
+    residuals = {
         method: {str(ridge): [] for ridge in ridges}
         for method in ("tail_fly", "plain_tsvd_fly", "diagonal_only_fly")
     }
@@ -398,16 +420,23 @@ def _evaluate_rank(
             learner.exact_diagonal, learner.svd.U, learner.svd.s
         )
         maximum_residual = 0.0
+        task_residuals = {
+            method: {}
+            for method in ("tail_fly", "plain_tsvd_fly", "diagonal_only_fly")
+        }
         for ridge in ridges:
             solutions = {
                 "tail_fly": solve_tail_ridge(
-                    learner.svd.U, learner.svd.s, tail, learner.Q, ridge
+                    learner.svd.U, learner.svd.s, tail, learner.Q, ridge,
+                    solve_dtype=solver_dtype,
                 ),
                 "plain_tsvd_fly": solve_truncated_svd_ridge(
-                    learner.svd.U, learner.svd.s, learner.Q, ridge
+                    learner.svd.U, learner.svd.s, learner.Q, ridge,
+                    solve_dtype=solver_dtype,
                 ),
                 "diagonal_only_fly": solve_diagonal_ridge(
-                    learner.exact_diagonal, learner.Q, ridge
+                    learner.exact_diagonal, learner.Q, ridge,
+                    solve_dtype=solver_dtype,
                 ),
             }
             maximum_residual = max(
@@ -417,6 +446,8 @@ def _evaluate_rank(
                 solutions["diagonal_only_fly"].relative_residual,
             )
             for method, solution in solutions.items():
+                residuals[method][str(ridge)].append(solution.relative_residual)
+                task_residuals[method][str(ridge)] = solution.relative_residual
                 accuracy = _stage_code_accuracy(
                     solution.weights,
                     learner.class_ids,
@@ -440,6 +471,7 @@ def _evaluate_rank(
                     / max(float(learner.exact_diagonal.sum().item()), 1e-30)
                 ),
                 "maximum_solver_relative_residual": maximum_residual,
+                "solver_relative_residuals": task_residuals,
                 "resident_state_bytes": learner.persistent_state_bytes(),
                 "aggregate_checkpoint_bytes": learner.persistent_state_bytes(
                     include_classifier=False
@@ -491,6 +523,9 @@ def _evaluate_rank(
                     / len(stage_accuracy),
                     "stage_accuracy": stage_accuracy,
                     "persistent_state_bytes": state_bytes,
+                    "maximum_solver_relative_residual": max(
+                        residuals[method][ridge]
+                    ),
                     "uses_test_set": False,
                     "exemplar_free": True,
                 }
@@ -699,6 +734,7 @@ def run(args) -> dict:
         config["seed"],
         config["validation_fraction"],
     )
+    git_identity = _git_provenance()
     context = {
         "config_sha256": _sha256_file(config_path),
         "train_sha256": train_sha256,
@@ -706,6 +742,17 @@ def run(args) -> dict:
         "projection_sha256": projection_sha256,
         "training_indices_sha256": _sequence_sha256(training_parts),
         "validation_indices_sha256": _sequence_sha256(validation_parts),
+        "runner_git_commit": git_identity["git_commit"],
+        "runner_source_sha256": _sha256_file(Path(__file__).resolve()),
+        "solver_source_sha256": _sha256_file(
+            ROOT / "methods" / "tail_fly" / "solver.py"
+        ),
+        "learner_source_sha256": _sha256_file(
+            ROOT / "methods" / "tail_fly" / "learner.py"
+        ),
+        "streaming_svd_source_sha256": _sha256_file(
+            ROOT / "methods" / "tail_fly" / "streaming_svd.py"
+        ),
     }
     context_sha256 = _sha256_bytes(
         json.dumps(context, sort_keys=True).encode("utf-8")
@@ -797,6 +844,14 @@ def run(args) -> dict:
         and row["rank"] == selected["rank"]
         and row["ridge_lambda"] == selected["ridge_lambda"]
     )
+    best_plain = max(
+        (row for row in candidates if row["method"] == "plain_tsvd_fly"),
+        key=lambda row: (
+            row["validation_average_accuracy"],
+            -row["rank"],
+            -row["ridge_lambda"],
+        ),
+    )
     raw = max(
         (row for row in candidates if row["method"] == "raw_ridge"),
         key=lambda row: row["validation_average_accuracy"],
@@ -815,6 +870,10 @@ def run(args) -> dict:
             "validation_average_accuracy"
         ]
         - same_config_plain["validation_average_accuracy"],
+        "selected_tail_gain_over_best_plain_tsvd_pp": selected[
+            "validation_average_accuracy"
+        ]
+        - best_plain["validation_average_accuracy"],
         "selected_tail_gap_to_exact_fly_pp": exact[
             "validation_average_accuracy"
         ]
@@ -850,9 +909,13 @@ def run(args) -> dict:
         <= gates_config["maximum_state_fraction_of_exact_fly"],
         "heldout_test_remained_hidden": not test_path.exists(),
     }
+    if "minimum_gain_over_best_plain_tsvd_pp" in gates_config:
+        gates["beats_independently_selected_plain_tsvd"] = diagnostics[
+            "selected_tail_gain_over_best_plain_tsvd_pp"
+        ] >= gates_config["minimum_gain_over_best_plain_tsvd_pp"]
     decision = "REVIEW_CONFIRMATORY_PROTOCOL" if all(gates.values()) else "STOP_TAIL_FLY"
     provenance = {
-        **_git_provenance(),
+        **git_identity,
         "python": platform.python_version(),
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
@@ -883,6 +946,7 @@ def run(args) -> dict:
         },
         "selected": selected,
         "matched_plain_tsvd": same_config_plain,
+        "selected_plain_tsvd": best_plain,
         "selected_raw_ridge": raw,
         "exact_fly": exact,
         "candidates": candidates,

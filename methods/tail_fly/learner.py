@@ -41,6 +41,7 @@ class TAILFlyLearner:
         seed: int = 2025,
         device: str | torch.device = "cpu",
         dtype: torch.dtype = torch.float64,
+        solver_dtype: torch.dtype | None = None,
         projection: torch.Tensor | None = None,
     ) -> None:
         if feature_dim <= 0 or expand_dim <= 0 or synaptic_degree <= 0:
@@ -60,6 +61,9 @@ class TAILFlyLearner:
         self.seed = int(seed)
         self.device = torch.device(device)
         self.dtype = dtype
+        self.solver_dtype = dtype if solver_dtype is None else solver_dtype
+        if self.solver_dtype not in {torch.float32, torch.float64}:
+            raise ValueError("solver_dtype must be float32 or float64")
 
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(self.seed)
@@ -181,6 +185,7 @@ class TAILFlyLearner:
             tail,
             self.Q,
             self.ridge_lambda,
+            solve_dtype=self.solver_dtype,
         )
         self.weights = solution.weights
         retained_diagonal = low_rank_diagonal(self.svd.U, self.svd.s)
@@ -197,7 +202,7 @@ class TAILFlyLearner:
     def predict_logits_from_codes(self, codes: torch.Tensor) -> torch.Tensor:
         if self.weights is None:
             raise RuntimeError("update() must be called before prediction")
-        Z = codes.to(device=self.device, dtype=self.dtype)
+        Z = codes.to(device=self.device, dtype=self.weights.dtype)
         if Z.ndim != 2 or Z.shape[1] != self.expand_dim:
             raise ValueError(f"codes must have shape (B, {self.expand_dim})")
         return Z @ self.weights
@@ -261,7 +266,7 @@ class TAILFlyLearner:
     def state_dict(self) -> dict:
         """Serialize fixed model and aggregates; derived weights are rebuilt."""
         return {
-            "version": 1,
+            "version": 2,
             "method": "tail_fly",
             "feature_dim": self.feature_dim,
             "expand_dim": self.expand_dim,
@@ -270,6 +275,7 @@ class TAILFlyLearner:
             "max_rank": self.max_rank,
             "ridge_lambda": self.ridge_lambda,
             "seed": self.seed,
+            "solver_dtype": str(self.solver_dtype).removeprefix("torch."),
             "projection": self.flyhash.projection_matrix.detach().cpu(),
             "svd": self.svd.state_dict(),
             "exact_diagonal": self.exact_diagonal.detach().cpu().clone(),
@@ -279,7 +285,7 @@ class TAILFlyLearner:
         }
 
     def load_state_dict(self, state: dict) -> None:
-        if state.get("version") != 1 or state.get("method") != "tail_fly":
+        if state.get("version") not in {1, 2} or state.get("method") != "tail_fly":
             raise ValueError("unsupported TAIL-FLY checkpoint")
         for field in (
             "feature_dim",
@@ -292,6 +298,11 @@ class TAILFlyLearner:
         ):
             if state.get(field) != getattr(self, field):
                 raise ValueError(f"checkpoint configuration mismatch for {field}")
+        recorded_solver_dtype = state.get(
+            "solver_dtype", str(self.dtype).removeprefix("torch.")
+        )
+        if recorded_solver_dtype != str(self.solver_dtype).removeprefix("torch."):
+            raise ValueError("checkpoint configuration mismatch for solver_dtype")
         projection = state["projection"].to(device=self.device)
         if projection.layout != torch.sparse_csc:
             raise ValueError("checkpoint projection must be sparse CSC")

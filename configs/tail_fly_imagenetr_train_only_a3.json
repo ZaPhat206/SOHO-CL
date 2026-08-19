@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "study_id": "tail-fly-imagenetr-train-only-phase-a3-numerical-audit",
+  "dataset": "ImageNet-R",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 200,
+  "num_tasks": 20,
+  "validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "numerics": {
+    "solver_dtype": "float64"
+  },
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256,
+    "svd_update_batch_size": 256
+  },
+  "search": {
+    "ranks": [64, 128, 256],
+    "ridge_lambdas": [10000.0, 1000000.0, 100000000.0],
+    "raw_ridge_lambdas": [0.01, 0.1, 1.0]
+  },
+  "fly_control": {
+    "ridge_lower": 6,
+    "ridge_upper": 10,
+    "statistics_dtype": "float32"
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00001,
+    "minimum_tail_gain_over_plain_tsvd_pp": 0.2,
+    "minimum_gain_over_best_plain_tsvd_pp": 0.0,
+    "maximum_gap_to_exact_fly_pp": 0.5,
+    "minimum_gain_over_raw_ridge_pp": 0.0,
+    "maximum_state_fraction_of_exact_fly": 0.25
+  }
+}

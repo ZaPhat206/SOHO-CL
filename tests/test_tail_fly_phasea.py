@@ -8,8 +8,8 @@ import torch
 from tools import tail_fly_phasea
 
 
-def _config():
-    return {
+def _config(*, a3=False):
+    config = {
         "schema_version": 1,
         "study_id": "tail-fly-synthetic-train-only",
         "dataset": "Synthetic",
@@ -46,6 +46,12 @@ def _config():
             "maximum_state_fraction_of_exact_fly": 10.0,
         },
     }
+    if a3:
+        config["study_id"] = "tail-fly-synthetic-train-only-a3"
+        config["statistics_dtype"] = "float32"
+        config["numerics"] = {"solver_dtype": "float64"}
+        config["gates"]["minimum_gain_over_best_plain_tsvd_pp"] = -100.0
+    return config
 
 
 def _write_fixture(tmp_path: Path):
@@ -112,11 +118,45 @@ def test_train_only_runner_completes_and_resumes_without_test_access(tmp_path):
     assert code_metadata["contains_sample_level_codes"] is True
 
 
+def test_a3_runner_records_implementation_identity_and_per_method_residuals(tmp_path):
+    cache, config_path = _write_fixture(tmp_path)
+    config_path.write_text(json.dumps(_config(a3=True)), encoding="utf-8")
+    result = tail_fly_phasea.run(_args(tmp_path, cache, config_path))
+    assert result["selected_plain_tsvd"]["method"] == "plain_tsvd_fly"
+    assert "beats_independently_selected_plain_tsvd" in result["gates"]
+    context = result["provenance"]
+    for key in (
+        "runner_git_commit",
+        "runner_source_sha256",
+        "solver_source_sha256",
+        "learner_source_sha256",
+        "streaming_svd_source_sha256",
+    ):
+        assert context[key]
+    rank_unit = json.loads(
+        (tmp_path / "output" / "units" / "rank_3.json").read_text()
+    )
+    assert set(rank_unit["task_diagnostics"][0]["solver_relative_residuals"]) == {
+        "tail_fly",
+        "plain_tsvd_fly",
+        "diagonal_only_fly",
+    }
+    for candidate in rank_unit["candidates"]:
+        assert candidate["maximum_solver_relative_residual"] < 1e-5
+
+
 def test_runner_refuses_visible_heldout_file(tmp_path):
     cache, config_path = _write_fixture(tmp_path)
     torch.save({"features": torch.zeros(1, 7), "labels": torch.zeros(1)}, cache / "test.pt")
     with pytest.raises(RuntimeError, match="held-out file is visible"):
         tail_fly_phasea.run(_args(tmp_path, cache, config_path))
+
+
+def test_unit_resume_refuses_a_different_implementation_context(tmp_path):
+    path = tmp_path / "rank_64.json"
+    tail_fly_phasea._save_unit(path, "implementation-a", {"rank": 64})
+    with pytest.raises(RuntimeError, match="stale unit artifact"):
+        tail_fly_phasea._load_unit(path, "implementation-b")
 
 
 def test_config_is_strict_and_requires_repository_seed(tmp_path):

@@ -9,7 +9,7 @@ from methods.tail_fly import TAILFlyLearner
 DTYPE = torch.float64
 
 
-def _learner(*, rank=5, ridge=0.2, seed=2025):
+def _learner(*, rank=5, ridge=0.2, seed=2025, dtype=DTYPE, solver_dtype=None):
     return TAILFlyLearner(
         feature_dim=7,
         expand_dim=17,
@@ -18,7 +18,8 @@ def _learner(*, rank=5, ridge=0.2, seed=2025):
         max_rank=rank,
         ridge_lambda=ridge,
         seed=seed,
-        dtype=DTYPE,
+        dtype=dtype,
+        solver_dtype=solver_dtype,
     )
 
 
@@ -89,6 +90,38 @@ def test_checkpoint_round_trip_rebuilds_classifier_without_sample_rows():
     assert restored.svd.total_rows == 13
     for tensor in restored.persistent_tensors().values():
         assert 13 not in tensor.shape
+
+
+def test_mixed_precision_classifier_round_trip_and_logits():
+    learner = _learner(
+        rank=5, dtype=torch.float32, solver_dtype=torch.float64
+    )
+    codes = _codes(13, 108).float()
+    labels = torch.tensor([2, 4, 7, 2, 4, 7, 2, 4, 7, 2, 4, 7, 2])
+    learner.update_codes(codes, labels)
+    assert learner.exact_diagonal.dtype == torch.float32
+    assert learner.weights.dtype == torch.float64
+    expected = learner.predict_logits_from_codes(_codes(3, 109).float())
+    assert expected.dtype == torch.float64
+
+    restored = _learner(
+        rank=5, dtype=torch.float32, solver_dtype=torch.float64
+    )
+    restored.load_state_dict(learner.state_dict())
+    torch.testing.assert_close(
+        restored.predict_logits_from_codes(_codes(3, 109).float()), expected
+    )
+
+
+def test_version_one_checkpoint_defaults_solver_to_statistics_dtype():
+    learner = _learner(rank=4)
+    learner.update_codes(_codes(8, 110), torch.tensor([0, 1] * 4))
+    state = learner.state_dict()
+    state["version"] = 1
+    state.pop("solver_dtype")
+    restored = _learner(rank=4)
+    restored.load_state_dict(state)
+    torch.testing.assert_close(restored.weights, learner.weights)
 
 
 def test_projection_and_stream_are_deterministic_for_fixed_seed():

@@ -66,6 +66,26 @@ def test_woodbury_solution_matches_direct_solve():
     assert solution.relative_residual < 1e-10
 
 
+def test_float32_statistics_can_be_solved_consistently_in_float64():
+    rows = _wta_like(37, 29, 7, 101).to(torch.float32)
+    Q = torch.randn(29, 6, generator=torch.Generator().manual_seed(102))
+    sketch = StreamingTruncatedSVD(29, 9, dtype=torch.float32)
+    sketch.update(rows[:13])
+    sketch.update(rows[13:])
+    tail = diagonal_tail(rows.square().sum(0), sketch.U, sketch.s)
+    ridge = 0.13
+    solution = solve_tail_ridge(
+        sketch.U, sketch.s, tail, Q, ridge, solve_dtype=torch.float64
+    )
+    system = approximate_gram(
+        sketch.U.double(), sketch.s.double(), tail.double()
+    ) + ridge * torch.eye(29, dtype=torch.float64)
+    oracle = torch.linalg.solve(system, Q.double())
+    assert solution.weights.dtype == torch.float64
+    torch.testing.assert_close(solution.weights, oracle, atol=1e-10, rtol=1e-10)
+    assert solution.relative_residual < 1e-10
+
+
 def test_full_rank_tail_logits_equal_exact_fly_ridge():
     train = _wta_like(14, 21, 5, 17)
     test = _wta_like(8, 21, 5, 18)

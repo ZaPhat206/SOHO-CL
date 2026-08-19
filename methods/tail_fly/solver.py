@@ -84,23 +84,32 @@ def solve_tail_ridge(
     tail: torch.Tensor,
     Q: torch.Tensor,
     ridge_lambda: float,
+    *,
+    solve_dtype: torch.dtype | None = None,
 ) -> RidgeSolution:
     """Solve low-rank-plus-diagonal Ridge using a stable Woodbury system."""
     _validate(U, s, tail, Q)
     if ridge_lambda <= 0:
         raise ValueError("ridge_lambda must be positive")
-    threshold = torch.finfo(s.dtype).eps * max(
-        float(s.max().item()) if len(s) else 1.0, 1.0
-    ) * max(U.shape)
-    active = s > threshold
-    active_U, active_s = U[:, active], s[active]
-    diagonal = tail + ridge_lambda
-    base = Q / diagonal.unsqueeze(1)
+    working_dtype = U.dtype if solve_dtype is None else solve_dtype
+    if working_dtype not in {torch.float32, torch.float64}:
+        raise ValueError("solve_dtype must be float32 or float64")
+    work_U = U.to(working_dtype)
+    work_s = s.to(working_dtype)
+    work_tail = tail.to(working_dtype)
+    work_Q = Q.to(working_dtype)
+    threshold = torch.finfo(working_dtype).eps * max(
+        float(work_s.max().item()) if len(work_s) else 1.0, 1.0
+    ) * max(work_U.shape)
+    active = work_s > threshold
+    active_U, active_s = work_U[:, active], work_s[active]
+    diagonal = work_tail + ridge_lambda
+    base = work_Q / diagonal.unsqueeze(1)
     if active_s.numel():
         scaled = active_U * active_s.unsqueeze(0)
         diagonal_scaled = scaled / diagonal.unsqueeze(1)
         middle = torch.eye(
-            len(active_s), device=U.device, dtype=U.dtype
+            len(active_s), device=work_U.device, dtype=working_dtype
         ) + scaled.T @ diagonal_scaled
         factor = torch.linalg.cholesky((middle + middle.T) * 0.5)
         right = scaled.T @ base
@@ -109,7 +118,7 @@ def solve_tail_ridge(
     else:
         weights = base
     residual = _relative_residual(
-        weights, active_U, active_s, tail, Q, ridge_lambda
+        weights, active_U, active_s, work_tail, work_Q, ridge_lambda
     )
     return RidgeSolution(weights, residual, int(active_s.numel()))
 
@@ -118,10 +127,19 @@ def solve_diagonal_ridge(
     exact_diagonal: torch.Tensor,
     Q: torch.Tensor,
     ridge_lambda: float,
+    *,
+    solve_dtype: torch.dtype | None = None,
 ) -> RidgeSolution:
     empty_U = Q.new_empty((Q.shape[0], 0))
     empty_s = Q.new_empty((0,))
-    return solve_tail_ridge(empty_U, empty_s, exact_diagonal, Q, ridge_lambda)
+    return solve_tail_ridge(
+        empty_U,
+        empty_s,
+        exact_diagonal,
+        Q,
+        ridge_lambda,
+        solve_dtype=solve_dtype,
+    )
 
 
 def solve_truncated_svd_ridge(
@@ -129,20 +147,32 @@ def solve_truncated_svd_ridge(
     s: torch.Tensor,
     Q: torch.Tensor,
     ridge_lambda: float,
+    *,
+    solve_dtype: torch.dtype | None = None,
 ) -> RidgeSolution:
     """Projected TSVD-Ridge control that discards all orthogonal directions."""
     zeros = Q.new_zeros(Q.shape[0])
     _validate(U, s, zeros, Q)
     if ridge_lambda <= 0:
         raise ValueError("ridge_lambda must be positive")
-    if not len(s):
-        return RidgeSolution(torch.zeros_like(Q), 0.0, 0)
-    coefficients = (U.T @ Q) / (s.square() + ridge_lambda).unsqueeze(1)
-    weights = U @ coefficients
+    working_dtype = U.dtype if solve_dtype is None else solve_dtype
+    if working_dtype not in {torch.float32, torch.float64}:
+        raise ValueError("solve_dtype must be float32 or float64")
+    work_U = U.to(working_dtype)
+    work_s = s.to(working_dtype)
+    work_Q = Q.to(working_dtype)
+    if not len(work_s):
+        return RidgeSolution(torch.zeros_like(work_Q), 0.0, 0)
+    coefficients = (work_U.T @ work_Q) / (
+        work_s.square() + ridge_lambda
+    ).unsqueeze(1)
+    weights = work_U @ coefficients
     projected_residual = (
-        (s.square() + ridge_lambda).unsqueeze(1) * (U.T @ weights)
-        - U.T @ Q
+        (work_s.square() + ridge_lambda).unsqueeze(1) * (work_U.T @ weights)
+        - work_U.T @ work_Q
     )
-    denominator = max(float(torch.linalg.vector_norm(U.T @ Q).item()), 1.0)
+    denominator = max(
+        float(torch.linalg.vector_norm(work_U.T @ work_Q).item()), 1.0
+    )
     relative = float(torch.linalg.vector_norm(projected_residual).item()) / denominator
-    return RidgeSolution(weights, relative, len(s))
+    return RidgeSolution(weights, relative, len(work_s))
