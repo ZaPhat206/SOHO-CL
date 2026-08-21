@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-imagenetr-state-matched-d2",
+  "dataset": "ImageNet-R",
+  "model_name": "vit_base_patch16_224",
+  "feature_dim": 768,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 200,
+  "num_tasks": 20,
+  "validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "ridge_lambda": 1000000.0,
+  "representation": {
+    "expand_dim": 4518,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "reference_d1": {
+    "config_sha256": "f61da98c3d59d687ce10a4f9ecd5b2ec56251ad4d712130e55d33577a2685dde",
+    "runner_git_commit": "9adaafa2e3e86b8c0953232fe9a433edb3d5049d",
+    "train_sha256": "fcd0efadf52fbd08de11e41b51e16c1018994dd041b1327cb8eeec2ca76e0562",
+    "training_indices_sha256": "96dde4f1a39c1e0f8d023c061ccc95475ebc2f10d90f0478ad9b2f60262bf147",
+    "validation_indices_sha256": "defa0239a5927cdb0b837e25e37fa3694b5bbabc5e814eb06824a4dcde2a2a6f",
+    "srq_persistent_state_bytes": 105166628,
+    "srq_validation_average_accuracy": 77.93427659929384,
+    "srq_final_accuracy": 71.11969382994093
+  },
+  "expected_exact_state_bytes": 105149848,
+  "gates": {
+    "maximum_solver_relative_residual": 0.00001,
+    "maximum_state_mismatch_fraction": 0.001,
+    "minimum_srq_average_gain_pp": 0.1,
+    "minimum_srq_final_gain_pp": 0.0
+  }
+}
