@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-cub-d3-train-only-replication",
+  "dataset_identity": {
+    "dataset": "CUB-200-2011",
+    "dataset_version": "processed-imagefolder",
+    "dataset_identity_sha256": "e374af9b576cb6b3503198ef3ea30fd0aa9d2e18c230ff8064e21d4f644af2ca",
+    "class_mapping_sha256": "caf25ffd97632fcd7dc306425ce88cb5717e653e4d73ccab92c242c0c60ebf83",
+    "train_content_manifest_sha256": "7bddb46ccf7575d0e9ab8976c76a66a58c80dbb09d425bd64aaf5d16e1486f30",
+    "test_content_manifest_sha256": "465f45136552a2e57d9d7cc1a35b5b0ad7148ebebe6e85a502193695c6ca4b19",
+    "train_samples": 5994,
+    "test_samples": 5794
+  },
+  "model_name": "vit_base_patch16_224",
+  "feature_dim": 768,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 200,
+  "num_tasks": 20,
+  "outer_validation_fraction": 0.2,
+  "inner_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "raw_statistics_dtype": "float64",
+  "selection_lambdas": [10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0, 1000000000.0],
+  "raw_selection_lambdas": [0.001, 0.01, 0.1, 1.0, 10.0],
+  "large_representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "matched_representation": {
+    "expand_dim": 4518,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "storage": {
+    "block_size": 256,
+    "group_size": 64
+  },
+  "expected_state": {
+    "large_projection_nonzeros": 2999999,
+    "matched_projection_nonzeros": 1355400,
+    "exact_large_bytes": 452006940,
+    "srq_large_bytes": 105166628,
+    "exact_matched_bytes": 105149848
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00001,
+    "maximum_average_gap_to_exact_large_pp": 0.5,
+    "maximum_final_gap_to_exact_large_pp": 0.5,
+    "minimum_prediction_agreement": 0.98,
+    "maximum_state_fraction_of_exact_large": 0.25,
+    "maximum_state_mismatch_fraction": 0.001,
+    "minimum_average_gain_over_state_matched_fly_pp": 0.1,
+    "minimum_final_gain_over_state_matched_fly_pp": 0.0
+  }
+}
