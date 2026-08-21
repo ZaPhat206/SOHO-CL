@@ -1,5 +1,9 @@
 # SRQ-FLY D4 implementation record
 
+The real five-seed artifact has now been audited separately in
+`docs/research/SRQ_FLY_D4_CUB_RESULTS.md`. Its formal status is
+`STOP_SRQ_FLY_D4`; this implementation record does not relabel that outcome.
+
 D4 adds an isolated runner/config/test/notebook layer and does not modify
 existing FLY, SOHO, SRQ-FLY, feature-extractor, or dataset implementations.
 
