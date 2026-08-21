@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-cifar100-d5-train-only-selection",
+  "dataset": "CIFAR-100",
+  "dataset_version": "torchvision-cifar100",
+  "model_name": "vit_base_patch16_224",
+  "feature_dim": 768,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "train_samples": 50000,
+  "test_samples": 10000,
+  "outer_validation_fraction": 0.2,
+  "inner_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "raw_statistics_dtype": "float64",
+  "selection_lambdas": [100.0, 1000.0, 10000.0, 100000.0, 1000000.0],
+  "fixed_raw_ridge_lambda": 0.01,
+  "large_representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "matched_representation": {
+    "expand_dim": 4409,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "storage": {"block_size": 256, "group_size": 64},
+  "expected_state": {
+    "nominal_large_projection_entries": 3000000,
+    "nominal_matched_projection_entries": 1322700,
+    "maximum_missing_projection_entries": 10,
+    "nominal_exact_large_bytes": 444006552,
+    "nominal_srq_large_bytes": 97166240,
+    "nominal_exact_matched_bytes": 97163276
+  },
+  "gates": {
+    "maximum_inner_solver_relative_residual": 0.00002,
+    "maximum_outer_solver_relative_residual": 0.00001,
+    "maximum_average_gap_to_exact_large_pp": 0.5,
+    "maximum_final_gap_to_exact_large_pp": 0.5,
+    "minimum_prediction_agreement": 0.98,
+    "maximum_state_fraction_of_exact_large": 0.25,
+    "maximum_state_mismatch_fraction": 0.001
+  }
+}
