@@ -1,7 +1,7 @@
 # SRQ-FLY D2 state-match implementation record
 
-Status: exact state-matched control implemented and synthetically verified;
-real ImageNet-R D2 has not been run.
+Status: real ImageNet-R train-only control completed with `PASS_REVIEW_D2`;
+held-out evaluation remains unauthorized.
 
 ## Scope
 
@@ -48,8 +48,22 @@ D2 config SHA-256 is
 `e8c630b728f9b5f554fd94e6d450b3db4b2205d0d94a595095fa7ebdddcda197`
 and is bound identically in the Colab notebook and runbook.
 
-## Handoff
+## Real train-only result
 
-After commit and push of `feature/srq-fly-d2-state-match`, run cells 1 through 7
-of `notebooks/srq_fly_imagenetr_d2_state_match_colab.ipynb`. Return
-`srq_fly_imagenetr_d2_state_match.zip` and stop without held-out evaluation.
+The run used clean commit
+`b96150d39e4b73c9025d921920e93d7cd1895b95`. Evidence ZIP SHA-256 is
+`e0c2ef9f94b21cfcedadd9a0f7dbe05e9abae4e86b88593d42a90411d5afb033`;
+embedded `d2_results.json` SHA-256 is
+`a7f08b4608e9f571da7698bab35bf64d967a18f01b9b2e4818ad1ee99a535263`.
+Artifact context and unit hashes match, every D2 gate is true, and no held-out
+data was used.
+
+| Method | Validation AA | Task-20 accuracy | Persistent state |
+|---|---:|---:|---:|
+| SRQ-FLY-10000 (locked D1 reference) | 77.9343 | 71.1197 | 105,166,628 B |
+| exact FLY-4518 | 77.0141 | 70.0085 | 105,149,848 B |
+
+At matched state, SRQ gains 0.9201 percentage point in average accuracy and
+1.1112 points at task 20. This result does not convert the formally stopped D1
+study into a pass. It authorizes only the separately locked D2.1 nested
+lambda-robustness control; it does not authorize ImageNet-R test evaluation.

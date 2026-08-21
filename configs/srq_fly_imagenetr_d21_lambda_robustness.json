@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-imagenetr-d21-lambda-robustness",
+  "dataset": "ImageNet-R",
+  "model_name": "vit_base_patch16_224",
+  "feature_dim": 768,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seed": 2025,
+  "num_classes": 200,
+  "num_tasks": 20,
+  "outer_validation_fraction": 0.2,
+  "inner_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "selection_lambdas": [10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0, 1000000000.0],
+  "representation": {
+    "expand_dim": 4518,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "reference_d2": {
+    "result_sha256": "a7f08b4608e9f571da7698bab35bf64d967a18f01b9b2e4818ad1ee99a535263",
+    "config_sha256": "e8c630b728f9b5f554fd94e6d450b3db4b2205d0d94a595095fa7ebdddcda197",
+    "runner_git_commit": "b96150d39e4b73c9025d921920e93d7cd1895b95",
+    "train_sha256": "fcd0efadf52fbd08de11e41b51e16c1018994dd041b1327cb8eeec2ca76e0562",
+    "outer_training_indices_sha256": "96dde4f1a39c1e0f8d023c061ccc95475ebc2f10d90f0478ad9b2f60262bf147",
+    "outer_validation_indices_sha256": "defa0239a5927cdb0b837e25e37fa3694b5bbabc5e814eb06824a4dcde2a2a6f",
+    "srq_persistent_state_bytes": 105166628,
+    "srq_validation_average_accuracy": 77.93427659929384,
+    "srq_final_accuracy": 71.11969382994093,
+    "d2_exact_validation_average_accuracy": 77.01414388140533,
+    "d2_exact_final_accuracy": 70.0084700193222,
+    "d2_exact_persistent_state_bytes": 105149848
+  },
+  "expected_exact_state_bytes": 105149848,
+  "gates": {
+    "maximum_solver_relative_residual": 0.00001,
+    "maximum_state_mismatch_fraction": 0.001,
+    "minimum_srq_average_gain_pp": 0.1,
+    "minimum_srq_final_gain_pp": 0.0
+  }
+}
