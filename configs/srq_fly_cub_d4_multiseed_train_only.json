@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-cub-d4-five-fresh-seed-train-only",
+  "dataset_identity": {
+    "dataset": "CUB-200-2011",
+    "dataset_version": "processed-imagefolder",
+    "dataset_identity_sha256": "e374af9b576cb6b3503198ef3ea30fd0aa9d2e18c230ff8064e21d4f644af2ca",
+    "class_mapping_sha256": "caf25ffd97632fcd7dc306425ce88cb5717e653e4d73ccab92c242c0c60ebf83",
+    "train_content_manifest_sha256": "7bddb46ccf7575d0e9ab8976c76a66a58c80dbb09d425bd64aaf5d16e1486f30",
+    "test_content_manifest_sha256": "465f45136552a2e57d9d7cc1a35b5b0ad7148ebebe6e85a502193695c6ca4b19",
+    "train_samples": 5994,
+    "test_samples": 5794
+  },
+  "model_name": "vit_base_patch16_224",
+  "feature_dim": 768,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "seeds": [2026, 2027, 2028, 2029, 2030],
+  "num_classes": 200,
+  "num_tasks": 20,
+  "outer_validation_fraction": 0.2,
+  "inner_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "raw_statistics_dtype": "float64",
+  "fixed_fly_ridge_lambda": 100000.0,
+  "raw_selection_lambdas": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0],
+  "large_representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "matched_representation": {
+    "expand_dim": 4518,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "storage": {"block_size": 256, "group_size": 64},
+  "expected_state": {
+    "nominal_large_projection_entries": 3000000,
+    "nominal_matched_projection_entries": 1355400,
+    "maximum_missing_projection_entries": 10,
+    "nominal_exact_large_bytes": 452006952,
+    "nominal_srq_large_bytes": 105166640,
+    "nominal_exact_matched_bytes": 105149848
+  },
+  "reference_d3": {
+    "artifact_sha256": "4d2104c80e3f5fa125839f7723ac86126fbb0395c53b7307a9de1a349b8f380a",
+    "result_sha256": "f172d508c14fd95e7dcece5cd22c04a8e9f88c35c638fa140b476ebf6d4e6f4b",
+    "config_sha256": "26926c625aa6dbebf7271a4767d73a56e9bfe3bf0e139edca012977789dec772",
+    "runner_git_commit": "4cb65d756febd3e90382c47b236a7031462ede4a",
+    "train_sha256": "b58dd541f35450d926e1c82826d6491665ca55920a0d5627e2153b65d2015688",
+    "status": "STOP_SRQ_FLY_D3",
+    "selected_fly_ridge_lambda": 100000.0,
+    "srq_average_accuracy": 91.75643521301483,
+    "srq_final_accuracy": 87.52824858757063,
+    "srq_persistent_state_bytes": 105166628,
+    "matched_average_accuracy": 91.51473366593304,
+    "matched_final_accuracy": 86.93926553672317,
+    "matched_persistent_state_bytes": 105149848
+  },
+  "gates": {
+    "maximum_search_candidate_solver_relative_residual": 0.00002,
+    "maximum_outer_solver_relative_residual": 0.00001,
+    "maximum_average_gap_to_exact_large_pp": 0.5,
+    "maximum_final_gap_to_exact_large_pp": 0.5,
+    "minimum_prediction_agreement": 0.98,
+    "maximum_state_fraction_of_exact_large": 0.25,
+    "maximum_state_mismatch_fraction": 0.001,
+    "minimum_mean_average_gain_over_state_matched_fly_pp": 0.1,
+    "minimum_median_average_gain_over_state_matched_fly_pp": 0.1,
+    "minimum_mean_final_gain_over_state_matched_fly_pp": 0.0,
+    "minimum_seed_win_fraction": 0.8,
+    "maximum_worst_seed_average_loss_pp": 0.25
+  }
+}
