@@ -122,7 +122,7 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q tests/test_srq_fly_selfcontained.py tests/test_srq_fly_heldout.py tests/test_srq_fly_math.py tests/test_srq_fly_learner.py
 ```
 
-Result: `35 passed, 19 warnings in 7.17s`. This gate checks the immutable
+Result: `36 passed, 19 warnings in 8.45s`. This gate checks the immutable
 protocol and source hashes, disjoint nested partitions, refusal of a visible
 `test.pt`, train-only selection, boundary-lambda stopping, authorization
 binding, output aggregation, and compilation of every notebook code cell.
@@ -134,5 +134,5 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q
 ```
 
-Result: `284 passed, 20 warnings in 26.71s`. The warnings are the existing
+Result: `285 passed, 20 warnings in 24.88s`. The warnings are the existing
 PyTorch JIT deprecations and sparse CSC/invariant notices; no test failed.

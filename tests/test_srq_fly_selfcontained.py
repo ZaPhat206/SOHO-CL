@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,13 @@ def test_protocol_locks_grid_and_independent_random_sources():
     )
     assert all(item["class_order_seed"] != item["projection_seed"] for item in development + heldout)
     assert protocol["final_evaluation"]["methods"] == list(final.METHODS)
+
+
+def test_repository_does_not_track_generated_python_bytecode():
+    tracked = subprocess.check_output(
+        ["git", "ls-files"], cwd=ROOT, text=True
+    ).splitlines()
+    assert not [path for path in tracked if "__pycache__" in path or path.endswith(".pyc")]
 
 
 def test_nested_split_is_stratified_disjoint_and_complete():
