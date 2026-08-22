@@ -1,5 +1,10 @@
 # SRQ-FLY held-out protocol draft
 
+> **Superseded historical draft.** The active project-owner-authorized
+> protocol, immutable identities and executable notebook are recorded in
+> `SRQ_FLY_HELDOUT_PROTOCOL.md`. Pending values and blockers below describe
+> the earlier review state and are retained only as an audit trail.
+
 Status: **DRAFT FOR INDEPENDENT REVIEW — HELD-OUT EVALUATION IS NOT
 AUTHORIZED.** This file creates no experiment permission and no executable
 test runner. CUB and ImageNet-R test features must remain unopened.

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-selfcontained-three-dataset-v1",
+  "backbone": {
+    "hf_model_id": "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k",
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_size": 346284714,
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "method_identity": {
+    "learner_sha256": "5a1ee62022b98f6334c0c371087ffeb6512699f99c36fa4057db40c6219ac206",
+    "storage_sha256": "c095ecf98bdd991950998e41018c2b2a0ce13b7d16586cdac14143cea7c16c25",
+    "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb"
+  },
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256,
+    "block_size": 256,
+    "group_size": 64,
+    "statistics_dtype": "float32",
+    "solver_dtype": "float32",
+    "raw_statistics_dtype": "float64"
+  },
+  "selection": {
+    "split_seed": 2025,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_grid": [
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0,
+      1000.0,
+      10000.0,
+      100000.0,
+      1000000.0,
+      10000000.0,
+      100000000.0
+    ],
+    "development_replicates": [
+      {"class_order_seed": 2025, "projection_seed": 4201},
+      {"class_order_seed": 2026, "projection_seed": 4202},
+      {"class_order_seed": 2027, "projection_seed": 4203}
+    ],
+    "fly_family_score": "mean of exact-FLY and SRQ-FLY inner-validation AIA",
+    "raw_score": "raw-Ridge inner-validation AIA",
+    "tie_break": "maximum mean AIA, then larger lambda",
+    "boundary_policy": "stop before test when the selected lambda is a grid endpoint",
+    "maximum_solver_relative_residual": 0.00001
+  },
+  "final_evaluation": {
+    "replicates": [
+      {"class_order_seed": 3031, "projection_seed": 5031},
+      {"class_order_seed": 3032, "projection_seed": 5032},
+      {"class_order_seed": 3033, "projection_seed": 5033},
+      {"class_order_seed": 3034, "projection_seed": 5034},
+      {"class_order_seed": 3035, "projection_seed": 5035},
+      {"class_order_seed": 3036, "projection_seed": 5036}
+    ],
+    "test_tuning_allowed": false,
+    "accuracy_based_early_stop": false,
+    "confidence_level": 0.95,
+    "methods": ["exact_fly_10000", "srq_fly_10000", "raw_ridge"]
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "dataset_version": "torchvision-cifar100",
+      "num_classes": 100,
+      "num_tasks": 10,
+      "train_samples": 50000,
+      "test_samples": 10000
+    },
+    "cub200": {
+      "dataset": "CUB-200-2011",
+      "dataset_version": "processed-imagefolder",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 5994,
+      "test_samples": 5794,
+      "dataset_identity_sha256": "e374af9b576cb6b3503198ef3ea30fd0aa9d2e18c230ff8064e21d4f644af2ca",
+      "class_mapping_sha256": "caf25ffd97632fcd7dc306425ce88cb5717e653e4d73ccab92c242c0c60ebf83",
+      "train_content_manifest_sha256": "7bddb46ccf7575d0e9ab8976c76a66a58c80dbb09d425bd64aaf5d16e1486f30",
+      "test_content_manifest_sha256": "465f45136552a2e57d9d7cc1a35b5b0ad7148ebebe6e85a502193695c6ca4b19"
+    },
+    "imagenetr": {
+      "dataset": "ImageNet-R",
+      "dataset_version": "legacy-processed-imagefolder",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 23918,
+      "test_samples": 6082,
+      "dataset_identity_sha256": "3f3d963b2b0c245ceabc0166c8b1c64d624c2ea31df07ee6ffdbf4cab5f7739d",
+      "class_mapping_sha256": "dd62e9413ab14ffe4f41035d8dc0c9ba29f07d7c2463bed436a1d1056e6ad385",
+      "train_content_manifest_sha256": "98e87cec5777a9b84fc16a27c2f700c9126bcd5872b88d385ef1fc08c7a2b0c5",
+      "test_content_manifest_sha256": "c24d414ffb410e77943100f249a7b24f7a5c48917b63831b8cb27c1747356609",
+      "cross_split_duplicate_content_count": 19,
+      "cross_split_conflicting_label_duplicate_count": 18
+    }
+  }
+}

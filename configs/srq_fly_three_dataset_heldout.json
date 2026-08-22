@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-three-dataset-heldout-v1",
+  "single_use_protocol": true,
+  "seeds": [2025, 2026, 2027, 2028, 2029, 2030],
+  "backbone": {
+    "hf_model_id": "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k",
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_size": 346284714,
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit",
+    "input_size": [3, 224, 224],
+    "interpolation": "bicubic",
+    "crop": "center",
+    "mean": [0.5, 0.5, 0.5],
+    "std": [0.5, 0.5, 0.5]
+  },
+  "method_identity": {
+    "learner_sha256": "5a1ee62022b98f6334c0c371087ffeb6512699f99c36fa4057db40c6219ac206",
+    "storage_sha256": "c095ecf98bdd991950998e41018c2b2a0ce13b7d16586cdac14143cea7c16c25",
+    "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb"
+  },
+  "representation": {
+    "large_expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256,
+    "block_size": 256,
+    "group_size": 64,
+    "statistics_dtype": "float32",
+    "solver_dtype": "float32",
+    "raw_statistics_dtype": "float64"
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "dataset_version": "torchvision-cifar100",
+      "num_classes": 100,
+      "num_tasks": 10,
+      "train_samples": 50000,
+      "test_samples": 10000,
+      "matched_expand_dim": 4409,
+      "fly_ridge_lambda": 1000000.0,
+      "raw_ridge_lambda": 0.01,
+      "nominal_exact_large_bytes": 444006552,
+      "nominal_srq_large_bytes": 97166240,
+      "nominal_exact_matched_bytes": 97163276,
+      "maximum_missing_projection_entries": 10,
+      "train_only_evidence": {
+        "artifact_name": "srq_fly_cifar_d5_train_only.zip",
+        "artifact_size": 9829,
+        "artifact_sha256": "fca77cd948bcb1ad59ea52efd71d79fad42d8de763559177e15aea206a8d2ca9",
+        "result_member": "d5_results.json",
+        "status": "PASS_REVIEW_CIFAR_D5",
+        "uses_test_set": false,
+        "selected_fly_ridge_lambda": 1000000.0,
+        "selected_raw_ridge_lambda": 0.01,
+        "provenance_note": "critical source/config hashes match commit db07f02; artifact records a dirty worktree"
+      }
+    },
+    "cub200": {
+      "dataset": "CUB-200-2011",
+      "dataset_version": "processed-imagefolder",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 5994,
+      "test_samples": 5794,
+      "matched_expand_dim": 4518,
+      "fly_ridge_lambda": 100000.0,
+      "raw_ridge_lambda": 100.0,
+      "nominal_exact_large_bytes": 452006952,
+      "nominal_srq_large_bytes": 105166640,
+      "nominal_exact_matched_bytes": 105149848,
+      "maximum_missing_projection_entries": 10,
+      "dataset_identity_sha256": "e374af9b576cb6b3503198ef3ea30fd0aa9d2e18c230ff8064e21d4f644af2ca",
+      "class_mapping_sha256": "caf25ffd97632fcd7dc306425ce88cb5717e653e4d73ccab92c242c0c60ebf83",
+      "train_content_manifest_sha256": "7bddb46ccf7575d0e9ab8976c76a66a58c80dbb09d425bd64aaf5d16e1486f30",
+      "test_content_manifest_sha256": "465f45136552a2e57d9d7cc1a35b5b0ad7148ebebe6e85a502193695c6ca4b19",
+      "train_only_evidence": {
+        "artifact_name": "srq_fly_cub_d4_multiseed_train_only.zip",
+        "artifact_size": 102573,
+        "artifact_sha256": "6b65500e1d1dccb631f02d5c2016e55451f47762518a175dde7a40d6431c7fa1",
+        "result_member": "d4_results.json",
+        "status": "STOP_SRQ_FLY_D4",
+        "uses_test_set": false,
+        "selected_fly_ridge_lambda": 100000.0,
+        "selected_raw_ridge_lambda": 100.0,
+        "provenance_note": "formal stop was the preregistered every-seed prediction-agreement gate; accuracy/state hypotheses remained supported"
+      }
+    },
+    "imagenetr": {
+      "dataset": "ImageNet-R",
+      "dataset_version": "legacy-processed-imagefolder",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 23918,
+      "test_samples": 6082,
+      "matched_expand_dim": 4518,
+      "fly_ridge_lambda": 1000000.0,
+      "raw_ridge_lambda": 0.01,
+      "nominal_exact_large_bytes": 452006952,
+      "nominal_srq_large_bytes": 105166640,
+      "nominal_exact_matched_bytes": 105149848,
+      "maximum_missing_projection_entries": 10,
+      "dataset_identity_sha256": "3f3d963b2b0c245ceabc0166c8b1c64d624c2ea31df07ee6ffdbf4cab5f7739d",
+      "class_mapping_sha256": "dd62e9413ab14ffe4f41035d8dc0c9ba29f07d7c2463bed436a1d1056e6ad385",
+      "train_content_manifest_sha256": "98e87cec5777a9b84fc16a27c2f700c9126bcd5872b88d385ef1fc08c7a2b0c5",
+      "test_content_manifest_sha256": "c24d414ffb410e77943100f249a7b24f7a5c48917b63831b8cb27c1747356609",
+      "cross_split_duplicate_content_count": 19,
+      "cross_split_conflicting_label_duplicate_count": 18,
+      "train_only_evidence": {
+        "artifact_name": "srq_fly_imagenetr_d21_lambda_robustness.zip",
+        "artifact_size": 9949,
+        "artifact_sha256": "c41f681a8b6b69e032b9df765f801888707761dd3ee6354d860df7669b88ddae",
+        "result_member": "d21_results.json",
+        "status": "PASS_REVIEW_D21",
+        "uses_test_set": false,
+        "selected_fly_ridge_lambda": 1000000.0,
+        "selected_raw_ridge_lambda": 0.01,
+        "provenance_note": "evaluation is a disclosed legacy processed-split result, not a content-disjoint held-out benchmark"
+      },
+      "raw_ridge_train_only_evidence": {
+        "artifact_name": "srq_fly_imagenetr_d1_train_only.zip",
+        "artifact_size": 14869,
+        "artifact_sha256": "1fc26111c885bdf8c2c5056f360d6eef2acbe368da23c6e9bce8b4998f05d63c",
+        "result_member": "d1_results.json",
+        "status": "STOP_SRQ_FLY_D1",
+        "uses_test_set": false,
+        "selected_raw_ridge_lambda": 0.01,
+        "provenance_note": "formal D1 stop is retained; this artifact is used only to bind the pre-test raw-Ridge lambda"
+      }
+    }
+  },
+  "reporting": {
+    "maximum_solver_relative_residual": 0.00001,
+    "confidence_level": 0.95,
+    "report_every_seed": true,
+    "accuracy_based_early_stop": false,
+    "test_tuning_allowed": false,
+    "primary_methods": [
+      "exact_fly_10000",
+      "srq_fly_10000",
+      "exact_fly_state_matched",
+      "raw_ridge"
+    ]
+  }
+}

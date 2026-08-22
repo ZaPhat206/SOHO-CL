@@ -1,7 +1,7 @@
 # SRQ-FLY D5: CIFAR-100 train-only selection protocol
 
-Status: **implementation complete; real train-only execution pending. Held-out
-test is not authorized.**
+Status: **real train-only execution completed with `PASS_REVIEW_CIFAR_D5`;
+the separately locked three-dataset protocol now governs held-out use.**
 
 ## Purpose
 
@@ -72,5 +72,7 @@ are sample-level experiment infrastructure and are not learner state.
 
 A `PASS_REVIEW_CIFAR_D5` means selection, numerical, paired-fidelity and state
 accounting checks passed. It does not mean SRQ beats FLY and does not authorize
-test evaluation by itself. A stop result is returned unchanged for review;
+test evaluation by itself. The reviewed ZIP SHA-256 is
+`fca77cd948bcb1ad59ea52efd71d79fad42d8de763559177e15aea206a8d2ca9`;
+it selected `lambda=1e6`. A stop result is returned unchanged for review;
 hyperparameters must not be edited after seeing outer-validation metrics.

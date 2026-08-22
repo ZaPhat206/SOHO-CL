@@ -34,6 +34,38 @@ After adding fail-closed handling for a numerically invalid fixed-Ridge inner
 candidate, two more synthetic tests were added. Latest result:
 `265 passed, 20 warnings in 28.40s`.
 
+After adding the immutable three-dataset held-out manifest, single-use
+authorization, test-only extractor, multi-seed evaluator and notebook checks,
+the exact full-suite command was rerun. Latest result:
+`277 passed, 20 warnings in 21.65s`.
+
+## Three-dataset held-out runner tests
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q tests/test_srq_fly_heldout.py
+```
+
+Result: `12 passed, 19 warnings in 5.31s`. Tests cover manifest/source
+identity, real train-only evidence semantics, refusal of test-contaminated
+selection evidence, idempotent authorization, metric definitions, persistent
+sample-state rejection, realized sparse-state accounting, paired SRQ/exact
+evaluation, state-matched and raw controls, test-cache authorization,
+aggregation without an accuracy gate, and compilation/hash binding of every
+Colab code cell.
+
+The real train-only ZIPs were verified read-only with:
+
+```powershell
+python -u tools/srq_fly_heldout.py verify-selection `
+  --manifest configs/srq_fly_three_dataset_heldout.json `
+  --artifact-dir C:\Users\Admin\Downloads
+```
+
+All four artifacts matched their locked sizes, SHA-256 identities, statuses,
+`uses_test_set=false` contracts and selected Ridge values. No held-out feature
+or dataset was opened by local validation.
+
 ## CIFAR D5 train-only gate tests
 
 ```powershell
@@ -79,3 +111,28 @@ bytes. The audited runtime values are 12 bytes lower because the realized CSC
 projection stores 2,999,999 rather than the nominal 3,000,000 nonzeros. The
 proof appendix therefore uses the actual stored nonzero count \(\nu\), not an
 unqualified \(ms\), in its exact byte equation.
+
+## Self-contained final-notebook tests
+
+The notebook that performs train-only nested selection before the first
+three-dataset test run was checked with:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q tests/test_srq_fly_selfcontained.py tests/test_srq_fly_heldout.py tests/test_srq_fly_math.py tests/test_srq_fly_learner.py
+```
+
+Result: `35 passed, 19 warnings in 7.17s`. This gate checks the immutable
+protocol and source hashes, disjoint nested partitions, refusal of a visible
+`test.pt`, train-only selection, boundary-lambda stopping, authorization
+binding, output aggregation, and compilation of every notebook code cell.
+
+The exact full-suite command was then rerun:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q
+```
+
+Result: `284 passed, 20 warnings in 26.71s`. The warnings are the existing
+PyTorch JIT deprecations and sparse CSC/invariant notices; no test failed.
