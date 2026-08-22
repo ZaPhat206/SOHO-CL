@@ -137,3 +137,35 @@ def test_d5_rejects_non_closest_state_match(tmp_path):
 
     with pytest.raises(ValueError, match="closest non-exceeding"):
         d5._read_config(path)
+
+
+def test_expected_inner_cholesky_failure_is_recorded_not_regularized():
+    def fail():
+        raise RuntimeError("fixed-Ridge control Cholesky failed")
+
+    result = d5._evaluate_inner_candidate(
+        fail, name="inner_lambda_100", ridge_lambda=100.0
+    )
+
+    assert result == {
+        "method": "inner_lambda_100",
+        "status": "solver_failed",
+        "ridge_lambda": 100.0,
+        "failure": "RuntimeError: fixed-Ridge control Cholesky failed",
+        "uses_test_set": False,
+        "exemplar_free": True,
+    }
+    assert d5._validate_inner_candidate(
+        result, name="inner_lambda_100", ridge_lambda=100.0,
+        num_tasks=10, expected_state_bytes=1,
+    ) is False
+
+
+def test_unexpected_runtime_error_is_not_silenced():
+    def fail():
+        raise RuntimeError("CUDA out of memory")
+
+    with pytest.raises(RuntimeError, match="CUDA out of memory"):
+        d5._evaluate_inner_candidate(
+            fail, name="inner_lambda_100", ridge_lambda=100.0
+        )

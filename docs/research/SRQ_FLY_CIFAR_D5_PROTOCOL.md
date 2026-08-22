@@ -22,6 +22,10 @@ exceed SRQ-FLY's `97,166,240` bytes. `m=4,410` exceeds that budget.
 - inner validation fraction: `0.20` of outer-fit;
 - FLY/SRQ lambda grid: `100, 1e3, 1e4, 1e5, 1e6`;
 - tie-break: maximum inner average incremental accuracy, then smaller lambda;
+- a candidate whose unchanged float32 system fails the fixed-Ridge Cholesky
+  check is recorded as `solver_failed` and is ineligible for selection; the
+  runner must not add jitter, change its lambda, or silence any other runtime
+  error;
 - selected lambda is shared by exact FLY-10,000, SRQ-FLY-10,000 and
   FLY-4,409;
 - raw Ridge uses the existing locked CIFAR value `0.01` from the Phase H
@@ -30,6 +34,11 @@ exceed SRQ-FLY's `97,166,240` bytes. `m=4,410` exceeds that budget.
 The outer validation partition is used only once after selection. The test
 cache must be absent, and the result always records
 `held_out_test_authorized=false`.
+
+The failure-handling rule above was added after the first real D5 invocation
+encountered a Cholesky exception at `lambda=100`. That invocation exposed no
+candidate accuracy and never reached outer validation. The locked grid was
+not changed; the failed value remains in the evidence artifact.
 
 ## Locked identities
 

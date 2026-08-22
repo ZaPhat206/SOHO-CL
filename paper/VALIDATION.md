@@ -30,6 +30,10 @@ After adding the CIFAR D5 train-only selection runner and four synthetic
 tests, the exact command was rerun. Latest result:
 `263 passed, 20 warnings in 58.14s`.
 
+After adding fail-closed handling for a numerically invalid fixed-Ridge inner
+candidate, two more synthetic tests were added. Latest result:
+`265 passed, 20 warnings in 28.40s`.
+
 ## CIFAR D5 train-only gate tests
 
 ```powershell
@@ -37,7 +41,9 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m pytest -q tests/test_srq_fly_cifar_selection.py tests/test_srq_fly_math.py tests/test_srq_fly_learner.py
 ```
 
-Result: `20 passed, 20 warnings in 21.44s`. The warnings are the existing
+Initial result: `20 passed, 20 warnings in 21.44s`. After the failed-candidate
+contract tests were added, the result was
+`22 passed, 20 warnings in 8.38s`. The warnings are the existing
 PyTorch JIT deprecations and sparse CSC/invariant notices. The synthetic
 end-to-end test verifies selection, paired exact/SRQ evaluation, state
 accounting, resume behavior, and refusal of a visible `test.pt`.

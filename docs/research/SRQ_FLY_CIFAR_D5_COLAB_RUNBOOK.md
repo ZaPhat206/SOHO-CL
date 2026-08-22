@@ -12,6 +12,8 @@ Use `notebooks/srq_fly_cifar_d5_train_only_colab.ipynb` on a Colab T4 GPU.
 5. Cell 6 prints bounded progress:
    - `WTA CACHE`: one-time/resumable code encoding;
    - `INNER START/DONE` and `TASK`: five lambda candidates;
+   - `INNER FAILED`: a recorded numerically invalid candidate; the grid is not
+     edited and the runner continues only to already-locked candidates;
    - `OUTER START/DONE`: locked paired controls.
 6. Cell 7 downloads `srq_fly_cifar_d5_train_only.zip`. Return that ZIP for
    audit and stop.

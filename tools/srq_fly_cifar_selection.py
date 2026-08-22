@@ -220,6 +220,44 @@ def _runtime_state(config: dict, large_projection: torch.Tensor, matched_project
     }
 
 
+def _evaluate_inner_candidate(evaluator, *, name: str, ridge_lambda: float) -> dict:
+    """Record an expected fixed-Ridge Cholesky failure without changing lambda."""
+    try:
+        return evaluator()
+    except RuntimeError as error:
+        if "fixed-Ridge control Cholesky failed" not in str(error):
+            raise
+        return {
+            "method": name,
+            "status": "solver_failed",
+            "ridge_lambda": float(ridge_lambda),
+            "failure": f"{type(error).__name__}: {error}",
+            "uses_test_set": False,
+            "exemplar_free": True,
+        }
+
+
+def _validate_inner_candidate(
+    result: dict, *, name: str, ridge_lambda: float, num_tasks: int,
+    expected_state_bytes: int,
+) -> bool:
+    if result.get("status") == "solver_failed":
+        if (
+            result.get("method") != name
+            or float(result.get("ridge_lambda", -1)) != float(ridge_lambda)
+            or result.get("uses_test_set") is not False
+            or result.get("exemplar_free") is not True
+            or "fixed-Ridge control Cholesky failed" not in result.get("failure", "")
+        ):
+            raise ValueError(f"invalid failed-candidate contract for {name}")
+        return False
+    d3._validate_result(
+        result, name=name, ridge_lambda=ridge_lambda, num_tasks=num_tasks,
+        expected_state_bytes=expected_state_bytes,
+    )
+    return True
+
+
 def run(args) -> dict:
     config_path = Path(args.config).resolve()
     cache_dir = Path(args.feature_cache_dir).resolve()
@@ -276,30 +314,47 @@ def run(args) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
     candidates = []
+    stable_candidates = []
     for index, ridge_lambda in enumerate(map(float, config["selection_lambdas"])):
         name = d3._candidate_name("cifar_fly10000", index, ridge_lambda)
         path = _unit_path(output_dir, name)
         result = _load_unit(path, context_sha)
         if result is None:
             print(f"INNER START lambda={ridge_lambda:g}", flush=True)
-            result = _save_unit(path, context_sha, d3._evaluate_exact(
-                name=name, ridge_lambda=ridge_lambda, config=config,
-                representation=config["large_representation"], train=train,
-                code_indices=large[0], code_values=large[1], projection=large[3],
-                training_parts=inner_fit, validation_parts=inner_validation,
-                device=device,
-            ))
-            print(
-                f"INNER DONE lambda={ridge_lambda:g} "
-                f"AA={result['validation_average_accuracy']:.6f}", flush=True,
+            result = _save_unit(
+                path, context_sha,
+                _evaluate_inner_candidate(
+                    lambda: d3._evaluate_exact(
+                        name=name, ridge_lambda=ridge_lambda, config=config,
+                        representation=config["large_representation"], train=train,
+                        code_indices=large[0], code_values=large[1], projection=large[3],
+                        training_parts=inner_fit, validation_parts=inner_validation,
+                        device=device,
+                    ),
+                    name=name, ridge_lambda=ridge_lambda,
+                ),
             )
-        d3._validate_result(
+            if result["status"] == "solver_failed":
+                print(
+                    f"INNER FAILED lambda={ridge_lambda:g} reason=fixed-Ridge-Cholesky",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"INNER DONE lambda={ridge_lambda:g} "
+                    f"AA={result['validation_average_accuracy']:.6f}", flush=True,
+                )
+        stable = _validate_inner_candidate(
             result, name=name, ridge_lambda=ridge_lambda,
             num_tasks=config["num_tasks"],
             expected_state_bytes=runtime_state["exact_large_bytes"],
         )
         candidates.append(result)
-    selected = d3._choose_candidate(candidates)
+        if stable:
+            stable_candidates.append(result)
+    if not stable_candidates:
+        raise RuntimeError("no numerically valid inner Ridge candidate")
+    selected = d3._choose_candidate(stable_candidates)
     selection = {
         "schema_version": 1,
         "protocol": "nested inner split of CIFAR-100 training data only",
@@ -308,6 +363,11 @@ def run(args) -> dict:
         "selected_fly_and_srq_lambda": selected["ridge_lambda"],
         "fixed_raw_ridge_lambda": config["fixed_raw_ridge_lambda"],
         "candidates": candidates,
+        "numerically_valid_candidate_count": len(stable_candidates),
+        "failed_candidate_lambdas": [
+            item["ridge_lambda"] for item in candidates
+            if item["status"] == "solver_failed"
+        ],
     }
     selection_path = output_dir / "lambda_selection.json"
     _atomic_json(selection_path, selection)
@@ -375,7 +435,7 @@ def run(args) -> dict:
         config["fixed_raw_ridge_lambda"],
     )
     residuals = [
-        *(float(item["maximum_solver_relative_residual"]) for item in candidates),
+        *(float(item["maximum_solver_relative_residual"]) for item in stable_candidates),
         float(exact["maximum_solver_relative_residual"]),
         float(srq["maximum_solver_relative_residual"]),
         float(matched_result["maximum_solver_relative_residual"]),
@@ -392,8 +452,9 @@ def run(args) -> dict:
         "outer_validation_not_used_for_selection": True,
         "heldout_test_remained_hidden": not (cache_dir / "test.pt").exists(),
         "projection_prefix_verified": prefix["verified"],
+        "numerically_valid_candidate_available": bool(stable_candidates),
         "inner_numerical_stability": max(
-            float(item["maximum_solver_relative_residual"]) for item in candidates
+            float(item["maximum_solver_relative_residual"]) for item in stable_candidates
         ) <= gates_config["maximum_inner_solver_relative_residual"],
         "outer_numerical_stability": max(residuals[len(candidates):])
         <= gates_config["maximum_outer_solver_relative_residual"],
