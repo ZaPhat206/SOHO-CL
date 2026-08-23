@@ -10,8 +10,8 @@
     "preprocessing": "vit"
   },
   "method_identity": {
-    "soho_model_sha256": "ef330ca3bf518461d1a146cbb119508389bf354511ef041c5dd1f8afea7f3de3",
-    "sohocl_sha256": "f00ab3b22d4ef7a2e1b48ac7c975a4d159ac295dbee11ebd6c8401ccc3813860",
+    "soho_model_sha256": "c529cf19268b550bfff3f4be1a37786895ea2d1b34550fe038693d26911002ff",
+    "sohocl_sha256": "04b07364ff3c04d2a3cfe1da937ee8700f7085041568ef3eaf2b9b55f3ffea04",
     "cached_baselines_sha256": "cd34e6ca10e0b80310b908ae5ea64e63d916af08bac87c830d1344766d129825",
     "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb"
   },

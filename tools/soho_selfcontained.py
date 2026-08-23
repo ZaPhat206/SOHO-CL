@@ -50,6 +50,12 @@ def _sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_normalized_source(path: str | Path) -> str:
+    """Hash source text canonically across Windows CRLF and Linux LF clones."""
+    source = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(source).hexdigest()
+
+
 def _sha256_json(payload) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -168,10 +174,10 @@ def _select_sparse_near_tie(stage2_results: list[dict], tolerance_pp: float) -> 
 
 def _verify_method_identity(protocol: dict) -> dict:
     observed = {
-        "soho_model_sha256": _sha256_file(ROOT / "models/soho.py"),
-        "sohocl_sha256": _sha256_file(ROOT / "methods/sohocl.py"),
-        "cached_baselines_sha256": _sha256_file(ROOT / "methods/cached_replay_baselines.py"),
-        "flyhash_sha256": _sha256_file(ROOT / "models/flyhash.py"),
+        "soho_model_sha256": _sha256_normalized_source(ROOT / "models/soho.py"),
+        "sohocl_sha256": _sha256_normalized_source(ROOT / "methods/sohocl.py"),
+        "cached_baselines_sha256": _sha256_normalized_source(ROOT / "methods/cached_replay_baselines.py"),
+        "flyhash_sha256": _sha256_normalized_source(ROOT / "models/flyhash.py"),
     }
     if observed != protocol["method_identity"]:
         raise ValueError("SOHO/FLY method source identity mismatch")
