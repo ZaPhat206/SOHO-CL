@@ -1,0 +1,17 @@
+{
+  "study": "srq-fly-update-optimization-fly10000-v1",
+  "seed": 2025,
+  "feature_dim": 768,
+  "expand_dim": 10000,
+  "synaptic_degree": 300,
+  "coding_level": 0.01,
+  "ridge_lambda": 1000000.0,
+  "block_size": 256,
+  "group_size": 64,
+  "num_tasks": 2,
+  "rows_per_task": 300,
+  "num_classes": 20,
+  "probe_rows": 32,
+  "solver_tolerance": 0.00001,
+  "maximum_relative_logit_drift": 0.00001
+}

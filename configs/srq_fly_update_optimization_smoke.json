@@ -1,0 +1,17 @@
+{
+  "study": "srq-fly-update-optimization-smoke-v1",
+  "seed": 2025,
+  "feature_dim": 32,
+  "expand_dim": 384,
+  "synaptic_degree": 8,
+  "coding_level": 0.05,
+  "ridge_lambda": 100.0,
+  "block_size": 64,
+  "group_size": 64,
+  "num_tasks": 2,
+  "rows_per_task": 64,
+  "num_classes": 10,
+  "probe_rows": 16,
+  "solver_tolerance": 1e-5,
+  "maximum_relative_logit_drift": 1e-5
+}
