@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "study_id": "mars-soho-phase1-train-only-v1",
+  "backbone": {
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "phase1": {
+    "expand_dim": 1000,
+    "olda_dim": 768,
+    "split_seed": 2025,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_grid": [1.0, 10.0, 100.0, 1000.0],
+    "near_tie_tolerance_pp": 0.05,
+    "reconstruction_grid": {
+      "covariance_rank": [32, 64],
+      "shrinkage": [0.1, 0.5],
+      "pseudo_per_class": [64],
+      "pilot_per_class": 32,
+      "minimum_per_class": 8,
+      "risk_floor": 0.001
+    },
+    "development_replicates": [
+      {"class_order_seed": 2025, "projection_seed": 6201},
+      {"class_order_seed": 3407, "projection_seed": 6202},
+      {"class_order_seed": 4421, "projection_seed": 6203}
+    ],
+    "gates": {
+      "max_oracle_gap_pp": 0.5,
+      "min_shared_gain_pp": 0.2,
+      "min_shuffled_gain_pp": 0.1
+    }
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "num_classes": 100,
+      "num_tasks": 10,
+      "train_samples": 50000,
+      "locked_soho": {"density": 0.1, "coding_level": 0.4, "use_etf": true}
+    },
+    "cub200": {
+      "dataset": "CUB-200-2011",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 5994,
+      "locked_soho": {"density": 0.5, "coding_level": 0.45, "use_etf": true}
+    },
+    "imagenetr": {
+      "dataset": "ImageNet-R",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 23918,
+      "locked_soho": {"density": 0.2, "coding_level": 0.45, "use_etf": true}
+    }
+  }
+}
