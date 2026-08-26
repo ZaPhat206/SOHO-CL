@@ -1,4 +1,5 @@
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from tools import soho_matched_selection as matched
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = ROOT / "configs" / "soho_matched_selection_final.json"
+LOCKED_HPARAMS = ROOT / "configs" / "soho_matched_selected_hyperparameters.json"
 
 
 def test_v2_protocol_locks_equal_split_replicates_and_four_method_roles():
@@ -88,3 +90,22 @@ def test_tuned_fly_uses_candidate_without_changing_method_fidelity(monkeypatch):
     assert captured["fly"]["coding_level"] == 0.2
     assert captured["uses_test_set"] is True
     assert result["method"] == "flycl_validation_tuned"
+
+
+def test_locked_test_hyperparameters_are_train_only_and_inside_declared_grids():
+    protocol = matched._read_protocol(PROTOCOL)
+    manifest = json.loads(LOCKED_HPARAMS.read_text(encoding="utf-8"))
+    assert manifest["uses_test_set"] is False
+    assert manifest["test_tuning_allowed"] is False
+    assert manifest["selection_protocol_sha256"] == matched.base._sha256_file(PROTOCOL)
+    assert manifest["selection_runner_sha256"] == matched.base._sha256_file(
+        ROOT / "tools" / "soho_matched_selection.py"
+    )
+    soho_candidates = matched.base._soho_candidates(protocol)
+    fly_candidates = matched._fly_candidates(protocol)
+    raw_grid = set(map(float, protocol["selection"]["raw_ridge_grid"]))
+    assert set(manifest["selected"]) == set(matched.DATASET_KEYS)
+    for selected in manifest["selected"].values():
+        assert selected["soho_config"] in soho_candidates
+        assert selected["fly_validation_tuned_config"] in fly_candidates
+        assert float(selected["raw_ridge_lambda"]) in raw_grid

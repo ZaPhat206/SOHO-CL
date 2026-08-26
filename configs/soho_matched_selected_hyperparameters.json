@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "study_id": "soho-replay-matched-selection-three-dataset-v2",
+  "selection_protocol_sha256": "ab3e7fde1d375a96231ac26508926c21cbe74eee2474b1743b15589916694aeb",
+  "selection_runner_sha256": "4805a2192839314bb3710432e1e6aa4019b53d37cf798a0594957dc201e9ec97",
+  "base_runner_sha256": "5d3ee38b93a10f4fdfa52aaeb1b901df97b0d40e5c806b67a2d609da094234fc",
+  "selection_policy": "class-stratified nested train-only holdout over three development replicates",
+  "uses_test_set": false,
+  "test_tuning_allowed": false,
+  "selected": {
+    "cifar100": {
+      "soho_config": {"density": 0.1, "coding_level": 0.4, "use_etf": true},
+      "fly_validation_tuned_config": {"synaptic_degree": 500, "coding_level": 0.4},
+      "raw_ridge_lambda": 100.0
+    },
+    "cub200": {
+      "soho_config": {"density": 0.5, "coding_level": 0.45, "use_etf": true},
+      "fly_validation_tuned_config": {"synaptic_degree": 500, "coding_level": 0.2},
+      "raw_ridge_lambda": 100.0
+    },
+    "imagenetr": {
+      "soho_config": {"density": 0.2, "coding_level": 0.45, "use_etf": true},
+      "fly_validation_tuned_config": {"synaptic_degree": 300, "coding_level": 0.5},
+      "raw_ridge_lambda": 1000.0
+    }
+  },
+  "disclosure": "This manifest records the user-reported completed train-only selections. Final evaluation must also receive the original selection.json evidence for all three datasets and verify exact equality before test materialization."
+}
