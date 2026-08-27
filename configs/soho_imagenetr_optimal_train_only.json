@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "study_id": "soho-imagenetr-fixed-ridge-train-only-selection-v1",
+  "base_runner_sha256": "5d3ee38b93a10f4fdfa52aaeb1b901df97b0d40e5c806b67a2d609da094234fc",
+  "backbone": {
+    "hf_model_id": "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k",
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_size": 346284714,
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "method_identity": {
+    "soho_model_sha256": "c529cf19268b550bfff3f4be1a37786895ea2d1b34550fe038693d26911002ff",
+    "sohocl_sha256": "04b07364ff3c04d2a3cfe1da937ee8700f7085041568ef3eaf2b9b55f3ffea04",
+    "cached_baselines_sha256": "cd34e6ca10e0b80310b908ae5ea64e63d916af08bac87c830d1344766d129825",
+    "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb"
+  },
+  "dataset": {
+    "key": "imagenetr",
+    "dataset": "ImageNet-R",
+    "dataset_version": "legacy-processed-imagefolder",
+    "num_classes": 200,
+    "num_tasks": 20,
+    "train_samples": 23918,
+    "test_samples": 6082,
+    "dataset_identity_sha256": "3f3d963b2b0c245ceabc0166c8b1c64d624c2ea31df07ee6ffdbf4cab5f7739d",
+    "class_mapping_sha256": "dd62e9413ab14ffe4f41035d8dc0c9ba29f07d7c2463bed436a1d1056e6ad385",
+    "train_content_manifest_sha256": "98e87cec5777a9b84fc16a27c2f700c9126bcd5872b88d385ef1fc08c7a2b0c5",
+    "test_content_manifest_sha256": "c24d414ffb410e77943100f249a7b24f7a5c48917b63831b8cb27c1747356609",
+    "cross_split_duplicate_content_count": 19,
+    "cross_split_conflicting_label_duplicate_count": 18
+  },
+  "soho_fixed": {
+    "expand_dim": 10000,
+    "olda_dim": 768,
+    "use_etf": true,
+    "replay_chunk_size": 2000,
+    "anchor_density": 0.2,
+    "anchor_coding_level": 0.45
+  },
+  "fly_fidelity": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "ridge_lower": 6,
+    "ridge_upper": 10
+  },
+  "selection": {
+    "split_seed": 2025,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_grid": [10.0, 100.0, 1000.0, 10000.0],
+    "density_grid": [0.1, 0.2, 0.3],
+    "coding_level_grid": [0.4, 0.45, 0.5],
+    "near_tie_tolerance_pp": 0.05,
+    "ridge_tie_break": "within 0.05 pp choose the larger ridge",
+    "representation_tie_break": "within 0.05 pp choose lower coding level, then lower density",
+    "development_replicates": [
+      {"class_order_seed": 2025, "projection_seed": 12025},
+      {"class_order_seed": 3407, "projection_seed": 13407},
+      {"class_order_seed": 4421, "projection_seed": 14421}
+    ],
+    "score": "mean inner-validation average incremental accuracy over three preregistered replicates"
+  },
+  "outer_confirmation": {
+    "replicates": [
+      {"class_order_seed": 2025, "projection_seed": 12025},
+      {"class_order_seed": 3407, "projection_seed": 13407},
+      {"class_order_seed": 4421, "projection_seed": 14421},
+      {"class_order_seed": 5501, "projection_seed": 15501},
+      {"class_order_seed": 6619, "projection_seed": 16619}
+    ],
+    "gate": {
+      "minimum_mean_soho_minus_fly_aia_pp": 0.0,
+      "minimum_seed_wins": 4,
+      "minimum_paired_ci95_low_pp": -0.5
+    },
+    "test_tuning_allowed": false,
+    "held_out_test_authorized": false
+  }
+}
