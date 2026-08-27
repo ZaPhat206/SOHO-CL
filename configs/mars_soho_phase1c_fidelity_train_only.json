@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "study_id": "mars-soho-phase1c-fidelity-train-only-v1",
+  "phase1b_artifact": {
+    "dataset": "CIFAR-100",
+    "sha256": "9f9844683c4a823605fd34d801e63e0ebe71f7fd85af5dc69a8ad52273b1b87d",
+    "status": "phase1b_failed"
+  },
+  "backbone": {
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "phase1c": {
+    "expand_dim": 1000,
+    "olda_dim": 768,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_lambda": 10.0,
+    "pseudo_per_class": 64,
+    "ambient_covariance_rank": 64,
+    "ambient_shrinkage": 0.1,
+    "tangent_rank_grid": [8, 16, 32],
+    "near_tie_tolerance": 0.002,
+    "development_replicates": [
+      {"split_seed": 6101, "projection_seed": 8201},
+      {"split_seed": 6102, "projection_seed": 8202},
+      {"split_seed": 6103, "projection_seed": 8203}
+    ],
+    "gates": {
+      "minimum_relative_stat_error_reduction": 0.1,
+      "minimum_accuracy_gain_pp": 0.2,
+      "maximum_accuracy_gap_to_empirical_oracle_pp": 0.5,
+      "maximum_resultant_length_error": 0.02
+    }
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "num_classes": 100,
+      "train_samples": 50000,
+      "locked_soho": {"density": 0.1, "coding_level": 0.4, "use_etf": true}
+    }
+  }
+}
