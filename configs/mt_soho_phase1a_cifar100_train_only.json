@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "study_id": "mt-soho-phase1a-cifar100-train-only-v1",
+  "backbone": {
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "dataset": {
+    "name": "CIFAR-100",
+    "num_classes": 100,
+    "num_tasks": 10,
+    "train_samples": 50000
+  },
+  "phase1": {
+    "expand_dim": 1000,
+    "split_seed": 2025,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "near_tie_tolerance_pp": 0.05,
+    "geometry_epsilon": 0.00001,
+    "anchor": {
+      "synaptic_degree": 500,
+      "coding_level": 0.4,
+      "source": "CIFAR-100 matched FLY train-only selection; width reduced equally for Phase-1 feasibility"
+    },
+    "anchor_ridge_grid": [100.0, 10000.0, 1000000.0, 100000000.0],
+    "target_grid": {
+      "rank": [32, 64],
+      "shrinkage": [0.1, 0.5],
+      "adapted_ridge": [1.0, 100.0],
+      "adaptation_weight": [0.25, 1.0]
+    },
+    "development_replicates": [
+      {"class_order_seed": 2025, "projection_seed": 7201},
+      {"class_order_seed": 3407, "projection_seed": 7202},
+      {"class_order_seed": 4421, "projection_seed": 7203}
+    ],
+    "gates": {
+      "max_solver_relative_residual": 0.0001,
+      "min_fixed_gain_pp": 0.2,
+      "min_shuffled_gain_pp": 0.1,
+      "min_whitening_gain_pp": 0.05
+    }
+  }
+}
