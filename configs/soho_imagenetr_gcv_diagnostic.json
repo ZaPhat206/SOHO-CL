@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "study_id": "soho-imagenetr-gcv-posthoc-diagnostic-v1",
+  "source_artifact": {
+    "filename": "soho_selfcontained_three_dataset_results.zip",
+    "sha256": "f3df4606644f4660e78b637a58f198b7ef345a84d8f6f222f584e9a888ea7167",
+    "role": "previously consumed evidence used to formulate, but not validate, the GCV hypothesis"
+  },
+  "backbone": {
+    "hf_model_id": "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k",
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_size": 346284714,
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "method_identity": {
+    "soho_model_sha256": "c529cf19268b550bfff3f4be1a37786895ea2d1b34550fe038693d26911002ff",
+    "sohocl_sha256": "04b07364ff3c04d2a3cfe1da937ee8700f7085041568ef3eaf2b9b55f3ffea04",
+    "cached_baselines_sha256": "cd34e6ca10e0b80310b908ae5ea64e63d916af08bac87c830d1344766d129825",
+    "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb"
+  },
+  "dataset": {
+    "key": "imagenetr",
+    "dataset": "ImageNet-R",
+    "dataset_version": "legacy-processed-imagefolder",
+    "num_classes": 200,
+    "num_tasks": 20,
+    "train_samples": 23918,
+    "test_samples": 6082,
+    "dataset_identity_sha256": "3f3d963b2b0c245ceabc0166c8b1c64d624c2ea31df07ee6ffdbf4cab5f7739d",
+    "class_mapping_sha256": "dd62e9413ab14ffe4f41035d8dc0c9ba29f07d7c2463bed436a1d1056e6ad385",
+    "train_content_manifest_sha256": "98e87cec5777a9b84fc16a27c2f700c9126bcd5872b88d385ef1fc08c7a2b0c5",
+    "test_content_manifest_sha256": "c24d414ffb410e77943100f249a7b24f7a5c48917b63831b8cb27c1747356609",
+    "cross_split_duplicate_content_count": 19,
+    "cross_split_conflicting_label_duplicate_count": 18
+  },
+  "soho": {
+    "expand_dim": 10000,
+    "olda_dim": 768,
+    "density": 0.2,
+    "coding_level": 0.45,
+    "use_etf": true,
+    "gcv_ridge_lower": -2,
+    "gcv_ridge_upper": 10,
+    "posthoc_fixed_ridge": 1000.0,
+    "replay_chunk_size": 2000,
+    "gcv_sample_size": 3000
+  },
+  "fly_original": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "ridge_lower": 6,
+    "ridge_upper": 10
+  },
+  "diagnostic": {
+    "seed": 2025,
+    "validation_fraction": 0.2,
+    "probe_rows": 256,
+    "replicates": [
+      {"class_order_seed": 3031, "projection_seed": 5031},
+      {"class_order_seed": 3032, "projection_seed": 5032},
+      {"class_order_seed": 3033, "projection_seed": 5033},
+      {"class_order_seed": 3034, "projection_seed": 5034},
+      {"class_order_seed": 3035, "projection_seed": 5035},
+      {"class_order_seed": 3036, "projection_seed": 5036}
+    ],
+    "uses_test_set": false,
+    "held_out_test_authorized": false,
+    "fixed_ridge_role": "post-hoc causal diagnostic only; not a selected method and not a paper result"
+  }
+}
