@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "study_id": "wbt-soho-phase1d-cifar100-train-only-v1",
+  "phase1c_artifact": {
+    "dataset": "CIFAR-100",
+    "sha256": "602922b5860f64b89e7ba00c0ec95679d2fae735502b1c32a3695082cc22a970",
+    "status": "phase1c_failed",
+    "selected_tangent_rank": 16
+  },
+  "backbone": {
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "phase1d": {
+    "expand_dim": 1000,
+    "olda_dim": 768,
+    "split_seed": 2025,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_lambda": 10.0,
+    "tangent_rank": 16,
+    "pseudo_per_class": 64,
+    "near_tie_tolerance_pp": 0.05,
+    "boundary_grid": {
+      "boundary_fraction": [0.25, 0.5],
+      "boundary_strength": [0.25, 0.5]
+    },
+    "development_replicates": [
+      {"class_order_seed": 6101, "projection_seed": 8201},
+      {"class_order_seed": 6102, "projection_seed": 8202},
+      {"class_order_seed": 6103, "projection_seed": 8203}
+    ],
+    "gates": {
+      "minimum_oracle_gap_closed_fraction": 0.5,
+      "minimum_relative_stat_error_reduction": 0.1,
+      "minimum_shuffled_gain_pp": 0.2,
+      "maximum_oracle_gap_pp": 0.75,
+      "minimum_old_dominance_fraction": 0.99,
+      "maximum_solver_relative_residual": 0.0001
+    }
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "num_classes": 100,
+      "num_tasks": 10,
+      "train_samples": 50000,
+      "locked_soho": {"density": 0.1, "coding_level": 0.4, "use_etf": true}
+    }
+  }
+}
