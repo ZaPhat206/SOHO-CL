@@ -162,3 +162,24 @@ def certified_stable_support(
         raise ValueError("old and new activations must have the same shape")
     perturbation = (new_expanded - old_expanded).abs().amax(dim=1)
     return topk_margin(old_expanded, k) > 2 * perturbation
+
+
+def topk_support_turnover(
+    old_expanded: torch.Tensor, new_expanded: torch.Tensor, k: int
+) -> torch.Tensor:
+    """Return the fraction of old Top-K indices replaced for each row.
+
+    Unlike the sufficient (and deliberately conservative) support certificate,
+    this is an exact continuous observation of the two realized supports.  It
+    is a diagnostic of map drift, not a certificate for unseen samples.
+    """
+    if old_expanded.shape != new_expanded.shape or old_expanded.ndim != 2:
+        raise ValueError("old and new activations must share shape (N, M)")
+    if not 0 < k < old_expanded.shape[1]:
+        raise ValueError("k must lie in [1, M-1]")
+    old_indices = torch.topk(old_expanded, k, dim=1, largest=True).indices
+    new_indices = torch.topk(new_expanded, k, dim=1, largest=True).indices
+    old_membership = torch.zeros_like(old_expanded, dtype=torch.bool)
+    old_membership.scatter_(1, old_indices, True)
+    retained = old_membership.gather(1, new_indices).sum(dim=1)
+    return 1 - retained.to(old_expanded.dtype) / k

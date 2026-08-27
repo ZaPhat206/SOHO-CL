@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "study_id": "mars-soho-phase1b-train-only-v1",
+  "phase1_artifact": {
+    "dataset": "CIFAR-100",
+    "sha256": "d1241647c32617d3858cc1964b3b967285a9e8ec0a0320ed4d5dd31a36af72f0",
+    "status": "phase1_failed",
+    "locked_ridge_lambda": 10.0,
+    "locked_covariance_rank": 64,
+    "locked_shrinkage": 0.1
+  },
+  "backbone": {
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "phase1b": {
+    "expand_dim": 1000,
+    "olda_dim": 768,
+    "split_seed": 3031,
+    "outer_validation_fraction": 0.2,
+    "inner_validation_fraction": 0.2,
+    "ridge_lambda": 10.0,
+    "reconstruction": {
+      "covariance_rank": 64,
+      "shrinkage": 0.1,
+      "pseudo_per_class": 64,
+      "pilot_per_class": 32,
+      "minimum_per_class": 8,
+      "risk_floor": 0.001
+    },
+    "validation_replicates": [
+      {"class_order_seed": 5101, "projection_seed": 7201},
+      {"class_order_seed": 5102, "projection_seed": 7202},
+      {"class_order_seed": 5103, "projection_seed": 7203}
+    ],
+    "gates": {
+      "max_oracle_gap_pp": 0.5,
+      "min_uniform_gain_pp": 0.2,
+      "min_shuffled_gain_pp": 0.1,
+      "minimum_risk_spread": 1e-6,
+      "minimum_noncollapsed_fraction": 0.8,
+      "minimum_distinct_allocation_fraction": 0.8
+    }
+  },
+  "datasets": {
+    "cifar100": {
+      "dataset": "CIFAR-100",
+      "num_classes": 100,
+      "num_tasks": 10,
+      "train_samples": 50000,
+      "locked_soho": {"density": 0.1, "coding_level": 0.4, "use_etf": true}
+    },
+    "cub200": {
+      "dataset": "CUB-200-2011",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 5994,
+      "locked_soho": {"density": 0.5, "coding_level": 0.45, "use_etf": true}
+    },
+    "imagenetr": {
+      "dataset": "ImageNet-R",
+      "num_classes": 200,
+      "num_tasks": 20,
+      "train_samples": 23918,
+      "locked_soho": {"density": 0.2, "coding_level": 0.45, "use_etf": true}
+    }
+  }
+}

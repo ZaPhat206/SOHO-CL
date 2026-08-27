@@ -4,11 +4,13 @@ from methods.mars_soho.geometry import (
     align_projection_gauge,
     certified_stable_support,
     compute_soho_rotation,
+    topk_support_turnover,
 )
 from methods.mars_soho.reconstruction import (
     SphericalReconstructor,
     allocate_pseudo_budget,
     shuffled_risks,
+    wta_statistic_variance,
 )
 from methods.mars_soho.statistics import SphericalClassMoments
 
@@ -57,6 +59,26 @@ def test_fixed_support_certificate_never_certifies_a_changed_support():
     new_support = torch.topk(new, k, dim=1).indices.sort(dim=1).values
     unchanged = (old_support == new_support).all(dim=1)
     assert bool(unchanged[certified].all())
+
+
+def test_topk_turnover_is_exact_continuous_and_bounded():
+    old = torch.tensor([[5.0, 4.0, 3.0, 2.0, 1.0]])
+    unchanged = torch.tensor([[5.1, 4.2, 3.3, 0.0, -1.0]])
+    one_replaced = torch.tensor([[5.1, 4.2, 0.0, 3.3, -1.0]])
+    assert torch.equal(topk_support_turnover(old, unchanged, 3), torch.tensor([0.0]))
+    assert torch.allclose(
+        topk_support_turnover(old, one_replaced, 3), torch.tensor([1 / 3])
+    )
+
+
+def test_wta_statistic_variance_detects_nonconstant_sufficient_statistics():
+    constant = torch.tensor([[2.0, 0.0, 1.0]]).repeat(6, 1)
+    variable = constant.clone()
+    variable[::2] = torch.tensor([0.0, 3.0, 0.0])
+    assert wta_statistic_variance(constant) == 0
+    risk = wta_statistic_variance(variable)
+    assert 0 < risk <= 1
+    assert bool(torch.isfinite(risk))
 
 
 def test_gauge_alignment_preserves_basis_and_reduces_arbitrary_null_rotation():

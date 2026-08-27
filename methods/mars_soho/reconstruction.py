@@ -14,6 +14,10 @@ MODEL_MODES = {
     "heterogeneous_spherical",
     "support_aware",
     "shuffled_support",
+    "turnover_aware",
+    "shuffled_turnover",
+    "statistic_variance_aware",
+    "shuffled_statistic_variance",
 }
 
 
@@ -82,7 +86,14 @@ class SphericalReconstructor:
         self.diagonal_residual = (1 - represented_diagonal).clamp_min(0).sqrt()
         self.pooled_std = pooled_std
 
-    def generate(self, class_id: int, count: int, *, heterogeneous: bool) -> torch.Tensor:
+    def generate(
+        self,
+        class_id: int,
+        count: int,
+        *,
+        heterogeneous: bool,
+        stream_offset: int = 0,
+    ) -> torch.Tensor:
         if count <= 0:
             raise ValueError("pseudo count must be positive")
         column = self.snapshot.class_column(class_id)
@@ -96,14 +107,14 @@ class SphericalReconstructor:
         low = _antithetic_normal(
             count,
             self.rank,
-            seed=_seed(self.seed, class_id, 0),
+            seed=_seed(self.seed, class_id, 2 * stream_offset),
             device=mean.device,
             dtype=mean.dtype,
         )
         diagonal = _antithetic_normal(
             count,
             self.snapshot.feature_dim,
-            seed=_seed(self.seed, class_id, 1),
+            seed=_seed(self.seed, class_id, 2 * stream_offset + 1),
             device=mean.device,
             dtype=mean.dtype,
         )
@@ -111,6 +122,33 @@ class SphericalReconstructor:
         correlated.add_(diagonal * self.diagonal_residual.unsqueeze(0))
         values = mean.unsqueeze(0) + correlated * standard_deviation.unsqueeze(0)
         return torch.nn.functional.normalize(values, p=2, dim=1)
+
+
+def wta_statistic_variance(codes: torch.Tensor) -> torch.Tensor:
+    """Estimate relative Monte-Carlo variance of ``(zz^T, z)``.
+
+    The Gram term is evaluated without materializing one ``M x M`` matrix per
+    pilot: ``||mean(zz^T)||_F^2 = ||ZZ^T||_F^2 / J^2``.  Each component is
+    normalized by its second moment, making the equal-weight sum dimensionless
+    and bounded up to floating-point roundoff.
+    """
+    if codes.ndim != 2 or codes.shape[0] < 2:
+        raise ValueError("codes must have shape (J, M) with J >= 2")
+    if not bool(torch.isfinite(codes).all()):
+        raise ValueError("codes contain NaN or Inf")
+    count = codes.shape[0]
+    squared_norm = codes.square().sum(dim=1)
+    gram_second = squared_norm.square().mean()
+    kernel = codes @ codes.T
+    gram_mean_squared = kernel.square().sum() / (count * count)
+    gram_variance = (gram_second - gram_mean_squared).clamp_min(0)
+    cross_second = squared_norm.mean()
+    cross_mean_squared = codes.mean(dim=0).square().sum()
+    cross_variance = (cross_second - cross_mean_squared).clamp_min(0)
+    epsilon = torch.finfo(codes.dtype).eps
+    gram_relative = gram_variance / gram_second.clamp_min(epsilon)
+    cross_relative = cross_variance / cross_second.clamp_min(epsilon)
+    return (gram_relative + cross_relative) * 0.5
 
 
 def allocate_pseudo_budget(

@@ -10,12 +10,14 @@ from .geometry import (
     align_projection_gauge,
     certified_stable_support,
     compute_soho_rotation,
+    topk_support_turnover,
 )
 from .reconstruction import (
     MODEL_MODES,
     SphericalReconstructor,
     allocate_pseudo_budget,
     shuffled_risks,
+    wta_statistic_variance,
 )
 from .statistics import MomentSnapshot, SphericalClassMoments
 
@@ -257,6 +259,48 @@ class MARSSOHOLearner:
             return torch.zeros(0, device=self.device, dtype=self.dtype)
         return torch.stack(risks)
 
+    def _continuous_risk_diagnostics(
+        self,
+        reconstructor: SphericalReconstructor,
+        old_snapshot: MomentSnapshot,
+        old_rotation: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        certificate_failure = []
+        support_turnover = []
+        statistic_variance = []
+        for class_id in old_snapshot.class_ids:
+            # The pilot stream is disjoint from the pseudo-statistic stream so
+            # allocation does not reuse the samples whose estimator it sizes.
+            pilot = reconstructor.generate(
+                class_id,
+                self.pilot_per_class,
+                heterogeneous=True,
+                stream_offset=1,
+            )
+            old_expanded = self.encoder.expanded(pilot, rotation=old_rotation)
+            new_expanded = self.encoder.expanded(pilot)
+            stable = certified_stable_support(
+                old_expanded, new_expanded, self.encoder.k
+            )
+            certificate_failure.append(1 - stable.to(self.dtype).mean())
+            support_turnover.append(
+                topk_support_turnover(
+                    old_expanded, new_expanded, self.encoder.k
+                ).mean()
+            )
+            statistic_variance.append(
+                wta_statistic_variance(self.encoder.encode(pilot))
+            )
+        empty = torch.zeros(0, device=self.device, dtype=self.dtype)
+        return {
+            "certificate_failure": torch.stack(certificate_failure)
+            if certificate_failure else empty,
+            "support_turnover": torch.stack(support_turnover)
+            if support_turnover else empty,
+            "statistic_variance": torch.stack(statistic_variance)
+            if statistic_variance else empty,
+        }
+
     def _allocations(
         self,
         old_snapshot: MomentSnapshot,
@@ -266,7 +310,11 @@ class MARSSOHOLearner:
         if self.model_mode in {"shared_gaussian", "heterogeneous_spherical"}:
             return {class_id: self.pseudo_per_class for class_id in class_ids}
         active_risks = risks
-        if self.model_mode == "shuffled_support":
+        if self.model_mode in {
+            "shuffled_support",
+            "shuffled_turnover",
+            "shuffled_statistic_variance",
+        }:
             active_risks = shuffled_risks(risks, seed=self.seed + self.moments.total_count)
         return allocate_pseudo_budget(
             class_ids,
@@ -305,6 +353,8 @@ class MARSSOHOLearner:
         self.G.add_(current_codes.T @ current_codes)
         self.Q.add_(current_codes.T @ current_targets)
         risks = torch.zeros(0, device=self.device, dtype=self.dtype)
+        risk_diagnostics: dict[str, torch.Tensor] = {}
+        risk_name = "certificate_failure"
         allocations: dict[int, int] = {}
         if old_snapshot.num_classes:
             reconstructor = SphericalReconstructor(
@@ -313,9 +363,23 @@ class MARSSOHOLearner:
                 shrinkage=self.shrinkage,
                 seed=self.seed,
             )
-            risks = self._boundary_risks(
-                reconstructor, old_snapshot, old_rotation
-            )
+            if self.model_mode in {
+                "turnover_aware", "shuffled_turnover",
+                "statistic_variance_aware", "shuffled_statistic_variance",
+            }:
+                risk_diagnostics = self._continuous_risk_diagnostics(
+                    reconstructor, old_snapshot, old_rotation
+                )
+                if self.model_mode in {"turnover_aware", "shuffled_turnover"}:
+                    risk_name = "support_turnover"
+                else:
+                    risk_name = "statistic_variance"
+                risks = risk_diagnostics[risk_name]
+            else:
+                risks = self._boundary_risks(
+                    reconstructor, old_snapshot, old_rotation
+                )
+                risk_diagnostics = {"certificate_failure": risks}
             allocations = self._allocations(old_snapshot, risks)
             heterogeneous = self.model_mode != "shared_gaussian"
             class_columns = {
@@ -359,6 +423,14 @@ class MARSSOHOLearner:
             "boundary_risk": {
                 class_id: float(risks[index].item())
                 for index, class_id in enumerate(old_snapshot.class_ids)
+            },
+            "allocation_risk_name": risk_name,
+            "pilot_risks": {
+                name: {
+                    class_id: float(values[index].item())
+                    for index, class_id in enumerate(old_snapshot.class_ids)
+                }
+                for name, values in risk_diagnostics.items()
             },
             "solver_relative_residual": residual,
             "discriminative_rank": self.encoder.discriminative_rank,

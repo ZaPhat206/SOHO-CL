@@ -58,7 +58,16 @@ def test_first_task_matches_exact_replay_oracle_before_approximation_is_needed()
 
 @pytest.mark.parametrize(
     "mode",
-    ["shared_gaussian", "heterogeneous_spherical", "support_aware", "shuffled_support"],
+    [
+        "shared_gaussian",
+        "heterogeneous_spherical",
+        "support_aware",
+        "shuffled_support",
+        "turnover_aware",
+        "shuffled_turnover",
+        "statistic_variance_aware",
+        "shuffled_statistic_variance",
+    ],
 )
 def test_all_phase1_modes_run_two_tasks_without_task_id(mode):
     features_a, labels_a, features_b, labels_b = _stream()
@@ -70,6 +79,26 @@ def test_all_phase1_modes_run_two_tasks_without_task_id(mode):
     assert bool(torch.isfinite(logits).all())
     assert learner.diagnostics["pseudo_total"] == 16
     assert "task_id" not in inspect.signature(learner.predict_logits).parameters
+
+
+@pytest.mark.parametrize(
+    ("mode", "risk_name"),
+    [
+        ("turnover_aware", "support_turnover"),
+        ("statistic_variance_aware", "statistic_variance"),
+    ],
+)
+def test_phase1b_modes_report_disjoint_pilot_risks(mode, risk_name):
+    features_a, labels_a, features_b, labels_b = _stream()
+    learner = MARSSOHOLearner(**_configuration(mode))
+    learner.update(features_a, labels_a)
+    learner.update(features_b, labels_b)
+    assert learner.diagnostics["allocation_risk_name"] == risk_name
+    assert set(learner.diagnostics["pilot_risks"]) == {
+        "certificate_failure", "support_turnover", "statistic_variance"
+    }
+    values = learner.diagnostics["pilot_risks"][risk_name].values()
+    assert all(torch.isfinite(torch.tensor(value)) for value in values)
 
 
 def test_checkpoint_roundtrip_and_state_inventory_are_exemplar_free():
