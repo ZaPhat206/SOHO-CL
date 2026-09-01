@@ -227,6 +227,34 @@ class CompressedUpper:
         return compressed, relative_error
 
     @classmethod
+    def from_upper_inplace_streaming(
+        cls,
+        matrix: torch.Tensor,
+        *,
+        block_size: int,
+        group_size: int,
+        mode: str,
+        maximum_batched_blocks: int = 16,
+    ) -> tuple["CompressedUpper", float]:
+        """Compress ``matrix`` without retaining every extracted FP block.
+
+        The version-1 checkpoint contract groups values independently inside
+        each upper-triangular block.  Therefore blocks of equal length may be
+        encoded in bounded batches without changing a stored byte.  Unlike
+        :meth:`from_upper_inplace`, this path stores only integer block
+        descriptors and materializes source values for the current batch.
+        It is an opt-in runtime backend until its CUDA allocation gate passes.
+        """
+        compressed, relative_error = cls._encode_upper_streaming(
+            matrix,
+            block_size=block_size,
+            group_size=group_size,
+            mode=mode,
+            maximum_batched_blocks=maximum_batched_blocks,
+        )
+        return compressed, relative_error
+
+    @classmethod
     def _encode_upper(
         cls,
         matrix: torch.Tensor,
@@ -345,6 +373,153 @@ class CompressedUpper:
             relative_error = float(
                 torch.sqrt(squared_error / torch.clamp(squared_reference, min=1.0)).item()
             )
+        return compressed, relative_error
+
+    @classmethod
+    def _encode_upper_streaming(
+        cls,
+        matrix: torch.Tensor,
+        *,
+        block_size: int,
+        group_size: int,
+        mode: str,
+        maximum_batched_blocks: int,
+    ) -> tuple["CompressedUpper", float]:
+        if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or not len(matrix):
+            raise ValueError("matrix must be non-empty and square")
+        if matrix.dtype not in {torch.float32, torch.float64}:
+            raise ValueError("matrix must use float32 or float64")
+        if mode not in cls.MODES:
+            raise ValueError("mode must be int8 or float16")
+        if block_size <= 0 or group_size <= 0 or maximum_batched_blocks <= 0:
+            raise ValueError("storage and streaming batch sizes must be positive")
+
+        # A whole-matrix isfinite call creates an m-by-m boolean temporary.
+        # Accumulate row-chunk predicates on device and synchronize only once.
+        finite = torch.ones((), device=matrix.device, dtype=torch.bool)
+        validation_rows = max(block_size, min(len(matrix), 1024))
+        for start in range(0, len(matrix), validation_rows):
+            finite.logical_and_(
+                torch.isfinite(matrix[start : start + validation_rows]).all()
+            )
+        if not bool(finite):
+            raise ValueError("matrix contains NaN or Inf")
+
+        diagonal = matrix.diagonal().to(torch.float32).clone()
+        count = math.ceil(len(matrix) / block_size)
+        descriptors: list[tuple[int, int, int]] = []
+        by_length: dict[int, list[int]] = defaultdict(list)
+        for row_block in range(count):
+            rs, re = row_block * block_size, min(
+                (row_block + 1) * block_size, len(matrix)
+            )
+            rows = re - rs
+            for col_block in range(row_block, count):
+                cs, ce = col_block * block_size, min(
+                    (col_block + 1) * block_size, len(matrix)
+                )
+                columns = ce - cs
+                length = (
+                    rows * columns
+                    if row_block != col_block
+                    else rows * (rows - 1) // 2
+                )
+                index = len(descriptors)
+                descriptors.append((row_block, col_block, length))
+                by_length[length].append(index)
+
+        encoded_blocks: list[tuple[torch.Tensor, torch.Tensor | None] | None] = [
+            None
+        ] * len(descriptors)
+        original_diagonal = matrix.diagonal().to(torch.float64)
+        squared_reference = original_diagonal.square().sum()
+        squared_error = (
+            diagonal.to(torch.float64) - original_diagonal
+        ).square().sum()
+        matrix.diagonal().copy_(diagonal.to(matrix.dtype))
+
+        for indices in by_length.values():
+            for start in range(0, len(indices), maximum_batched_blocks):
+                chunk = indices[start : start + maximum_batched_blocks]
+                source_rows = []
+                for index in chunk:
+                    row_block, col_block, _ = descriptors[index]
+                    rs, re = row_block * block_size, min(
+                        (row_block + 1) * block_size, len(matrix)
+                    )
+                    cs, ce = col_block * block_size, min(
+                        (col_block + 1) * block_size, len(matrix)
+                    )
+                    local = matrix[rs:re, cs:ce]
+                    if row_block == col_block:
+                        local_indices = torch.triu_indices(
+                            len(local), len(local), offset=1, device=matrix.device
+                        )
+                        values = local[local_indices[0], local_indices[1]]
+                    else:
+                        # A block cut from a large row-major factor is not
+                        # contiguous.  Copy only the current bounded batch.
+                        values = local.contiguous().view(-1)
+                    source_rows.append(values)
+                stacked = torch.stack(source_rows)
+                del source_rows
+
+                if mode == "int8":
+                    encoded, scales = _groupwise_int8_rows(stacked, group_size)
+                    decoded = encoded.to(stacked.dtype) * scales.to(
+                        stacked.dtype
+                    ).repeat_interleave(group_size, dim=1)[:, : stacked.shape[1]]
+                    for row, index in enumerate(chunk):
+                        encoded_blocks[index] = (encoded[row], scales[row])
+                else:
+                    encoded = stacked.to(torch.float16)
+                    if not bool(torch.isfinite(encoded).all()):
+                        raise ValueError("float16 compression overflowed to NaN or Inf")
+                    decoded = encoded.to(stacked.dtype)
+                    for row, index in enumerate(chunk):
+                        encoded_blocks[index] = (encoded[row], None)
+
+                difference = decoded - stacked
+                squared_error.add_(difference.square().sum(dtype=torch.float64))
+                squared_reference.add_(stacked.square().sum(dtype=torch.float64))
+                for row, index in enumerate(chunk):
+                    row_block, col_block, _ = descriptors[index]
+                    rs, re = row_block * block_size, min(
+                        (row_block + 1) * block_size, len(matrix)
+                    )
+                    cs, ce = col_block * block_size, min(
+                        (col_block + 1) * block_size, len(matrix)
+                    )
+                    local = matrix[rs:re, cs:ce]
+                    if row_block == col_block:
+                        local_indices = torch.triu_indices(
+                            len(local), len(local), offset=1, device=matrix.device
+                        )
+                        local[local_indices[0], local_indices[1]] = decoded[row]
+                    else:
+                        local.copy_(decoded[row].reshape(re - rs, ce - cs))
+                del stacked, decoded, difference
+
+        blocks = []
+        for descriptor, encoded in zip(descriptors, encoded_blocks):
+            if encoded is None:
+                raise RuntimeError("internal compressed-block packing failure")
+            row_block, col_block, _ = descriptor
+            blocks.append(UpperBlock(row_block, col_block, encoded[0], encoded[1]))
+        compressed = cls(
+            dimension=len(matrix),
+            block_size=block_size,
+            group_size=group_size,
+            mode=mode,
+            diagonal=diagonal,
+            blocks=blocks,
+            validate_values=False,
+        )
+        relative_error = float(
+            torch.sqrt(
+                squared_error / torch.clamp(squared_reference, min=1.0)
+            ).item()
+        )
         return compressed, relative_error
 
     def reconstruct_upper(self, *, dtype: torch.dtype = torch.float32) -> torch.Tensor:

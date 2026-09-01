@@ -495,6 +495,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         update_backend: str = "gram_cholesky",
         update_panel_size: int = 128,
         update_trailing_chunk_size: int | None = None,
+        quantization_backend: str = "eager",
+        quantization_batch_blocks: int = 16,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -511,6 +513,16 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("update_panel_size must be positive")
         if update_trailing_chunk_size is not None and update_trailing_chunk_size <= 0:
             raise ValueError("update_trailing_chunk_size must be positive")
+        if quantization_backend not in {"eager", "streaming"}:
+            raise ValueError("quantization_backend must be eager or streaming")
+        if quantization_batch_blocks <= 0:
+            raise ValueError("quantization_batch_blocks must be positive")
+        if quantization_backend == "streaming" and update_backend not in {
+            "gram_cholesky_direct", "blocked_qr"
+        }:
+            raise ValueError(
+                "streaming quantization requires an in-place update backend"
+            )
         self.storage_mode = storage_mode
         self.update_backend = update_backend
         self.update_panel_size = int(update_panel_size)
@@ -519,6 +531,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             if update_trailing_chunk_size is None
             else int(update_trailing_chunk_size)
         )
+        self.quantization_backend = quantization_backend
+        self.quantization_batch_blocks = int(quantization_batch_blocks)
         self.factor: CompressedUpper | None = None
         self.diagnostics.update(
             method="sqrt_float16" if storage_mode == "float16" else "srq_int8",
@@ -527,6 +541,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             update_backend=update_backend,
             update_panel_size=self.update_panel_size,
             update_trailing_chunk_size=self.update_trailing_chunk_size,
+            quantization_backend=self.quantization_backend,
+            quantization_batch_blocks=self.quantization_batch_blocks,
         )
 
     def update_codes(self, codes: torch.Tensor, labels: torch.Tensor) -> None:
@@ -628,17 +644,31 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                 if int(info.max().item()) != 0:
                     raise RuntimeError("square-root streaming update failed Cholesky")
                 exact_upper = exact_lower.T
+                # The factor view owns the Cholesky output.  The dense Gram
+                # and (for the compatibility path) symmetrized input are dead
+                # before quantization and otherwise inflate its baseline by
+                # up to two m-by-m floating-point matrices.
+                del updated_system, cholesky_input, exact_lower
 
         with self._profile_stage("factor_quantization", timings, memory):
             if self.update_backend in {"gram_cholesky_direct", "blocked_qr"}:
-                compressed, relative_factor_error = (
-                    CompressedUpper.from_upper_inplace(
+                if self.quantization_backend == "streaming":
+                    compressed, relative_factor_error = (
+                        CompressedUpper.from_upper_inplace_streaming(
+                            exact_upper,
+                            block_size=self.block_size,
+                            group_size=self.group_size,
+                            mode=self.storage_mode,
+                            maximum_batched_blocks=self.quantization_batch_blocks,
+                        )
+                    )
+                else:
+                    compressed, relative_factor_error = CompressedUpper.from_upper_inplace(
                         exact_upper,
                         block_size=self.block_size,
                         group_size=self.group_size,
                         mode=self.storage_mode,
                     )
-                )
             else:
                 compressed = CompressedUpper.from_upper(
                     exact_upper,

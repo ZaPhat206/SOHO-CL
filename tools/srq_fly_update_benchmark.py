@@ -41,6 +41,7 @@ def _validate(config: dict) -> None:
         "maximum_update_ratio_to_exact_fly",
         "update_panel_size",
         "update_trailing_chunk_size",
+        "quantization_batch_blocks",
     }
     if not required <= set(config) or set(config) - required - optional:
         raise ValueError(
@@ -67,6 +68,8 @@ def _validate(config: dict) -> None:
         raise ValueError("update panel size must be positive")
     if config.get("update_trailing_chunk_size", 1) <= 0:
         raise ValueError("update trailing chunk size must be positive")
+    if config.get("quantization_batch_blocks", 16) <= 0:
+        raise ValueError("quantization batch size must be positive")
 
 
 def _codes(config: dict, generator: torch.Generator) -> torch.Tensor:

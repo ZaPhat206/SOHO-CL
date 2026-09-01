@@ -36,6 +36,11 @@ METHODS = (
     "optimized_chunked_blocked_qr_srq_int8",
     "optimized_qr_srq_int8",
 )
+EXPERIMENTAL_WORKER_METHODS = (
+    "optimized_eager_quant_blocked_qr_srq_int8",
+    "optimized_streaming_quant_blocked_qr_srq_int8",
+)
+WORKER_METHODS = METHODS + EXPERIMENTAL_WORKER_METHODS
 
 
 def _sha256(path: Path) -> str:
@@ -141,6 +146,8 @@ def _learner(
         "optimized_blocked_qr_srq_int8": "blocked_qr",
         "optimized_chunked_blocked_qr_srq_int8": "blocked_qr",
         "optimized_qr_srq_int8": "stacked_qr",
+        "optimized_eager_quant_blocked_qr_srq_int8": "blocked_qr",
+        "optimized_streaming_quant_blocked_qr_srq_int8": "blocked_qr",
     }
     if method not in backends:
         raise ValueError(f"unknown method: {method}")
@@ -153,6 +160,12 @@ def _learner(
             if method == "optimized_chunked_blocked_qr_srq_int8"
             else None
         ),
+        quantization_backend=(
+            "streaming"
+            if method == "optimized_streaming_quant_blocked_qr_srq_int8"
+            else "eager"
+        ),
+        quantization_batch_blocks=int(config.get("quantization_batch_blocks", 16)),
         profile_updates=profile_updates,
         **kwargs,
     )
@@ -193,6 +206,8 @@ def run_worker(
         if profile_stages and method in {
             "optimized_blocked_qr_srq_int8",
             "optimized_chunked_blocked_qr_srq_int8",
+            "optimized_eager_quant_blocked_qr_srq_int8",
+            "optimized_streaming_quant_blocked_qr_srq_int8",
         }
         else None
     )
@@ -225,7 +240,11 @@ def run_worker(
         )
         _sync(device)
         started = time.perf_counter()
-        if method == "optimized_chunked_blocked_qr_srq_int8":
+        if method in {
+            "optimized_chunked_blocked_qr_srq_int8",
+            "optimized_eager_quant_blocked_qr_srq_int8",
+            "optimized_streaming_quant_blocked_qr_srq_int8",
+        }:
             learner.update_codes_consuming(codes, labels)
         else:
             learner.update_codes(codes, labels)
@@ -255,18 +274,31 @@ def run_worker(
     torch.save(learner.state_dict(), checkpoint_path)
     checkpoint_bytes = checkpoint_path.stat().st_size
     checkpoint_path.unlink()
+    persistent_state_bytes = learner.persistent_state_bytes()
+    solver_relative_residual = learner.diagnostics["solver_relative_residual"]
     peak_allocated = [row["peak_allocated_bytes"] for row in task_memory]
     peak_reserved = [row["peak_reserved_bytes"] for row in task_memory]
     profiled_stage_seconds = None
     profiled_stage_cuda_memory = None
     if profile_stream is not None:
+        # The timed learner must not coexist with the diagnostic learner.
+        # Otherwise absolute per-stage peaks include an unrelated model/state.
+        del learner, last_codes
+        if device.type == "cuda":
+            _sync(device)
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats(device)
         profiled = _learner(method, config, device, profile_updates=True)
         profiled_stage_seconds = []
         profiled_stage_cuda_memory = []
         for profile_codes, profile_labels in profile_stream:
             values = profile_codes.to(device)
             labels = profile_labels.to(device)
-            if method == "optimized_chunked_blocked_qr_srq_int8":
+            if method in {
+                "optimized_chunked_blocked_qr_srq_int8",
+                "optimized_eager_quant_blocked_qr_srq_int8",
+                "optimized_streaming_quant_blocked_qr_srq_int8",
+            }:
                 profiled.update_codes_consuming(values, labels)
             else:
                 profiled.update_codes(values, labels)
@@ -314,11 +346,9 @@ def run_worker(
         "peak_cuda_reserved_bytes": (
             max(peak_reserved) if device.type == "cuda" else None
         ),
-        "persistent_state_bytes": learner.persistent_state_bytes(),
+        "persistent_state_bytes": persistent_state_bytes,
         "serialized_checkpoint_bytes": checkpoint_bytes,
-        "solver_relative_residual": learner.diagnostics[
-            "solver_relative_residual"
-        ],
+        "solver_relative_residual": solver_relative_residual,
     }
     output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result
@@ -449,7 +479,7 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
     worker = subparsers.add_parser("worker")
     worker.add_argument("--config", type=Path, required=True)
-    worker.add_argument("--method", choices=METHODS, required=True)
+    worker.add_argument("--method", choices=WORKER_METHODS, required=True)
     worker.add_argument("--output", type=Path, required=True)
     worker.add_argument("--probe-output", type=Path, required=True)
     worker.add_argument("--device", default="cpu")

@@ -10,6 +10,7 @@ from methods.srq_fly import CompressedUpper as LockedCompressedUpper
 from methods.srq_fly import SquareRootFLYLearner as LockedSquareRootFLYLearner
 from methods.srq_fly_optimized import CompressedUpper, SquareRootFLYLearner
 from methods.srq_fly_optimized.learner import _blocked_qr_rank_update
+from methods.srq_fly_optimized import storage as optimized_storage
 from tools import srq_fly_system_benchmark, srq_fly_update_benchmark
 
 
@@ -93,6 +94,69 @@ def test_fused_inplace_reconstruction_preserves_version1_storage(mode):
         / torch.linalg.vector_norm(original)
     )
     assert relative_error == pytest.approx(reference_error, rel=1e-12, abs=1e-15)
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+@pytest.mark.parametrize("batch_blocks", [1, 3, 16])
+def test_streaming_inplace_encoder_is_byte_identical_to_eager(
+    mode, batch_blocks
+):
+    original = torch.linalg.cholesky(_spd(dimension=37)).T
+    eager_work = original.clone()
+    streaming_work = original.clone()
+    eager, eager_error = CompressedUpper.from_upper_inplace(
+        eager_work, block_size=8, group_size=7, mode=mode
+    )
+    streaming, streaming_error = CompressedUpper.from_upper_inplace_streaming(
+        streaming_work,
+        block_size=8,
+        group_size=7,
+        mode=mode,
+        maximum_batched_blocks=batch_blocks,
+    )
+    torch.testing.assert_close(streaming_work, eager_work, rtol=0, atol=0)
+    assert streaming_error == pytest.approx(eager_error, rel=1e-12, abs=1e-15)
+    for left, right in zip(streaming.blocks, eager.blocks):
+        assert torch.equal(left.values, right.values)
+        if mode == "int8":
+            assert torch.equal(left.scales, right.scales)
+
+
+def test_streaming_encoder_bounds_validation_and_quantization_batches(monkeypatch):
+    dimension = 1025
+    generator = torch.Generator().manual_seed(702)
+    matrix = torch.triu(
+        torch.randn(dimension, dimension, generator=generator, dtype=torch.float32)
+    )
+    matrix.diagonal().add_(20.0)
+    full_elements = matrix.numel()
+    observed_finite_elements = []
+    observed_batch_rows = []
+    original_isfinite = torch.isfinite
+    original_encoder = optimized_storage._groupwise_int8_rows
+
+    def recording_isfinite(values):
+        observed_finite_elements.append(values.numel())
+        return original_isfinite(values)
+
+    def recording_encoder(values, group_size):
+        observed_batch_rows.append(values.shape[0])
+        return original_encoder(values, group_size)
+
+    monkeypatch.setattr(torch, "isfinite", recording_isfinite)
+    monkeypatch.setattr(
+        optimized_storage, "_groupwise_int8_rows", recording_encoder
+    )
+    CompressedUpper.from_upper_inplace_streaming(
+        matrix,
+        block_size=128,
+        group_size=64,
+        mode="int8",
+        maximum_batched_blocks=3,
+    )
+    assert observed_finite_elements
+    assert max(observed_finite_elements) < full_elements
+    assert observed_batch_rows and max(observed_batch_rows) <= 3
 
 
 @pytest.mark.parametrize("mode", ["float16", "int8"])
@@ -209,6 +273,55 @@ def test_chunked_blocked_qr_backend_matches_unchunked_stream(mode):
         chunked.weights, unchunked.weights, rtol=2e-12, atol=2e-12
     )
     assert chunked.persistent_state_bytes() == unchunked.persistent_state_bytes()
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+@pytest.mark.parametrize("batch_blocks", [1, 4, 16])
+def test_streaming_quantization_backend_matches_eager_stream(mode, batch_blocks):
+    first, first_labels, second, second_labels = _stream()
+    eager = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        **_kwargs(),
+    )
+    streaming = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        quantization_backend="streaming",
+        quantization_batch_blocks=batch_blocks,
+        **_kwargs(),
+    )
+    for codes, labels in ((first, first_labels), (second, second_labels)):
+        eager.update_codes(codes, labels)
+        streaming.update_codes(codes, labels)
+    torch.testing.assert_close(
+        streaming.factor.reconstruct_upper(dtype=torch.float64),
+        eager.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(streaming.Q, eager.Q, rtol=0, atol=0)
+    torch.testing.assert_close(streaming.weights, eager.weights, rtol=0, atol=0)
+    assert streaming.persistent_state_bytes() == eager.persistent_state_bytes()
+
+
+def test_streaming_quantization_is_checkpoint_compatible_with_eager():
+    first, labels, _, _ = _stream()
+    streaming = SquareRootFLYLearner(
+        storage_mode="int8",
+        update_backend="blocked_qr",
+        quantization_backend="streaming",
+        quantization_batch_blocks=3,
+        **_kwargs(),
+    )
+    streaming.update_codes(first, labels)
+    eager = SquareRootFLYLearner(
+        storage_mode="int8", update_backend="blocked_qr", **_kwargs()
+    )
+    eager.load_state_dict(streaming.state_dict())
+    torch.testing.assert_close(eager.weights, streaming.weights, rtol=0, atol=0)
 
 
 def test_explicit_consuming_update_reuses_codes_without_changing_predictor():
@@ -424,3 +537,51 @@ def test_isolated_system_benchmark_reports_disjoint_measurements(tmp_path):
     assert profiles["optimized_blocked_qr_srq_int8"] is not None
     assert profiles["optimized_chunked_blocked_qr_srq_int8"] is not None
     assert profiles["exact_fly_dense"] is None
+
+
+def test_priority2b_system_workers_preserve_probe_state_and_profile(tmp_path):
+    config = json.loads(
+        (ROOT / "configs/srq_fly_update_optimization_smoke.json").read_text()
+    )
+    config.update(
+        feature_dim=8,
+        expand_dim=24,
+        synaptic_degree=4,
+        block_size=6,
+        group_size=4,
+        update_panel_size=6,
+        quantization_batch_blocks=3,
+        rows_per_task=10,
+        num_classes=4,
+        probe_rows=4,
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    results = {}
+    probes = {}
+    for method in (
+        "optimized_eager_quant_blocked_qr_srq_int8",
+        "optimized_streaming_quant_blocked_qr_srq_int8",
+    ):
+        output = tmp_path / f"{method}.json"
+        probe = tmp_path / f"{method}.probe.pt"
+        results[method] = srq_fly_system_benchmark.run_worker(
+            config_path=config_path,
+            method=method,
+            output=output,
+            probe_output=probe,
+            device_name="cpu",
+            profile_stages=True,
+        )
+        probes[method] = torch.load(probe, weights_only=True)
+    eager = results["optimized_eager_quant_blocked_qr_srq_int8"]
+    streaming = results["optimized_streaming_quant_blocked_qr_srq_int8"]
+    assert eager["persistent_state_bytes"] == streaming["persistent_state_bytes"]
+    assert eager["profiled_task_stage_seconds"] is not None
+    assert streaming["profiled_task_stage_seconds"] is not None
+    torch.testing.assert_close(
+        probes["optimized_streaming_quant_blocked_qr_srq_int8"],
+        probes["optimized_eager_quant_blocked_qr_srq_int8"],
+        rtol=0,
+        atol=0,
+    )
