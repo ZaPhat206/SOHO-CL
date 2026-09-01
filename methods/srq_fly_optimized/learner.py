@@ -54,6 +54,8 @@ def _blocked_qr_rank_update(
     update_rows: torch.Tensor,
     *,
     panel_size: int,
+    trailing_chunk_size: int | None = None,
+    preserve_update_rows: bool = True,
 ) -> torch.Tensor:
     """Return the positive-diagonal QR factor of ``[upper; update_rows]``.
 
@@ -65,8 +67,14 @@ def _blocked_qr_rank_update(
     ``(rank + panel_size) * dimension**2`` rather than ``dimension**3``.
 
     The input factor is disposable after a streaming update, so it is reused as
-    the output buffer.  ``update_rows`` is cloned because callers still need
-    the original codes to update the cross statistic.
+    the output buffer.  ``update_rows`` is cloned by default because public
+    callers still own their code tensor.  An explicitly consuming update may
+    set ``preserve_update_rows=False`` after updating the cross statistic.
+    When
+    ``trailing_chunk_size`` is set, Householder reflectors are applied to only
+    that many trailing columns at a time.  This leaves the arithmetic and
+    factor contract unchanged while bounding the two temporary trailing
+    matrices created by ``cat`` and ``ormqr``.
     """
     if upper.ndim != 2 or upper.shape[0] != upper.shape[1] or not len(upper):
         raise ValueError("upper must be a non-empty square matrix")
@@ -74,11 +82,13 @@ def _blocked_qr_rank_update(
         raise ValueError("update rows must align with the factor dimension")
     if not len(update_rows) or panel_size <= 0:
         raise ValueError("rank and panel size must be positive")
+    if trailing_chunk_size is not None and trailing_chunk_size <= 0:
+        raise ValueError("trailing chunk size must be positive when provided")
     if upper.device != update_rows.device or upper.dtype != update_rows.dtype:
         raise ValueError("factor and update rows must share device and dtype")
 
     dimension = len(upper)
-    residual = update_rows.clone()
+    residual = update_rows.clone() if preserve_update_rows else update_rows
     for start in range(0, dimension, panel_size):
         end = min(start + panel_size, dimension)
         width = end - start
@@ -88,15 +98,6 @@ def _blocked_qr_rank_update(
         reflectors, tau = torch.geqrf(panel)
         diagonal_block = torch.triu(reflectors[:width])
 
-        transformed = None
-        if end < dimension:
-            trailing = torch.cat(
-                (upper[start:end, end:], residual[:, end:]), dim=0
-            )
-            transformed = torch.ormqr(
-                reflectors, tau, trailing, left=True, transpose=True
-            )
-
         # QR is unique only up to row signs.  Positive diagonal factors keep
         # the compressed square-root contract and make repeated runs stable.
         signs = torch.where(
@@ -104,10 +105,31 @@ def _blocked_qr_rank_update(
             -torch.ones((), device=upper.device, dtype=upper.dtype),
             torch.ones((), device=upper.device, dtype=upper.dtype),
         )
+
+        trailing_width = (
+            dimension - end
+            if trailing_chunk_size is None
+            else trailing_chunk_size
+        )
+        if end < dimension:
+            for column_start in range(end, dimension, trailing_width):
+                column_end = min(column_start + trailing_width, dimension)
+                trailing = torch.cat(
+                    (
+                        upper[start:end, column_start:column_end],
+                        residual[:, column_start:column_end],
+                    ),
+                    dim=0,
+                )
+                transformed = torch.ormqr(
+                    reflectors, tau, trailing, left=True, transpose=True
+                )
+                upper[start:end, column_start:column_end].copy_(
+                    signs[:, None] * transformed[:width]
+                )
+                residual[:, column_start:column_end].copy_(transformed[width:])
+
         upper[start:end, start:end].copy_(signs[:, None] * diagonal_block)
-        if transformed is not None:
-            upper[start:end, end:].copy_(signs[:, None] * transformed[:width])
-            residual[:, end:].copy_(transformed[width:])
     return upper
 
 
@@ -183,18 +205,51 @@ class _BaseFLYLearner:
         }
 
     @contextmanager
-    def _profile_stage(self, name: str, timings: dict[str, float]):
-        """Measure an update stage without perturbing ordinary experiment runs."""
+    def _profile_stage(
+        self,
+        name: str,
+        timings: dict[str, float],
+        memory: dict[str, dict[str, int | None]],
+    ):
+        """Measure one stage in a separate opt-in profiling run.
+
+        Per-stage CUDA counters are deliberately disjoint from the ordinary
+        whole-update measurement.  Callers therefore profile a fresh learner
+        only after the timed worker has completed.
+        """
         if not self.profile_updates:
             yield
             return
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
+            before_allocated = int(torch.cuda.memory_allocated(self.device))
+            before_reserved = int(torch.cuda.memory_reserved(self.device))
+            torch.cuda.reset_peak_memory_stats(self.device)
+        else:
+            before_allocated = before_reserved = None
         started = time.perf_counter()
         yield
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
         timings[name] = time.perf_counter() - started
+        if self.device.type == "cuda":
+            memory[name] = {
+                "before_allocated_bytes": before_allocated,
+                "after_allocated_bytes": int(torch.cuda.memory_allocated(self.device)),
+                "peak_allocated_bytes": int(torch.cuda.max_memory_allocated(self.device)),
+                "before_reserved_bytes": before_reserved,
+                "after_reserved_bytes": int(torch.cuda.memory_reserved(self.device)),
+                "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(self.device)),
+            }
+        else:
+            memory[name] = {
+                "before_allocated_bytes": None,
+                "after_allocated_bytes": None,
+                "peak_allocated_bytes": None,
+                "before_reserved_bytes": None,
+                "after_reserved_bytes": None,
+                "peak_reserved_bytes": None,
+            }
 
     def encode(self, features: torch.Tensor) -> torch.Tensor:
         values = features.to(
@@ -439,6 +494,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         storage_mode: str,
         update_backend: str = "gram_cholesky",
         update_panel_size: int = 128,
+        update_trailing_chunk_size: int | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -453,9 +509,16 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             )
         if update_panel_size <= 0:
             raise ValueError("update_panel_size must be positive")
+        if update_trailing_chunk_size is not None and update_trailing_chunk_size <= 0:
+            raise ValueError("update_trailing_chunk_size must be positive")
         self.storage_mode = storage_mode
         self.update_backend = update_backend
         self.update_panel_size = int(update_panel_size)
+        self.update_trailing_chunk_size = (
+            None
+            if update_trailing_chunk_size is None
+            else int(update_trailing_chunk_size)
+        )
         self.factor: CompressedUpper | None = None
         self.diagnostics.update(
             method="sqrt_float16" if storage_mode == "float16" else "srq_int8",
@@ -463,11 +526,31 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             structurally_spd=True,
             update_backend=update_backend,
             update_panel_size=self.update_panel_size,
+            update_trailing_chunk_size=self.update_trailing_chunk_size,
         )
 
     def update_codes(self, codes: torch.Tensor, labels: torch.Tensor) -> None:
+        self._update_codes(codes, labels, consume_codes=False)
+
+    def update_codes_consuming(
+        self, codes: torch.Tensor, labels: torch.Tensor
+    ) -> None:
+        """Update while treating ``codes`` as a disposable work buffer.
+
+        This opt-in path is intended for isolated experiment runners that
+        materialize a code tensor solely for one streaming update.  The public
+        ``update_codes`` method retains its non-mutating input contract.
+        """
+        if self.update_backend != "blocked_qr":
+            raise ValueError("consuming updates require the blocked_qr backend")
+        self._update_codes(codes, labels, consume_codes=True)
+
+    def _update_codes(
+        self, codes: torch.Tensor, labels: torch.Tensor, *, consume_codes: bool
+    ) -> None:
         update_started = time.perf_counter()
         timings: dict[str, float] = {}
+        memory: dict[str, dict[str, int | None]] = {}
         values = codes.to(device=self.device, dtype=self.statistics_dtype)
         target_labels = labels.to(device=self.device, dtype=torch.long)
         if values.ndim != 2 or values.shape[1] != self.expand_dim:
@@ -476,23 +559,31 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("labels must align with a non-empty code matrix")
         if not bool(torch.isfinite(values).all()):
             raise ValueError("codes contain NaN or Inf")
-        with self._profile_stage("class_expansion", timings):
+        with self._profile_stage("class_expansion", timings, memory):
             class_ids, cross, counts, targets = self._expanded_statistics(target_labels)
+        new_cross = new_counts = work_cross = None
+        if consume_codes:
+            with self._profile_stage("cross_update", timings, memory):
+                new_cross = cross + values.T @ targets
+                new_counts = counts + targets.sum(0)
+                work_cross = new_cross.to(self.solver_dtype)
         solve_values = values.to(self.solver_dtype)
         previous = None
         if self.factor is not None:
-            with self._profile_stage("factor_decode", timings):
+            with self._profile_stage("factor_decode", timings, memory):
                 previous = self.factor.reconstruct_upper(dtype=self.solver_dtype)
 
         if previous is not None and self.update_backend == "blocked_qr":
-            with self._profile_stage("blocked_qr", timings):
+            with self._profile_stage("blocked_qr", timings, memory):
                 exact_upper = _blocked_qr_rank_update(
                     previous,
                     solve_values,
                     panel_size=self.update_panel_size,
+                    trailing_chunk_size=self.update_trailing_chunk_size,
+                    preserve_update_rows=not consume_codes,
                 )
         elif previous is not None and self.update_backend == "stacked_qr":
-            with self._profile_stage("stacked_qr", timings):
+            with self._profile_stage("stacked_qr", timings, memory):
                 stacked = torch.cat((previous, solve_values), dim=0)
                 _, exact_upper = torch.linalg.qr(stacked, mode="r")
                 signs = torch.where(
@@ -503,14 +594,14 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                 exact_upper = signs[:, None] * exact_upper
                 del stacked
         else:
-            with self._profile_stage("current_gram", timings):
+            with self._profile_stage("current_gram", timings, memory):
                 updated_system = solve_values.T @ solve_values
             if previous is None:
                 # Adding the ridge directly to the diagonal avoids allocating
                 # a dense m-by-m identity matrix on every first update.
                 updated_system.diagonal().add_(self.ridge_lambda)
             else:
-                with self._profile_stage("previous_factor_product", timings):
+                with self._profile_stage("previous_factor_product", timings, memory):
                     if self.update_backend == "gram_cholesky_direct":
                         # The fused GEMM writes directly into the current
                         # system buffer and avoids another m-by-m tensor.
@@ -520,7 +611,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                         # bitwise-compatible checkpoint backend.
                         updated_system.add_(previous.T @ previous)
                 del previous
-            with self._profile_stage("cholesky", timings):
+            with self._profile_stage("cholesky", timings, memory):
                 # Both terms used above are Gram products and therefore
                 # symmetric by construction.  The historical backend keeps
                 # the explicit average for bitwise compatibility.  The
@@ -538,7 +629,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                     raise RuntimeError("square-root streaming update failed Cholesky")
                 exact_upper = exact_lower.T
 
-        with self._profile_stage("factor_quantization", timings):
+        with self._profile_stage("factor_quantization", timings, memory):
             if self.update_backend in {"gram_cholesky_direct", "blocked_qr"}:
                 compressed, relative_factor_error = (
                     CompressedUpper.from_upper_inplace(
@@ -555,7 +646,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                     group_size=self.group_size,
                     mode=self.storage_mode,
                 )
-        with self._profile_stage("factor_reconstruction", timings):
+        with self._profile_stage("factor_reconstruction", timings, memory):
             reconstructed = (
                 exact_upper
                 if self.update_backend in {"gram_cholesky_direct", "blocked_qr"}
@@ -563,18 +654,21 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             )
         if bool((reconstructed.diagonal() <= 0).any()):
             raise RuntimeError("compressed square-root diagonal is not positive")
-        with self._profile_stage("cross_update", timings):
-            new_cross = cross + values.T @ targets
-            new_counts = counts + targets.sum(0)
-            work_cross = new_cross.to(self.solver_dtype)
-        with self._profile_stage("triangular_solve", timings):
+        if not consume_codes:
+            with self._profile_stage("cross_update", timings, memory):
+                new_cross = cross + values.T @ targets
+                new_counts = counts + targets.sum(0)
+                work_cross = new_cross.to(self.solver_dtype)
+        if new_cross is None or new_counts is None or work_cross is None:
+            raise RuntimeError("internal cross-statistic update failure")
+        with self._profile_stage("triangular_solve", timings, memory):
             intermediate = torch.linalg.solve_triangular(
                 reconstructed.T, work_cross, upper=False
             )
             weights = torch.linalg.solve_triangular(
                 reconstructed, intermediate, upper=True
             )
-        with self._profile_stage("diagnostics", timings):
+        with self._profile_stage("diagnostics", timings, memory):
             residual = _relative_factor_residual(reconstructed, weights, work_cross)
             if self.update_backend not in {"gram_cholesky_direct", "blocked_qr"}:
                 relative_factor_error = float(
@@ -594,6 +688,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             if self.device.type == "cuda":
                 torch.cuda.synchronize(self.device)
             self.diagnostics["last_update_stage_seconds"] = timings
+            self.diagnostics["last_update_stage_cuda_memory"] = memory
             self.diagnostics["last_update_total_seconds"] = (
                 time.perf_counter() - update_started
             )
@@ -612,6 +707,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             storage_mode=self.storage_mode,
             update_backend=self.update_backend,
             update_panel_size=self.update_panel_size,
+            update_trailing_chunk_size=self.update_trailing_chunk_size,
             factor=None if self.factor is None else self.factor.state_dict(),
         )
         return state
@@ -624,6 +720,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("checkpoint square-root update backend mismatch")
         if state.get("update_panel_size", 128) != self.update_panel_size:
             raise ValueError("checkpoint update panel size mismatch")
+        if state.get("update_trailing_chunk_size") != self.update_trailing_chunk_size:
+            raise ValueError("checkpoint update trailing chunk size mismatch")
         self.factor = None if state["factor"] is None else CompressedUpper.load_state_dict(
             state["factor"], device=self.device
         )

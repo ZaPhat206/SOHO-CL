@@ -129,6 +129,32 @@ def test_blocked_rank_update_matches_dense_stacked_qr():
     assert bool((actual.diagonal() > 0).all())
 
 
+def test_chunked_blocked_rank_update_matches_unchunked_and_bounds_rhs(monkeypatch):
+    upper = torch.linalg.cholesky(_spd(dimension=31)).T
+    generator = torch.Generator().manual_seed(992)
+    updates = torch.randn(9, 31, generator=generator, dtype=torch.float64)
+    expected = _blocked_qr_rank_update(
+        upper.clone(), updates, panel_size=7, trailing_chunk_size=None
+    )
+    original_updates = updates.clone()
+    original_ormqr = torch.ormqr
+    observed_widths = []
+
+    def recording_ormqr(reflectors, tau, other, *, left=True, transpose=True):
+        observed_widths.append(other.shape[1])
+        return original_ormqr(
+            reflectors, tau, other, left=left, transpose=transpose
+        )
+
+    monkeypatch.setattr(torch, "ormqr", recording_ormqr)
+    actual = _blocked_qr_rank_update(
+        upper.clone(), updates, panel_size=7, trailing_chunk_size=5
+    )
+    torch.testing.assert_close(actual, expected, rtol=2e-13, atol=2e-13)
+    torch.testing.assert_close(updates, original_updates, rtol=0, atol=0)
+    assert observed_widths and max(observed_widths) <= 5
+
+
 @pytest.mark.parametrize("mode", ["float16", "int8"])
 def test_blocked_qr_backend_matches_full_qr_stream(mode):
     first, first_labels, second, second_labels = _stream()
@@ -152,6 +178,65 @@ def test_blocked_qr_backend_matches_full_qr_stream(mode):
     )
     torch.testing.assert_close(blocked.weights, full.weights, rtol=2e-12, atol=2e-12)
     assert blocked.persistent_state_bytes() == full.persistent_state_bytes()
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+def test_chunked_blocked_qr_backend_matches_unchunked_stream(mode):
+    first, first_labels, second, second_labels = _stream()
+    unchunked = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        **_kwargs(),
+    )
+    chunked = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        update_trailing_chunk_size=5,
+        **_kwargs(),
+    )
+    for codes, labels in ((first, first_labels), (second, second_labels)):
+        unchunked.update_codes(codes, labels)
+        chunked.update_codes(codes, labels)
+    torch.testing.assert_close(
+        chunked.factor.reconstruct_upper(dtype=torch.float64),
+        unchunked.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(
+        chunked.weights, unchunked.weights, rtol=2e-12, atol=2e-12
+    )
+    assert chunked.persistent_state_bytes() == unchunked.persistent_state_bytes()
+
+
+def test_explicit_consuming_update_reuses_codes_without_changing_predictor():
+    first, first_labels, second, second_labels = _stream()
+    ordinary = SquareRootFLYLearner(
+        storage_mode="int8", update_backend="blocked_qr",
+        update_panel_size=7, update_trailing_chunk_size=5, **_kwargs(),
+    )
+    consuming = SquareRootFLYLearner(
+        storage_mode="int8", update_backend="blocked_qr",
+        update_panel_size=7, update_trailing_chunk_size=5, **_kwargs(),
+    )
+    ordinary.update_codes(first, first_labels)
+    consuming.update_codes_consuming(first.clone(), first_labels)
+    ordinary_second = second.clone()
+    consumed_second = second.clone()
+    ordinary.update_codes(ordinary_second, second_labels)
+    consuming.update_codes_consuming(consumed_second, second_labels)
+    torch.testing.assert_close(ordinary_second, second, rtol=0, atol=0)
+    assert not torch.equal(consumed_second, second)
+    torch.testing.assert_close(consuming.Q, ordinary.Q, rtol=0, atol=0)
+    torch.testing.assert_close(
+        consuming.factor.reconstruct_upper(dtype=torch.float64),
+        ordinary.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(consuming.weights, ordinary.weights, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("mode", ["float16", "int8"])
@@ -197,6 +282,11 @@ def test_profiler_is_opt_in_and_does_not_enter_persistent_state():
     } <= set(timings)
     assert all(value >= 0 for value in timings.values())
     assert learner.diagnostics["last_update_total_seconds"] >= sum(timings.values())
+    stage_memory = learner.diagnostics["last_update_stage_cuda_memory"]
+    assert set(stage_memory) == set(timings)
+    assert all(
+        row["peak_allocated_bytes"] is None for row in stage_memory.values()
+    )
     assert not any("timing" in name for name in learner.persistent_tensors())
 
 
@@ -242,6 +332,35 @@ def test_blocked_backend_panel_size_is_checkpoint_locked():
             storage_mode="int8", update_backend="blocked_qr",
             update_panel_size=8, **_kwargs(),
         ).load_state_dict(learner.state_dict())
+
+
+def test_blocked_backend_trailing_chunk_size_is_checkpoint_locked():
+    first, labels, _, _ = _stream()
+    learner = SquareRootFLYLearner(
+        storage_mode="int8",
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        update_trailing_chunk_size=5,
+        **_kwargs(),
+    )
+    learner.update_codes(first, labels)
+    state = learner.state_dict()
+    resumed = SquareRootFLYLearner(
+        storage_mode="int8",
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        update_trailing_chunk_size=5,
+        **_kwargs(),
+    )
+    resumed.load_state_dict(state)
+    with pytest.raises(ValueError, match="trailing chunk size"):
+        SquareRootFLYLearner(
+            storage_mode="int8",
+            update_backend="blocked_qr",
+            update_panel_size=7,
+            update_trailing_chunk_size=6,
+            **_kwargs(),
+        ).load_state_dict(state)
 
 
 def test_synthetic_benchmark_runner_passes_without_test_data(tmp_path):
@@ -292,14 +411,16 @@ def test_isolated_system_benchmark_reports_disjoint_measurements(tmp_path):
     )
     assert result["status"] == "pass"
     assert result["uses_test_set"] is False
-    assert len(result["results"]) == 6
+    assert len(result["results"]) == 7
     assert all(row["peak_cuda_allocated_bytes"] is None for row in result["results"])
     assert result["gates"]["direct_backend_within_tolerance"]
     assert result["gates"]["blocked_qr_backend_within_tolerance"]
+    assert result["gates"]["chunked_blocked_qr_backend_within_tolerance"]
     assert result["selected_update_backend"]["name"] == "blocked_qr"
     profiles = {
         row["method"]: row["profiled_task_stage_seconds"]
         for row in result["results"]
     }
     assert profiles["optimized_blocked_qr_srq_int8"] is not None
+    assert profiles["optimized_chunked_blocked_qr_srq_int8"] is not None
     assert profiles["exact_fly_dense"] is None

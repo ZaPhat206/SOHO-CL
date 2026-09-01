@@ -33,6 +33,7 @@ METHODS = (
     "optimized_gram_srq_int8",
     "optimized_direct_srq_int8",
     "optimized_blocked_qr_srq_int8",
+    "optimized_chunked_blocked_qr_srq_int8",
     "optimized_qr_srq_int8",
 )
 
@@ -138,6 +139,7 @@ def _learner(
         "optimized_gram_srq_int8": "gram_cholesky",
         "optimized_direct_srq_int8": "gram_cholesky_direct",
         "optimized_blocked_qr_srq_int8": "blocked_qr",
+        "optimized_chunked_blocked_qr_srq_int8": "blocked_qr",
         "optimized_qr_srq_int8": "stacked_qr",
     }
     if method not in backends:
@@ -146,6 +148,11 @@ def _learner(
         storage_mode="int8",
         update_backend=backends[method],
         update_panel_size=int(config.get("update_panel_size", 128)),
+        update_trailing_chunk_size=(
+            int(config.get("update_trailing_chunk_size", 1024))
+            if method == "optimized_chunked_blocked_qr_srq_int8"
+            else None
+        ),
         profile_updates=profile_updates,
         **kwargs,
     )
@@ -169,7 +176,7 @@ def _memory_snapshot(device: torch.device) -> dict[str, int | None]:
 
 def run_worker(
     *, config_path: Path, method: str, output: Path, probe_output: Path,
-    device_name: str,
+    device_name: str, profile_stages: bool = True,
 ) -> dict:
     config = json.loads(config_path.read_text(encoding="utf-8"))
     update_benchmark._validate(config)
@@ -182,7 +189,12 @@ def run_worker(
     task_memory: list[dict] = []
     last_codes = None
     profile_stream: list[tuple[torch.Tensor, torch.Tensor]] | None = (
-        [] if method == "optimized_blocked_qr_srq_int8" else None
+        []
+        if profile_stages and method in {
+            "optimized_blocked_qr_srq_int8",
+            "optimized_chunked_blocked_qr_srq_int8",
+        }
+        else None
     )
 
     if device.type == "cuda":
@@ -206,16 +218,25 @@ def run_worker(
             profile_stream.append((generated_codes, generated_labels))
         codes = generated_codes.to(device)
         labels = generated_labels.to(device)
+        pending_probe = (
+            generated_codes[: int(config["probe_rows"])].detach().clone()
+            if task == int(config["num_tasks"]) - 1
+            else None
+        )
         _sync(device)
         started = time.perf_counter()
-        learner.update_codes(codes, labels)
+        if method == "optimized_chunked_blocked_qr_srq_int8":
+            learner.update_codes_consuming(codes, labels)
+        else:
+            learner.update_codes(codes, labels)
         _sync(device)
         elapsed = time.perf_counter() - started
         task_seconds.append(elapsed)
         memory = _memory_snapshot(device)
         memory.update(task=task + 1)
         task_memory.append(memory)
-        last_codes = codes[: int(config["probe_rows"])].detach().clone()
+        if pending_probe is not None:
+            last_codes = pending_probe.to(device)
         print(
             f"TASK method={method} {task + 1}/{config['num_tasks']} "
             f"update={elapsed:.4f}s "
@@ -237,13 +258,23 @@ def run_worker(
     peak_allocated = [row["peak_allocated_bytes"] for row in task_memory]
     peak_reserved = [row["peak_reserved_bytes"] for row in task_memory]
     profiled_stage_seconds = None
+    profiled_stage_cuda_memory = None
     if profile_stream is not None:
         profiled = _learner(method, config, device, profile_updates=True)
         profiled_stage_seconds = []
+        profiled_stage_cuda_memory = []
         for profile_codes, profile_labels in profile_stream:
-            profiled.update_codes(profile_codes.to(device), profile_labels.to(device))
+            values = profile_codes.to(device)
+            labels = profile_labels.to(device)
+            if method == "optimized_chunked_blocked_qr_srq_int8":
+                profiled.update_codes_consuming(values, labels)
+            else:
+                profiled.update_codes(values, labels)
             profiled_stage_seconds.append(
                 dict(profiled.diagnostics["last_update_stage_seconds"])
+            )
+            profiled_stage_cuda_memory.append(
+                dict(profiled.diagnostics["last_update_stage_cuda_memory"])
             )
         del profiled
 
@@ -253,6 +284,16 @@ def run_worker(
         "method": method,
         "uses_test_set": False,
         "synthetic_only": True,
+        "config_sha256": _sha256(config_path),
+        "source_identity": {
+            "runner": _sha256(Path(__file__).resolve()),
+            "optimized_learner": _sha256(
+                ROOT / "methods/srq_fly_optimized/learner.py"
+            ),
+            "optimized_storage": _sha256(
+                ROOT / "methods/srq_fly_optimized/storage.py"
+            ),
+        },
         "device": str(device),
         "device_name": (
             torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu"
@@ -263,6 +304,7 @@ def run_worker(
         ),
         "task_update_seconds": task_seconds,
         "profiled_task_stage_seconds": profiled_stage_seconds,
+        "profiled_task_stage_cuda_memory": profiled_stage_cuda_memory,
         "total_update_seconds": sum(task_seconds),
         "baseline_cuda_memory": baseline,
         "task_cuda_memory": task_memory,
@@ -326,6 +368,10 @@ def run_isolated(
             drift.get("optimized_direct_srq_int8", float("inf")) <= tolerance,
         "blocked_qr_backend_within_tolerance":
             drift.get("optimized_blocked_qr_srq_int8", float("inf")) <= tolerance,
+        "chunked_blocked_qr_backend_within_tolerance":
+            drift.get(
+                "optimized_chunked_blocked_qr_srq_int8", float("inf")
+            ) <= tolerance,
         "qr_backend_within_tolerance":
             drift.get("optimized_qr_srq_int8", float("inf")) <= tolerance,
         "persistent_state_unchanged": all(
@@ -383,6 +429,10 @@ def run_isolated(
         "optimized_blocked_qr_update_ratio_to_exact_fly":
             by_method["optimized_blocked_qr_srq_int8"]["total_update_seconds"]
             / by_method["exact_fly_dense"]["total_update_seconds"],
+        "optimized_chunked_blocked_qr_update_ratio_to_exact_fly":
+            by_method["optimized_chunked_blocked_qr_srq_int8"][
+                "total_update_seconds"
+            ] / by_method["exact_fly_dense"]["total_update_seconds"],
         "gates": gates,
     }
     (output_dir / "system_benchmark.json").write_text(
@@ -403,6 +453,7 @@ def main() -> None:
     worker.add_argument("--output", type=Path, required=True)
     worker.add_argument("--probe-output", type=Path, required=True)
     worker.add_argument("--device", default="cpu")
+    worker.add_argument("--skip-stage-profile", action="store_true")
     driver = subparsers.add_parser("run")
     driver.add_argument("--config", type=Path, required=True)
     driver.add_argument("--output-dir", type=Path, required=True)
@@ -412,7 +463,7 @@ def main() -> None:
         run_worker(
             config_path=args.config.resolve(), method=args.method,
             output=args.output.resolve(), probe_output=args.probe_output.resolve(),
-            device_name=args.device,
+            device_name=args.device, profile_stages=not args.skip_stage_profile,
         )
     else:
         run_isolated(

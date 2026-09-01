@@ -37,7 +37,11 @@ def _validate(config: dict) -> None:
         "num_tasks", "rows_per_task", "num_classes", "probe_rows",
         "solver_tolerance", "maximum_relative_logit_drift",
     }
-    optional = {"maximum_update_ratio_to_exact_fly", "update_panel_size"}
+    optional = {
+        "maximum_update_ratio_to_exact_fly",
+        "update_panel_size",
+        "update_trailing_chunk_size",
+    }
     if not required <= set(config) or set(config) - required - optional:
         raise ValueError(
             f"optimization config fields mismatch: "
@@ -61,6 +65,8 @@ def _validate(config: dict) -> None:
         raise ValueError("exact-FLY update-ratio gate must be positive")
     if config.get("update_panel_size", 128) <= 0:
         raise ValueError("update panel size must be positive")
+    if config.get("update_trailing_chunk_size", 1) <= 0:
+        raise ValueError("update trailing chunk size must be positive")
 
 
 def _codes(config: dict, generator: torch.Generator) -> torch.Tensor:
