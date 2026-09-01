@@ -9,7 +9,7 @@ import torch
 from methods.srq_fly import CompressedUpper as LockedCompressedUpper
 from methods.srq_fly import SquareRootFLYLearner as LockedSquareRootFLYLearner
 from methods.srq_fly_optimized import CompressedUpper, SquareRootFLYLearner
-from tools import srq_fly_update_benchmark
+from tools import srq_fly_system_benchmark, srq_fly_update_benchmark
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +71,30 @@ def test_vectorized_storage_is_byte_identical_to_locked_blockwise_storage(mode):
 
 
 @pytest.mark.parametrize("mode", ["float16", "int8"])
+def test_fused_inplace_reconstruction_preserves_version1_storage(mode):
+    original = torch.linalg.cholesky(_spd()).T
+    expected = CompressedUpper.from_upper(
+        original, block_size=6, group_size=7, mode=mode
+    )
+    work = original.clone()
+    fused, relative_error = CompressedUpper.from_upper_inplace(
+        work, block_size=6, group_size=7, mode=mode
+    )
+    torch.testing.assert_close(
+        work, expected.reconstruct_upper(dtype=torch.float64), rtol=0, atol=0
+    )
+    for left, right in zip(fused.blocks, expected.blocks):
+        assert torch.equal(left.values, right.values)
+        if mode == "int8":
+            assert torch.equal(left.scales, right.scales)
+    reference_error = float(
+        torch.linalg.vector_norm(work - original)
+        / torch.linalg.vector_norm(original)
+    )
+    assert relative_error == pytest.approx(reference_error, rel=1e-12, abs=1e-15)
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
 def test_stacked_qr_matches_gram_cholesky_stream(mode):
     first, first_labels, second, second_labels = _stream()
     legacy_backend = SquareRootFLYLearner(
@@ -90,6 +114,30 @@ def test_stacked_qr_matches_gram_cholesky_stream(mode):
     )
     torch.testing.assert_close(qr_backend.weights, legacy_backend.weights, rtol=0, atol=0)
     assert qr_backend.diagnostics["solver_relative_residual"] < 1e-10
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+def test_direct_cholesky_backend_matches_compatibility_backend(mode):
+    first, first_labels, second, second_labels = _stream()
+    compatibility = SquareRootFLYLearner(
+        storage_mode=mode, update_backend="gram_cholesky", **_kwargs()
+    )
+    direct = SquareRootFLYLearner(
+        storage_mode=mode, update_backend="gram_cholesky_direct", **_kwargs()
+    )
+    for codes, labels in ((first, first_labels), (second, second_labels)):
+        compatibility.update_codes(codes, labels)
+        direct.update_codes(codes, labels)
+    torch.testing.assert_close(
+        direct.factor.reconstruct_upper(dtype=torch.float64),
+        compatibility.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(
+        direct.weights, compatibility.weights, rtol=2e-6, atol=1e-10
+    )
+    assert direct.persistent_state_bytes() == compatibility.persistent_state_bytes()
 
 
 def test_profiler_is_opt_in_and_does_not_enter_persistent_state():
@@ -157,6 +205,7 @@ def test_synthetic_benchmark_runner_passes_without_test_data(tmp_path):
         rows_per_task=12,
         num_classes=4,
         probe_rows=4,
+        maximum_update_ratio_to_exact_fly=1000.0,
     )
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
@@ -165,3 +214,32 @@ def test_synthetic_benchmark_runner_passes_without_test_data(tmp_path):
     assert result["status"] == "pass"
     assert result["uses_test_set"] is False and result["synthetic_only"] is True
     assert output.is_file()
+
+
+def test_isolated_system_benchmark_reports_disjoint_measurements(tmp_path):
+    config = json.loads(
+        (ROOT / "configs/srq_fly_update_optimization_smoke.json").read_text()
+    )
+    config.update(
+        feature_dim=8,
+        expand_dim=24,
+        synaptic_degree=4,
+        block_size=6,
+        group_size=4,
+        rows_per_task=10,
+        num_classes=4,
+        probe_rows=4,
+        maximum_update_ratio_to_exact_fly=1000.0,
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config))
+    result = srq_fly_system_benchmark.run_isolated(
+        config_path=config_path,
+        output_dir=tmp_path / "output",
+        device_name="cpu",
+    )
+    assert result["status"] == "pass"
+    assert result["uses_test_set"] is False
+    assert len(result["results"]) == 5
+    assert all(row["peak_cuda_allocated_bytes"] is None for row in result["results"])
+    assert result["gates"]["direct_backend_within_tolerance"]

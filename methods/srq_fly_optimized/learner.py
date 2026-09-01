@@ -381,8 +381,13 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         super().__init__(**kwargs)
         if storage_mode not in {"float16", "int8"}:
             raise ValueError("storage_mode must be float16 or int8")
-        if update_backend not in {"gram_cholesky", "stacked_qr"}:
-            raise ValueError("update_backend must be gram_cholesky or stacked_qr")
+        if update_backend not in {
+            "gram_cholesky", "gram_cholesky_direct", "stacked_qr"
+        }:
+            raise ValueError(
+                "update_backend must be gram_cholesky, "
+                "gram_cholesky_direct, or stacked_qr"
+            )
         self.storage_mode = storage_mode
         self.update_backend = update_backend
         self.factor: CompressedUpper | None = None
@@ -434,22 +439,46 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                 with self._profile_stage("previous_factor_product", timings):
                     updated_system.add_(previous.T @ previous)
             with self._profile_stage("cholesky", timings):
-                exact_lower, info = torch.linalg.cholesky_ex(
-                    (updated_system + updated_system.T) * 0.5
+                # Both terms used above are Gram products and therefore
+                # symmetric by construction.  The historical backend keeps
+                # the explicit average for bitwise compatibility.  The
+                # opt-in direct backend lets Cholesky consume the lower
+                # triangle in place and avoids another dense m-by-m
+                # temporary.  It is eligible only after its predictor drift
+                # is checked by the isolated system benchmark.
+                cholesky_input = (
+                    updated_system
+                    if self.update_backend == "gram_cholesky_direct"
+                    else (updated_system + updated_system.T) * 0.5
                 )
+                exact_lower, info = torch.linalg.cholesky_ex(cholesky_input)
                 if int(info.max().item()) != 0:
                     raise RuntimeError("square-root streaming update failed Cholesky")
                 exact_upper = exact_lower.T
 
         with self._profile_stage("factor_quantization", timings):
-            compressed = CompressedUpper.from_upper(
-                exact_upper,
-                block_size=self.block_size,
-                group_size=self.group_size,
-                mode=self.storage_mode,
-            )
+            if self.update_backend == "gram_cholesky_direct":
+                compressed, relative_factor_error = (
+                    CompressedUpper.from_upper_inplace(
+                        exact_upper,
+                        block_size=self.block_size,
+                        group_size=self.group_size,
+                        mode=self.storage_mode,
+                    )
+                )
+            else:
+                compressed = CompressedUpper.from_upper(
+                    exact_upper,
+                    block_size=self.block_size,
+                    group_size=self.group_size,
+                    mode=self.storage_mode,
+                )
         with self._profile_stage("factor_reconstruction", timings):
-            reconstructed = compressed.reconstruct_upper(dtype=self.solver_dtype)
+            reconstructed = (
+                exact_upper
+                if self.update_backend == "gram_cholesky_direct"
+                else compressed.reconstruct_upper(dtype=self.solver_dtype)
+            )
         if bool((reconstructed.diagonal() <= 0).any()):
             raise RuntimeError("compressed square-root diagonal is not positive")
         with self._profile_stage("cross_update", timings):
@@ -465,9 +494,10 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             )
         with self._profile_stage("diagnostics", timings):
             residual = _relative_factor_residual(reconstructed, weights, work_cross)
-            relative_factor_error = float(torch.dist(reconstructed, exact_upper).item()) / max(
-                float(torch.linalg.vector_norm(exact_upper).item()), 1.0
-            )
+            if self.update_backend != "gram_cholesky_direct":
+                relative_factor_error = float(
+                    torch.dist(reconstructed, exact_upper).item()
+                ) / max(float(torch.linalg.vector_norm(exact_upper).item()), 1.0)
 
         self.factor = compressed
         self.class_ids, self.Q, self.counts = class_ids, new_cross, new_counts
@@ -533,4 +563,3 @@ class SquareRootFLYLearner(_BaseFLYLearner):
 
 
 assert "task_id" not in inspect.signature(_BaseFLYLearner.predict_logits).parameters
-

@@ -191,6 +191,51 @@ class CompressedUpper:
         group_size: int,
         mode: str,
     ) -> "CompressedUpper":
+        compressed, _ = cls._encode_upper(
+            matrix,
+            block_size=block_size,
+            group_size=group_size,
+            mode=mode,
+            reconstruct_in_place=False,
+        )
+        return compressed
+
+    @classmethod
+    def from_upper_inplace(
+        cls,
+        matrix: torch.Tensor,
+        *,
+        block_size: int,
+        group_size: int,
+        mode: str,
+    ) -> tuple["CompressedUpper", float]:
+        """Compress and overwrite ``matrix`` with its decoded representation.
+
+        This fuses the hot-path quantize/dequantize passes.  It preserves the
+        same version-1 block values and scales as :meth:`from_upper`, while
+        avoiding a second dense factor allocation.
+        """
+        compressed, relative_error = cls._encode_upper(
+            matrix,
+            block_size=block_size,
+            group_size=group_size,
+            mode=mode,
+            reconstruct_in_place=True,
+        )
+        if relative_error is None:
+            raise RuntimeError("internal in-place reconstruction failure")
+        return compressed, relative_error
+
+    @classmethod
+    def _encode_upper(
+        cls,
+        matrix: torch.Tensor,
+        *,
+        block_size: int,
+        group_size: int,
+        mode: str,
+        reconstruct_in_place: bool,
+    ) -> tuple["CompressedUpper", float | None]:
         if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or not len(matrix):
             raise ValueError("matrix must be non-empty and square")
         if matrix.dtype not in {torch.float32, torch.float64}:
@@ -223,6 +268,15 @@ class CompressedUpper:
         encoded_blocks: list[tuple[torch.Tensor, torch.Tensor | None] | None] = [
             None
         ] * len(descriptors)
+        original_diagonal = matrix.diagonal().to(torch.float64)
+        squared_reference = original_diagonal.square().sum()
+        squared_error = (
+            (diagonal.to(torch.float64) - original_diagonal).square().sum()
+            if reconstruct_in_place
+            else torch.zeros((), device=matrix.device, dtype=torch.float64)
+        )
+        if reconstruct_in_place:
+            matrix.diagonal().copy_(diagonal.to(matrix.dtype))
         maximum_batched_blocks = 16
         for indices in by_length.values():
             for start in range(0, len(indices), maximum_batched_blocks):
@@ -230,14 +284,39 @@ class CompressedUpper:
                 stacked = torch.stack([descriptors[index][2] for index in chunk])
                 if mode == "int8":
                     encoded, scales = _groupwise_int8_rows(stacked, group_size)
+                    if reconstruct_in_place:
+                        decoded = encoded.to(stacked.dtype) * scales.to(
+                            stacked.dtype
+                        ).repeat_interleave(group_size, dim=1)[:, : stacked.shape[1]]
                     for row, index in enumerate(chunk):
                         encoded_blocks[index] = (encoded[row], scales[row])
                 else:
                     encoded = stacked.to(torch.float16)
                     if not bool(torch.isfinite(encoded).all()):
                         raise ValueError("float16 compression overflowed to NaN or Inf")
+                    if reconstruct_in_place:
+                        decoded = encoded.to(stacked.dtype)
                     for row, index in enumerate(chunk):
                         encoded_blocks[index] = (encoded[row], None)
+                if reconstruct_in_place:
+                    squared_error.add_((decoded.to(torch.float64) - stacked.to(torch.float64)).square().sum())
+                    squared_reference.add_(stacked.to(torch.float64).square().sum())
+                    for row, index in enumerate(chunk):
+                        row_block, col_block, _ = descriptors[index]
+                        rs, re = row_block * block_size, min(
+                            (row_block + 1) * block_size, len(matrix)
+                        )
+                        cs, ce = col_block * block_size, min(
+                            (col_block + 1) * block_size, len(matrix)
+                        )
+                        local = matrix[rs:re, cs:ce]
+                        if row_block == col_block:
+                            local_indices = torch.triu_indices(
+                                len(local), len(local), offset=1, device=matrix.device
+                            )
+                            local[local_indices[0], local_indices[1]] = decoded[row]
+                        else:
+                            local.copy_(decoded[row].reshape(re - rs, ce - cs))
 
         blocks = []
         for descriptor, encoded in zip(descriptors, encoded_blocks):
@@ -245,7 +324,7 @@ class CompressedUpper:
                 raise RuntimeError("internal compressed-block packing failure")
             row_block, col_block, _ = descriptor
             blocks.append(UpperBlock(row_block, col_block, encoded[0], encoded[1]))
-        return cls(
+        compressed = cls(
             dimension=len(matrix),
             block_size=block_size,
             group_size=group_size,
@@ -257,6 +336,12 @@ class CompressedUpper:
             # per block in this hot path; checkpoint loads remain strict.
             validate_values=False,
         )
+        relative_error = None
+        if reconstruct_in_place:
+            relative_error = float(
+                torch.sqrt(squared_error / torch.clamp(squared_reference, min=1.0)).item()
+            )
+        return compressed, relative_error
 
     def reconstruct_upper(self, *, dtype: torch.dtype = torch.float32) -> torch.Tensor:
         if dtype not in {torch.float32, torch.float64}:
@@ -383,4 +468,3 @@ def projected_srq_state_bytes(
         "exact_fly_total_bytes": exact,
         "state_fraction": compressed / exact,
     }
-

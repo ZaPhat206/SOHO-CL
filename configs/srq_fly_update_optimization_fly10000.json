@@ -13,5 +13,6 @@
   "num_classes": 20,
   "probe_rows": 32,
   "solver_tolerance": 0.00001,
-  "maximum_relative_logit_drift": 0.00001
+  "maximum_relative_logit_drift": 0.00001,
+  "maximum_update_ratio_to_exact_fly": 1.5
 }

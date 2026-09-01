@@ -37,8 +37,12 @@ def _validate(config: dict) -> None:
         "num_tasks", "rows_per_task", "num_classes", "probe_rows",
         "solver_tolerance", "maximum_relative_logit_drift",
     }
-    if set(config) != required:
-        raise ValueError(f"optimization config fields mismatch: {sorted(set(config) ^ required)}")
+    optional = {"maximum_update_ratio_to_exact_fly"}
+    if not required <= set(config) or set(config) - required - optional:
+        raise ValueError(
+            f"optimization config fields mismatch: "
+            f"{sorted((set(config) ^ required) - optional)}"
+        )
     if config["seed"] != 2025:
         raise ValueError("new SRQ optimization protocols must use seed 2025")
     if min(
@@ -53,6 +57,8 @@ def _validate(config: dict) -> None:
         raise ValueError("coding level must be in (0, 1]")
     if config["ridge_lambda"] <= 0 or config["solver_tolerance"] <= 0:
         raise ValueError("ridge and tolerance must be positive")
+    if config.get("maximum_update_ratio_to_exact_fly", 1.5) <= 0:
+        raise ValueError("exact-FLY update-ratio gate must be positive")
 
 
 def _codes(config: dict, generator: torch.Generator) -> torch.Tensor:
