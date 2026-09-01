@@ -32,6 +32,7 @@ METHODS = (
     "locked_srq_int8",
     "optimized_gram_srq_int8",
     "optimized_direct_srq_int8",
+    "optimized_blocked_qr_srq_int8",
     "optimized_qr_srq_int8",
 )
 
@@ -125,7 +126,9 @@ def _sync(device: torch.device) -> None:
         torch.cuda.synchronize(device)
 
 
-def _learner(method: str, config: dict, device: torch.device):
+def _learner(
+    method: str, config: dict, device: torch.device, *, profile_updates: bool = False
+):
     if method == "exact_fly_dense":
         return _ExactSyntheticFLY(config, device)
     kwargs = update_benchmark._learner_kwargs(config, device)
@@ -134,6 +137,7 @@ def _learner(method: str, config: dict, device: torch.device):
     backends = {
         "optimized_gram_srq_int8": "gram_cholesky",
         "optimized_direct_srq_int8": "gram_cholesky_direct",
+        "optimized_blocked_qr_srq_int8": "blocked_qr",
         "optimized_qr_srq_int8": "stacked_qr",
     }
     if method not in backends:
@@ -141,7 +145,8 @@ def _learner(method: str, config: dict, device: torch.device):
     return OptimizedLearner(
         storage_mode="int8",
         update_backend=backends[method],
-        profile_updates=False,
+        update_panel_size=int(config.get("update_panel_size", 128)),
+        profile_updates=profile_updates,
         **kwargs,
     )
 
@@ -176,6 +181,9 @@ def run_worker(
     task_seconds: list[float] = []
     task_memory: list[dict] = []
     last_codes = None
+    profile_stream: list[tuple[torch.Tensor, torch.Tensor]] | None = (
+        [] if method == "optimized_blocked_qr_srq_int8" else None
+    )
 
     if device.type == "cuda":
         # Initialize CUDA libraries before resetting the measured peaks.
@@ -189,11 +197,15 @@ def run_worker(
     for task in range(int(config["num_tasks"])):
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
-        codes = update_benchmark._codes(config, generator).to(device)
-        labels = (
-            torch.arange(int(config["rows_per_task"]), device=device)
+        generated_codes = update_benchmark._codes(config, generator)
+        generated_labels = (
+            torch.arange(int(config["rows_per_task"]))
             + task * int(config["rows_per_task"])
         ) % int(config["num_classes"])
+        if profile_stream is not None:
+            profile_stream.append((generated_codes, generated_labels))
+        codes = generated_codes.to(device)
+        labels = generated_labels.to(device)
         _sync(device)
         started = time.perf_counter()
         learner.update_codes(codes, labels)
@@ -210,7 +222,7 @@ def run_worker(
             f"peak_allocated={memory['peak_allocated_bytes']}",
             flush=True,
         )
-        del codes, labels
+        del generated_codes, generated_labels, codes, labels
 
     if last_codes is None:
         raise RuntimeError("empty synthetic stream")
@@ -224,6 +236,17 @@ def run_worker(
     checkpoint_path.unlink()
     peak_allocated = [row["peak_allocated_bytes"] for row in task_memory]
     peak_reserved = [row["peak_reserved_bytes"] for row in task_memory]
+    profiled_stage_seconds = None
+    if profile_stream is not None:
+        profiled = _learner(method, config, device, profile_updates=True)
+        profiled_stage_seconds = []
+        for profile_codes, profile_labels in profile_stream:
+            profiled.update_codes(profile_codes.to(device), profile_labels.to(device))
+            profiled_stage_seconds.append(
+                dict(profiled.diagnostics["last_update_stage_seconds"])
+            )
+        del profiled
+
     result = {
         "schema_version": 1,
         "status": "complete",
@@ -239,6 +262,7 @@ def run_worker(
             if device.type == "cuda" else None
         ),
         "task_update_seconds": task_seconds,
+        "profiled_task_stage_seconds": profiled_stage_seconds,
         "total_update_seconds": sum(task_seconds),
         "baseline_cuda_memory": baseline,
         "task_cuda_memory": task_memory,
@@ -300,6 +324,8 @@ def run_isolated(
             drift.get("optimized_gram_srq_int8") == 0.0,
         "direct_backend_within_tolerance":
             drift.get("optimized_direct_srq_int8", float("inf")) <= tolerance,
+        "blocked_qr_backend_within_tolerance":
+            drift.get("optimized_blocked_qr_srq_int8", float("inf")) <= tolerance,
         "qr_backend_within_tolerance":
             drift.get("optimized_qr_srq_int8", float("inf")) <= tolerance,
         "persistent_state_unchanged": all(
@@ -312,7 +338,7 @@ def run_isolated(
             for row in results
         ),
         "optimized_update_ratio_to_exact_fly":
-            by_method["optimized_direct_srq_int8"]["total_update_seconds"]
+            by_method["optimized_blocked_qr_srq_int8"]["total_update_seconds"]
             / by_method["exact_fly_dense"]["total_update_seconds"]
             <= config.get("maximum_update_ratio_to_exact_fly", 1.5),
     }
@@ -347,8 +373,15 @@ def run_isolated(
             / row["total_update_seconds"]
             for method, row in by_method.items() if method != "locked_srq_int8"
         },
+        "selected_update_backend": {
+            "name": "blocked_qr",
+            "panel_size": int(config.get("update_panel_size", 128)),
+        },
         "optimized_direct_update_ratio_to_exact_fly":
             by_method["optimized_direct_srq_int8"]["total_update_seconds"]
+            / by_method["exact_fly_dense"]["total_update_seconds"],
+        "optimized_blocked_qr_update_ratio_to_exact_fly":
+            by_method["optimized_blocked_qr_srq_int8"]["total_update_seconds"]
             / by_method["exact_fly_dense"]["total_update_seconds"],
         "gates": gates,
     }

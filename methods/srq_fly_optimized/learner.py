@@ -49,6 +49,68 @@ def _cholesky_solve(system: torch.Tensor, cross: torch.Tensor) -> tuple[torch.Te
     return weights, _relative_residual(symmetric, weights, cross)
 
 
+def _blocked_qr_rank_update(
+    upper: torch.Tensor,
+    update_rows: torch.Tensor,
+    *,
+    panel_size: int,
+) -> torch.Tensor:
+    """Return the positive-diagonal QR factor of ``[upper; update_rows]``.
+
+    ``upper`` is already triangular.  A generic QR of the full stacked matrix
+    repeats cubic work on its zero lower triangle.  This routine eliminates one
+    column panel at a time using compact Householder reflectors.  At a panel it
+    touches only the corresponding rows of ``upper`` and the (usually much
+    smaller) rank-update rows.  Its leading work is therefore proportional to
+    ``(rank + panel_size) * dimension**2`` rather than ``dimension**3``.
+
+    The input factor is disposable after a streaming update, so it is reused as
+    the output buffer.  ``update_rows`` is cloned because callers still need
+    the original codes to update the cross statistic.
+    """
+    if upper.ndim != 2 or upper.shape[0] != upper.shape[1] or not len(upper):
+        raise ValueError("upper must be a non-empty square matrix")
+    if update_rows.ndim != 2 or update_rows.shape[1] != len(upper):
+        raise ValueError("update rows must align with the factor dimension")
+    if not len(update_rows) or panel_size <= 0:
+        raise ValueError("rank and panel size must be positive")
+    if upper.device != update_rows.device or upper.dtype != update_rows.dtype:
+        raise ValueError("factor and update rows must share device and dtype")
+
+    dimension = len(upper)
+    residual = update_rows.clone()
+    for start in range(0, dimension, panel_size):
+        end = min(start + panel_size, dimension)
+        width = end - start
+        panel = torch.cat(
+            (upper[start:end, start:end], residual[:, start:end]), dim=0
+        )
+        reflectors, tau = torch.geqrf(panel)
+        diagonal_block = torch.triu(reflectors[:width])
+
+        transformed = None
+        if end < dimension:
+            trailing = torch.cat(
+                (upper[start:end, end:], residual[:, end:]), dim=0
+            )
+            transformed = torch.ormqr(
+                reflectors, tau, trailing, left=True, transpose=True
+            )
+
+        # QR is unique only up to row signs.  Positive diagonal factors keep
+        # the compressed square-root contract and make repeated runs stable.
+        signs = torch.where(
+            diagonal_block.diagonal() < 0,
+            -torch.ones((), device=upper.device, dtype=upper.dtype),
+            torch.ones((), device=upper.device, dtype=upper.dtype),
+        )
+        upper[start:end, start:end].copy_(signs[:, None] * diagonal_block)
+        if transformed is not None:
+            upper[start:end, end:].copy_(signs[:, None] * transformed[:width])
+            residual[:, end:].copy_(transformed[width:])
+    return upper
+
+
 class _BaseFLYLearner:
     is_exemplar_free = True
 
@@ -376,26 +438,31 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         *,
         storage_mode: str,
         update_backend: str = "gram_cholesky",
+        update_panel_size: int = 128,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         if storage_mode not in {"float16", "int8"}:
             raise ValueError("storage_mode must be float16 or int8")
         if update_backend not in {
-            "gram_cholesky", "gram_cholesky_direct", "stacked_qr"
+            "gram_cholesky", "gram_cholesky_direct", "stacked_qr", "blocked_qr"
         }:
             raise ValueError(
                 "update_backend must be gram_cholesky, "
-                "gram_cholesky_direct, or stacked_qr"
+                "gram_cholesky_direct, stacked_qr, or blocked_qr"
             )
+        if update_panel_size <= 0:
+            raise ValueError("update_panel_size must be positive")
         self.storage_mode = storage_mode
         self.update_backend = update_backend
+        self.update_panel_size = int(update_panel_size)
         self.factor: CompressedUpper | None = None
         self.diagnostics.update(
             method="sqrt_float16" if storage_mode == "float16" else "srq_int8",
             storage=storage_mode,
             structurally_spd=True,
             update_backend=update_backend,
+            update_panel_size=self.update_panel_size,
         )
 
     def update_codes(self, codes: torch.Tensor, labels: torch.Tensor) -> None:
@@ -417,7 +484,14 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             with self._profile_stage("factor_decode", timings):
                 previous = self.factor.reconstruct_upper(dtype=self.solver_dtype)
 
-        if previous is not None and self.update_backend == "stacked_qr":
+        if previous is not None and self.update_backend == "blocked_qr":
+            with self._profile_stage("blocked_qr", timings):
+                exact_upper = _blocked_qr_rank_update(
+                    previous,
+                    solve_values,
+                    panel_size=self.update_panel_size,
+                )
+        elif previous is not None and self.update_backend == "stacked_qr":
             with self._profile_stage("stacked_qr", timings):
                 stacked = torch.cat((previous, solve_values), dim=0)
                 _, exact_upper = torch.linalg.qr(stacked, mode="r")
@@ -437,7 +511,15 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                 updated_system.diagonal().add_(self.ridge_lambda)
             else:
                 with self._profile_stage("previous_factor_product", timings):
-                    updated_system.add_(previous.T @ previous)
+                    if self.update_backend == "gram_cholesky_direct":
+                        # The fused GEMM writes directly into the current
+                        # system buffer and avoids another m-by-m tensor.
+                        updated_system.addmm_(previous.T, previous)
+                    else:
+                        # Retain the historical operation ordering for the
+                        # bitwise-compatible checkpoint backend.
+                        updated_system.add_(previous.T @ previous)
+                del previous
             with self._profile_stage("cholesky", timings):
                 # Both terms used above are Gram products and therefore
                 # symmetric by construction.  The historical backend keeps
@@ -457,7 +539,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
                 exact_upper = exact_lower.T
 
         with self._profile_stage("factor_quantization", timings):
-            if self.update_backend == "gram_cholesky_direct":
+            if self.update_backend in {"gram_cholesky_direct", "blocked_qr"}:
                 compressed, relative_factor_error = (
                     CompressedUpper.from_upper_inplace(
                         exact_upper,
@@ -476,7 +558,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         with self._profile_stage("factor_reconstruction", timings):
             reconstructed = (
                 exact_upper
-                if self.update_backend == "gram_cholesky_direct"
+                if self.update_backend in {"gram_cholesky_direct", "blocked_qr"}
                 else compressed.reconstruct_upper(dtype=self.solver_dtype)
             )
         if bool((reconstructed.diagonal() <= 0).any()):
@@ -494,7 +576,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             )
         with self._profile_stage("diagnostics", timings):
             residual = _relative_factor_residual(reconstructed, weights, work_cross)
-            if self.update_backend != "gram_cholesky_direct":
+            if self.update_backend not in {"gram_cholesky_direct", "blocked_qr"}:
                 relative_factor_error = float(
                     torch.dist(reconstructed, exact_upper).item()
                 ) / max(float(torch.linalg.vector_norm(exact_upper).item()), 1.0)
@@ -529,6 +611,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             method="square_root_fly",
             storage_mode=self.storage_mode,
             update_backend=self.update_backend,
+            update_panel_size=self.update_panel_size,
             factor=None if self.factor is None else self.factor.state_dict(),
         )
         return state
@@ -539,6 +622,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("checkpoint square-root storage mode mismatch")
         if state.get("update_backend", "gram_cholesky") != self.update_backend:
             raise ValueError("checkpoint square-root update backend mismatch")
+        if state.get("update_panel_size", 128) != self.update_panel_size:
+            raise ValueError("checkpoint update panel size mismatch")
         self.factor = None if state["factor"] is None else CompressedUpper.load_state_dict(
             state["factor"], device=self.device
         )

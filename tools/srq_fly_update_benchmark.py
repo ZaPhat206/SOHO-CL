@@ -37,7 +37,7 @@ def _validate(config: dict) -> None:
         "num_tasks", "rows_per_task", "num_classes", "probe_rows",
         "solver_tolerance", "maximum_relative_logit_drift",
     }
-    optional = {"maximum_update_ratio_to_exact_fly"}
+    optional = {"maximum_update_ratio_to_exact_fly", "update_panel_size"}
     if not required <= set(config) or set(config) - required - optional:
         raise ValueError(
             f"optimization config fields mismatch: "
@@ -59,6 +59,8 @@ def _validate(config: dict) -> None:
         raise ValueError("ridge and tolerance must be positive")
     if config.get("maximum_update_ratio_to_exact_fly", 1.5) <= 0:
         raise ValueError("exact-FLY update-ratio gate must be positive")
+    if config.get("update_panel_size", 128) <= 0:
+        raise ValueError("update panel size must be positive")
 
 
 def _codes(config: dict, generator: torch.Generator) -> torch.Tensor:
@@ -106,10 +108,12 @@ def run(config_path: Path, output: Path, device_name: str) -> dict:
     locked = LockedLearner(storage_mode="int8", **kwargs)
     optimized = OptimizedLearner(
         storage_mode="int8", update_backend="gram_cholesky",
+        update_panel_size=int(config.get("update_panel_size", 128)),
         profile_updates=False, **kwargs,
     )
     qr = OptimizedLearner(
         storage_mode="int8", update_backend="stacked_qr",
+        update_panel_size=int(config.get("update_panel_size", 128)),
         profile_updates=False, **kwargs,
     )
     generator = torch.Generator().manual_seed(config["seed"] + 17)
@@ -148,10 +152,12 @@ def run(config_path: Path, output: Path, device_name: str) -> dict:
     # in separate learners and report only their final-stage breakdown.
     profiled_gram = OptimizedLearner(
         storage_mode="int8", update_backend="gram_cholesky",
+        update_panel_size=int(config.get("update_panel_size", 128)),
         profile_updates=True, **kwargs,
     )
     profiled_qr = OptimizedLearner(
         storage_mode="int8", update_backend="stacked_qr",
+        update_panel_size=int(config.get("update_panel_size", 128)),
         profile_updates=True, **kwargs,
     )
     for codes, labels in stream:

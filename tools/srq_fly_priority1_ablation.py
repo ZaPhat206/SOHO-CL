@@ -43,6 +43,7 @@ TOP_KEYS = {
     "checkpoint_sha256", "feature_dim", "seed", "num_classes", "num_tasks",
     "validation_fraction", "statistics_dtype", "solver_dtype",
     "fly_ridge_lambda", "raw_ridge_lambda", "srq_update_backend",
+    "srq_update_panel_size",
     "large_representation", "state_matched_representation", "storage", "gates",
 }
 GATE_KEYS = {
@@ -74,8 +75,10 @@ def _read_config(path: Path) -> dict:
         raise ValueError("Priority-1 state matching is locked to float32")
     if config["fly_ridge_lambda"] <= 0 or config["raw_ridge_lambda"] <= 0:
         raise ValueError("Ridge parameters must be positive")
-    if config["srq_update_backend"] != "gram_cholesky_direct":
+    if config["srq_update_backend"] != "blocked_qr":
         raise ValueError("Priority-1 optimized backend identity changed")
+    if config["srq_update_panel_size"] <= 0:
+        raise ValueError("Priority-1 update panel size must be positive")
     for key in ("large_representation", "state_matched_representation"):
         representation = config[key]
         if set(representation) != d0.REPRESENTATION_KEYS:
@@ -183,6 +186,7 @@ def _new_optimized(config: dict, method: str, feature_dim: int, projection, devi
     return SquareRootFLYLearner(
         storage_mode=storage_mode,
         update_backend=config["srq_update_backend"],
+        update_panel_size=int(config["srq_update_panel_size"]),
         **kwargs,
     )
 
@@ -330,13 +334,19 @@ def _validate_system_result(config: dict, path: Path) -> dict:
     if payload.get("status") != "pass" or payload.get("uses_test_set") is not False:
         raise ValueError("system optimization benchmark did not pass")
     gates = payload.get("gates", {})
-    if not gates.get("direct_backend_within_tolerance"):
-        raise ValueError("direct Cholesky backend did not pass predictor gate")
+    if not gates.get("blocked_qr_backend_within_tolerance"):
+        raise ValueError("blocked QR backend did not pass predictor gate")
+    selected = payload.get("selected_update_backend", {})
+    if selected != {
+        "name": config["srq_update_backend"],
+        "panel_size": config["srq_update_panel_size"],
+    }:
+        raise ValueError("system benchmark backend identity does not match protocol")
     speedup = payload.get("speedup_over_locked", {}).get(
-        "optimized_direct_srq_int8", 0.0
+        "optimized_blocked_qr_srq_int8", 0.0
     )
     if speedup < config["gates"]["minimum_system_update_speedup"]:
-        raise ValueError("optimized direct backend did not meet the update-speed gate")
+        raise ValueError("optimized blocked backend did not meet the update-speed gate")
     return payload
 
 

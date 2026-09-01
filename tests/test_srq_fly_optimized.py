@@ -9,6 +9,7 @@ import torch
 from methods.srq_fly import CompressedUpper as LockedCompressedUpper
 from methods.srq_fly import SquareRootFLYLearner as LockedSquareRootFLYLearner
 from methods.srq_fly_optimized import CompressedUpper, SquareRootFLYLearner
+from methods.srq_fly_optimized.learner import _blocked_qr_rank_update
 from tools import srq_fly_system_benchmark, srq_fly_update_benchmark
 
 
@@ -116,6 +117,43 @@ def test_stacked_qr_matches_gram_cholesky_stream(mode):
     assert qr_backend.diagnostics["solver_relative_residual"] < 1e-10
 
 
+def test_blocked_rank_update_matches_dense_stacked_qr():
+    upper = torch.linalg.cholesky(_spd(dimension=31)).T
+    generator = torch.Generator().manual_seed(991)
+    updates = torch.randn(9, 31, generator=generator, dtype=torch.float64)
+    _, expected = torch.linalg.qr(torch.cat((upper, updates)), mode="r")
+    signs = torch.where(expected.diagonal() < 0, -1.0, 1.0)
+    expected = signs[:, None] * expected
+    actual = _blocked_qr_rank_update(upper.clone(), updates, panel_size=7)
+    torch.testing.assert_close(actual, expected, rtol=2e-13, atol=2e-13)
+    assert bool((actual.diagonal() > 0).all())
+
+
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+def test_blocked_qr_backend_matches_full_qr_stream(mode):
+    first, first_labels, second, second_labels = _stream()
+    full = SquareRootFLYLearner(
+        storage_mode=mode, update_backend="stacked_qr", **_kwargs()
+    )
+    blocked = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        update_panel_size=7,
+        **_kwargs(),
+    )
+    for codes, labels in ((first, first_labels), (second, second_labels)):
+        full.update_codes(codes, labels)
+        blocked.update_codes(codes, labels)
+    torch.testing.assert_close(
+        blocked.factor.reconstruct_upper(dtype=torch.float64),
+        full.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(blocked.weights, full.weights, rtol=2e-12, atol=2e-12)
+    assert blocked.persistent_state_bytes() == full.persistent_state_bytes()
+
+
 @pytest.mark.parametrize("mode", ["float16", "int8"])
 def test_direct_cholesky_backend_matches_compatibility_backend(mode):
     first, first_labels, second, second_labels = _stream()
@@ -192,6 +230,20 @@ def test_backend_identity_is_checkpoint_locked():
         )
 
 
+def test_blocked_backend_panel_size_is_checkpoint_locked():
+    first, labels, _, _ = _stream()
+    learner = SquareRootFLYLearner(
+        storage_mode="int8", update_backend="blocked_qr",
+        update_panel_size=7, **_kwargs(),
+    )
+    learner.update_codes(first, labels)
+    with pytest.raises(ValueError, match="panel size"):
+        SquareRootFLYLearner(
+            storage_mode="int8", update_backend="blocked_qr",
+            update_panel_size=8, **_kwargs(),
+        ).load_state_dict(learner.state_dict())
+
+
 def test_synthetic_benchmark_runner_passes_without_test_data(tmp_path):
     config = json.loads(
         (ROOT / "configs/srq_fly_update_optimization_smoke.json").read_text()
@@ -240,6 +292,14 @@ def test_isolated_system_benchmark_reports_disjoint_measurements(tmp_path):
     )
     assert result["status"] == "pass"
     assert result["uses_test_set"] is False
-    assert len(result["results"]) == 5
+    assert len(result["results"]) == 6
     assert all(row["peak_cuda_allocated_bytes"] is None for row in result["results"])
     assert result["gates"]["direct_backend_within_tolerance"]
+    assert result["gates"]["blocked_qr_backend_within_tolerance"]
+    assert result["selected_update_backend"]["name"] == "blocked_qr"
+    profiles = {
+        row["method"]: row["profiled_task_stage_seconds"]
+        for row in result["results"]
+    }
+    assert profiles["optimized_blocked_qr_srq_int8"] is not None
+    assert profiles["exact_fly_dense"] is None

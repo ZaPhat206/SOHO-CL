@@ -26,7 +26,8 @@ def _config():
         "solver_dtype": "float32",
         "fly_ridge_lambda": 100.0,
         "raw_ridge_lambda": 1.0,
-        "srq_update_backend": "gram_cholesky_direct",
+        "srq_update_backend": "blocked_qr",
+        "srq_update_panel_size": 7,
         "large_representation": {
             "expand_dim": 18, "synaptic_degree": 3, "coding_level": 1 / 3,
             "encode_batch_size": 16, "evaluation_batch_size": 16,
@@ -97,3 +98,25 @@ def test_priority1_refuses_visible_test_and_wrong_backend(tmp_path):
     config.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="backend identity"):
         priority1._read_config(config)
+
+
+def test_priority1_binds_ablation_to_passed_blocked_system_gate(tmp_path):
+    config = _config()
+    payload = {
+        "status": "pass",
+        "uses_test_set": False,
+        "gates": {"blocked_qr_backend_within_tolerance": True},
+        "selected_update_backend": {
+            "name": "blocked_qr", "panel_size": 7,
+        },
+        "speedup_over_locked": {
+            "optimized_blocked_qr_srq_int8": 1.2,
+        },
+    }
+    path = tmp_path / "system.json"
+    path.write_text(json.dumps(payload))
+    assert priority1._validate_system_result(config, path) == payload
+    payload["selected_update_backend"]["panel_size"] = 8
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="identity"):
+        priority1._validate_system_result(config, path)

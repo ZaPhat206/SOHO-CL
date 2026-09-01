@@ -16,7 +16,7 @@ No command in this phase loads `test.pt`.
 ## Update optimization
 
 The historical `gram_cholesky` backend remains the checkpoint-compatible
-reference. The new opt-in `gram_cholesky_direct` backend exploits the fact that
+reference. The allocation-safe `gram_cholesky_direct` control exploits the fact that
 
 \[
 A_t = Z_t^\top Z_t + \widetilde R_{t-1}^\top\widetilde R_{t-1}
@@ -28,17 +28,46 @@ the direct backend passes `A_t` directly instead of allocating
 assertion: the isolated benchmark must show predictor drift below the locked
 tolerance and unchanged persistent state.
 
+The final candidate is `blocked_qr`. Given the decoded previous upper factor
+and current task code matrix, it computes
+
+\[
+R_t = \operatorname{qr}_R\!\left(
+\begin{bmatrix}\widetilde R_{t-1}\\ Z_t\end{bmatrix}
+\right),
+\qquad
+R_t^\top R_t = \widetilde R_{t-1}^\top\widetilde R_{t-1}+Z_t^\top Z_t.
+\]
+
+Unlike a generic stacked QR, it eliminates 128-column panels using compact
+Householder reflectors and applies them only to the panel rows plus the current
+rank-update rows. It reuses the decoded factor as its output. This avoids both
+the dense `R.T @ R` reconstruction and a new full Cholesky at tasks after the
+first, while preserving the same compressed state format. The panel size is
+checkpoint-locked and the backend remains ineligible unless its logits pass the
+same locked tolerance.
+
 The benchmark also includes the vectorized, checkpoint-compatible compressor
 and compares pure analytic-update time against both historical SRQ and dense
 Exact FLY. At `m=10,000`, the locked gate is:
 
 - optimized SRQ / Exact FLY update time <= 1.5;
-- optimized direct predictor drift <= `1e-5`;
+- blocked-QR predictor drift <= `1e-5`;
 - solver residual <= `1e-5`;
 - SRQ persistent bytes unchanged.
 
 Failure stops the dataset ablation. It must not be hidden by averaging feature
 extraction or validation time into the update metric.
+
+### Superseded direct-backend gate
+
+The first T4 system run is retained as a negative engineering result. The
+direct backend passed every predictor/state/solver gate and reduced update time
+from 1.873 s to 1.310 s, but remained 3.563 times slower than Exact FLY and
+therefore failed the locked 1.5 ratio. It also used 1.902 GiB peak allocated
+memory versus 1.572 GiB for Exact FLY. The blocked rank-update backend is a
+response to that measured bottleneck, not a relaxed gate or a post-hoc accuracy
+change.
 
 ## Memory measurement
 

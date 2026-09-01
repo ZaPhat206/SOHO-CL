@@ -299,8 +299,12 @@ class CompressedUpper:
                     for row, index in enumerate(chunk):
                         encoded_blocks[index] = (encoded[row], None)
                 if reconstruct_in_place:
-                    squared_error.add_((decoded.to(torch.float64) - stacked.to(torch.float64)).square().sum())
-                    squared_reference.add_(stacked.to(torch.float64).square().sum())
+                    # Accumulate in float64 without first materializing two
+                    # float64 copies of every block family.  The diagnostic is
+                    # not learner state and does not affect reconstruction.
+                    difference = decoded - stacked
+                    squared_error.add_(difference.square().sum(dtype=torch.float64))
+                    squared_reference.add_(stacked.square().sum(dtype=torch.float64))
                     for row, index in enumerate(chunk):
                         row_block, col_block, _ = descriptors[index]
                         rs, re = row_block * block_size, min(

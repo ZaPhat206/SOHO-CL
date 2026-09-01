@@ -1,5 +1,5 @@
 {
-  "study": "srq-fly-update-optimization-fly10000-v1",
+  "study": "srq-fly-update-optimization-fly10000-v2-blocked-rank-update",
   "seed": 2025,
   "feature_dim": 768,
   "expand_dim": 10000,
@@ -8,6 +8,7 @@
   "ridge_lambda": 1000000.0,
   "block_size": 256,
   "group_size": 64,
+  "update_panel_size": 128,
   "num_tasks": 2,
   "rows_per_task": 300,
   "num_classes": 20,

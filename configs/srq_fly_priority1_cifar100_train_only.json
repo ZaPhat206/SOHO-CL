@@ -4,7 +4,6 @@
   "dataset": "CIFAR-100",
   "model_name": "vit_base_patch16_224",
   "feature_dim": 768,
-  "feature_dim": 768,
   "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
   "seed": 2025,
   "num_classes": 100,
@@ -14,7 +13,8 @@
   "solver_dtype": "float32",
   "fly_ridge_lambda": 1000000.0,
   "raw_ridge_lambda": 0.01,
-  "srq_update_backend": "gram_cholesky_direct",
+  "srq_update_backend": "blocked_qr",
+  "srq_update_panel_size": 128,
   "large_representation": {
     "expand_dim": 10000,
     "synaptic_degree": 300,
