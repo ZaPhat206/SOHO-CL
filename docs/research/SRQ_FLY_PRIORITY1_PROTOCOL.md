@@ -104,6 +104,14 @@ from prior train-only selection. This phase is an ablation, not a new test-set
 search. Feature and WTA caches are experiment infrastructure and are excluded
 from learner checkpoints.
 
+`direct_int8_gram` is a structural negative control, not a required primary
+learner. If its quantized symmetric system is not positive definite under the
+same locked Ridge value, the worker records `numerical_failure`, failed task,
+and reason without adding post-hoc jitter. The remaining five primary methods
+must still complete and pass their solver gates. This outcome is reported as
+evidence that direct Gram quantization does not preserve SPD; it is never
+silently converted into an accuracy result.
+
 ## Stop rule
 
 Proceed to wider datasets only if the system benchmark and CIFAR train-only

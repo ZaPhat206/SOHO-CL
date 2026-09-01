@@ -38,6 +38,14 @@ METHODS = (
     "state_matched_exact_fly",
     "raw_ridge",
 )
+# Commit e44cb55 completed three expensive workers before the direct-Gram
+# control exposed its expected SPD failure.  The evaluation semantics and
+# learner/storage identities of those completed units are unchanged by the
+# failure-recording patch, so their runner hash is explicitly auditable and
+# resumable instead of forcing a costly rerun.
+COMPATIBLE_COMPLETED_RUNNER_SHA256 = {
+    "4f132747d879e42c71c7ce4401cd3b15685fe470cbeb8420019bd6e01d844cd1",
+}
 TOP_KEYS = {
     "schema_version", "study_id", "dataset", "model_name",
     "checkpoint_sha256", "feature_dim", "seed", "num_classes", "num_tasks",
@@ -209,7 +217,43 @@ def _evaluate_optimized(
             device=device, dtype=learner.statistics_dtype,
         )
         update_started = time.perf_counter()
-        learner.update_codes(codes, train["labels"][indices])
+        try:
+            learner.update_codes(codes, train["labels"][indices])
+        except RuntimeError as error:
+            expected_direct_failure = (
+                method == "direct_int8_gram"
+                and str(error)
+                == "compressed Ridge system is not numerically positive definite"
+            )
+            if not expected_direct_failure:
+                raise
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            failure_seconds = time.perf_counter() - update_started
+            print(
+                f"NUMERICAL_FAILURE method={method} task={task + 1} "
+                f"reason={error}",
+                flush=True,
+            )
+            return {
+                "method": method,
+                "status": "numerical_failure",
+                "uses_test_set": False,
+                "exemplar_free": True,
+                "failure_type": "non_positive_definite_quantized_gram",
+                "failure_message": str(error),
+                "failed_task": task + 1,
+                "completed_tasks": task,
+                "validation_average_accuracy": None,
+                "stage_accuracy": stage_accuracy,
+                "persistent_state_bytes": learner.persistent_state_bytes(),
+                "maximum_solver_relative_residual": None,
+                "total_update_seconds": sum(
+                    row["update_seconds"] for row in diagnostics
+                ) + failure_seconds,
+                "analytic_and_validation_seconds": time.perf_counter() - started,
+                "task_diagnostics": diagnostics,
+            }
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         update_seconds = time.perf_counter() - update_started
@@ -373,12 +417,28 @@ def run_driver(args) -> dict:
         }
         if output.is_file():
             restored = json.loads(output.read_text(encoding="utf-8"))
-            if (
+            restored_source = restored.get("source_identity", {})
+            source_compatible = (
+                restored_source.get("runner")
+                in {expected_source["runner"], *COMPATIBLE_COMPLETED_RUNNER_SHA256}
+                and restored_source.get("optimized_learner")
+                == expected_source["optimized_learner"]
+                and restored_source.get("optimized_storage")
+                == expected_source["optimized_storage"]
+            )
+            resumable_status = (
                 restored.get("status") == "complete"
+                or (
+                    method == "direct_int8_gram"
+                    and restored.get("status") == "numerical_failure"
+                )
+            )
+            if (
+                resumable_status
                 and restored.get("method") == method
                 and restored.get("uses_test_set") is False
                 and restored.get("config_sha256") == _sha256(config_path)
-                and restored.get("source_identity") == expected_source
+                and source_compatible
             ):
                 results.append(restored)
                 print(f"RESUME isolated ablation method={method}", flush=True)
@@ -401,6 +461,7 @@ def run_driver(args) -> dict:
     srq = by_method["srq_int8_optimized"]
     float16 = by_method["sqrt_float16"]
     matched = by_method["state_matched_exact_fly"]
+    direct_gram = by_method["direct_int8_gram"]
     projected = projected_srq_state_bytes(
         feature_dim=int(config["feature_dim"]),
         expand_dim=int(config["large_representation"]["expand_dim"]),
@@ -419,13 +480,17 @@ def run_driver(args) -> dict:
         "persistent_state_bytes"
     ]
     gates_config = config["gates"]
+    primary_methods = set(METHODS) - {"direct_int8_gram"}
+    primary_results = [row for row in results if row["method"] in primary_methods]
     gates = {
-        "all_methods_complete": len(results) == len(METHODS)
-        and all(row["status"] == "complete" for row in results),
+        "all_primary_methods_complete": len(primary_results) == len(primary_methods)
+        and all(row["status"] == "complete" for row in primary_results),
+        "all_methods_accounted_for": len(results) == len(METHODS)
+        and direct_gram["status"] in {"complete", "numerical_failure"},
         "heldout_test_remained_hidden": not (feature_cache_dir / "test.pt").exists(),
         "system_update_gate_passed": system["status"] == "pass",
-        "numerically_stable": max(
-            row["maximum_solver_relative_residual"] for row in results
+        "primary_methods_numerically_stable": max(
+            row["maximum_solver_relative_residual"] for row in primary_results
         ) <= gates_config["maximum_solver_relative_residual"],
         "srq_within_accuracy_gate": exact["validation_average_accuracy"]
         - srq["validation_average_accuracy"]
@@ -462,6 +527,12 @@ def run_driver(args) -> dict:
         ).strip()),
         "projected_state": projected,
         "runtime_state_match_error_fraction": state_error,
+        "control_observations": {
+            "direct_int8_gram_status": direct_gram["status"],
+            "direct_int8_gram_spd_preserved": direct_gram["status"] == "complete",
+            "direct_int8_gram_failure_type": direct_gram.get("failure_type"),
+            "direct_int8_gram_failed_task": direct_gram.get("failed_task"),
+        },
         "results": results,
         "gates": gates,
     }

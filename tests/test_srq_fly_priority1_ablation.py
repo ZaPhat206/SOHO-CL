@@ -120,3 +120,36 @@ def test_priority1_binds_ablation_to_passed_blocked_system_gate(tmp_path):
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="identity"):
         priority1._validate_system_result(config, path)
+
+
+def test_direct_gram_spd_failure_is_recorded_not_regularized(monkeypatch):
+    class BrokenDirectGram:
+        expand_dim = 18
+        statistics_dtype = torch.float32
+
+        def update_codes(self, codes, labels):
+            raise RuntimeError(
+                "compressed Ridge system is not numerically positive definite"
+            )
+
+        def persistent_state_bytes(self):
+            return 1234
+
+    monkeypatch.setattr(
+        priority1, "_new_optimized", lambda *args, **kwargs: BrokenDirectGram()
+    )
+    indices = torch.tensor([[0, 3], [1, 4]], dtype=torch.long)
+    values = torch.ones(2, 2)
+    result = priority1._evaluate_optimized(
+        method="direct_int8_gram",
+        config=_config(),
+        train={"features": torch.zeros(2, 7), "labels": torch.tensor([0, 1])},
+        code_cache=(indices, values, {}, None),
+        training_parts=[torch.tensor([0, 1])],
+        validation_parts=[torch.tensor([0, 1])],
+        device=torch.device("cpu"),
+    )
+    assert result["status"] == "numerical_failure"
+    assert result["failure_type"] == "non_positive_definite_quantized_gram"
+    assert result["failed_task"] == 1 and result["completed_tasks"] == 0
+    assert result["persistent_state_bytes"] == 1234
