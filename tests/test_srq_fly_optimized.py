@@ -181,6 +181,60 @@ def test_stacked_qr_matches_gram_cholesky_stream(mode):
     assert qr_backend.diagnostics["solver_relative_residual"] < 1e-10
 
 
+@pytest.mark.parametrize("mode", ["float16", "int8"])
+def test_implicit_ridge_first_update_matches_cholesky_initialization(mode):
+    first, first_labels, second, second_labels = _stream()
+    cholesky = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        quantization_backend="streaming",
+        quantization_batch_blocks=3,
+        **_kwargs(),
+    )
+    implicit = SquareRootFLYLearner(
+        storage_mode=mode,
+        update_backend="blocked_qr",
+        first_update_backend="implicit_ridge_qr",
+        quantization_backend="streaming",
+        quantization_batch_blocks=3,
+        **_kwargs(),
+    )
+    for codes, labels in ((first, first_labels), (second, second_labels)):
+        cholesky.update_codes(codes, labels)
+        implicit.update_codes(codes, labels)
+    torch.testing.assert_close(
+        implicit.factor.reconstruct_upper(dtype=torch.float64),
+        cholesky.factor.reconstruct_upper(dtype=torch.float64),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(implicit.weights, cholesky.weights, rtol=0, atol=0)
+    assert implicit.persistent_state_bytes() == cholesky.persistent_state_bytes()
+
+
+def test_implicit_ridge_backend_is_validated_and_checkpoint_locked():
+    with pytest.raises(ValueError, match="requires blocked_qr"):
+        SquareRootFLYLearner(
+            storage_mode="int8",
+            update_backend="gram_cholesky_direct",
+            first_update_backend="implicit_ridge_qr",
+            **_kwargs(),
+        )
+    first, labels, _, _ = _stream()
+    learner = SquareRootFLYLearner(
+        storage_mode="int8",
+        update_backend="blocked_qr",
+        first_update_backend="implicit_ridge_qr",
+        **_kwargs(),
+    )
+    learner.update_codes(first, labels)
+    state = learner.state_dict()
+    with pytest.raises(ValueError, match="first update backend"):
+        SquareRootFLYLearner(
+            storage_mode="int8", update_backend="blocked_qr", **_kwargs()
+        ).load_state_dict(state)
+
+
 def test_blocked_rank_update_matches_dense_stacked_qr():
     upper = torch.linalg.cholesky(_spd(dimension=31)).T
     generator = torch.Generator().manual_seed(991)
@@ -562,6 +616,7 @@ def test_priority2b_system_workers_preserve_probe_state_and_profile(tmp_path):
     for method in (
         "optimized_eager_quant_blocked_qr_srq_int8",
         "optimized_streaming_quant_blocked_qr_srq_int8",
+        "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
     ):
         output = tmp_path / f"{method}.json"
         probe = tmp_path / f"{method}.probe.pt"
@@ -576,7 +631,11 @@ def test_priority2b_system_workers_preserve_probe_state_and_profile(tmp_path):
         probes[method] = torch.load(probe, weights_only=True)
     eager = results["optimized_eager_quant_blocked_qr_srq_int8"]
     streaming = results["optimized_streaming_quant_blocked_qr_srq_int8"]
+    implicit = results[
+        "optimized_implicit_ridge_streaming_blocked_qr_srq_int8"
+    ]
     assert eager["persistent_state_bytes"] == streaming["persistent_state_bytes"]
+    assert implicit["persistent_state_bytes"] == streaming["persistent_state_bytes"]
     assert eager["profiled_task_stage_seconds"] is not None
     assert streaming["profiled_task_stage_seconds"] is not None
     torch.testing.assert_close(
@@ -584,4 +643,10 @@ def test_priority2b_system_workers_preserve_probe_state_and_profile(tmp_path):
         probes["optimized_eager_quant_blocked_qr_srq_int8"],
         rtol=0,
         atol=0,
+    )
+    torch.testing.assert_close(
+        probes["optimized_implicit_ridge_streaming_blocked_qr_srq_int8"],
+        probes["optimized_streaming_quant_blocked_qr_srq_int8"],
+        rtol=1e-6,
+        atol=1e-8,
     )

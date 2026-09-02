@@ -495,6 +495,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         update_backend: str = "gram_cholesky",
         update_panel_size: int = 128,
         update_trailing_chunk_size: int | None = None,
+        first_update_backend: str = "gram_cholesky",
         quantization_backend: str = "eager",
         quantization_batch_blocks: int = 16,
         **kwargs,
@@ -513,6 +514,12 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("update_panel_size must be positive")
         if update_trailing_chunk_size is not None and update_trailing_chunk_size <= 0:
             raise ValueError("update_trailing_chunk_size must be positive")
+        if first_update_backend not in {"gram_cholesky", "implicit_ridge_qr"}:
+            raise ValueError(
+                "first_update_backend must be gram_cholesky or implicit_ridge_qr"
+            )
+        if first_update_backend == "implicit_ridge_qr" and update_backend != "blocked_qr":
+            raise ValueError("implicit ridge initialization requires blocked_qr")
         if quantization_backend not in {"eager", "streaming"}:
             raise ValueError("quantization_backend must be eager or streaming")
         if quantization_batch_blocks <= 0:
@@ -531,6 +538,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             if update_trailing_chunk_size is None
             else int(update_trailing_chunk_size)
         )
+        self.first_update_backend = first_update_backend
         self.quantization_backend = quantization_backend
         self.quantization_batch_blocks = int(quantization_batch_blocks)
         self.factor: CompressedUpper | None = None
@@ -541,6 +549,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             update_backend=update_backend,
             update_panel_size=self.update_panel_size,
             update_trailing_chunk_size=self.update_trailing_chunk_size,
+            first_update_backend=self.first_update_backend,
             quantization_backend=self.quantization_backend,
             quantization_batch_blocks=self.quantization_batch_blocks,
         )
@@ -588,6 +597,23 @@ class SquareRootFLYLearner(_BaseFLYLearner):
         if self.factor is not None:
             with self._profile_stage("factor_decode", timings, memory):
                 previous = self.factor.reconstruct_upper(dtype=self.solver_dtype)
+
+        if (
+            previous is None
+            and self.update_backend == "blocked_qr"
+            and self.first_update_backend == "implicit_ridge_qr"
+        ):
+            # The initial Ridge system is lambda*I, with upper square root
+            # sqrt(lambda)*I.  A blocked QR update with the first task codes
+            # gives the same system as chol(Z.T@Z + lambda*I), without first
+            # allocating a dense Gram and a Cholesky workspace.
+            with self._profile_stage("ridge_factor_initialization", timings, memory):
+                previous = torch.zeros(
+                    (self.expand_dim, self.expand_dim),
+                    device=self.device,
+                    dtype=self.solver_dtype,
+                )
+                previous.diagonal().fill_(self.ridge_lambda ** 0.5)
 
         if previous is not None and self.update_backend == "blocked_qr":
             with self._profile_stage("blocked_qr", timings, memory):
@@ -738,6 +764,7 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             update_backend=self.update_backend,
             update_panel_size=self.update_panel_size,
             update_trailing_chunk_size=self.update_trailing_chunk_size,
+            first_update_backend=self.first_update_backend,
             factor=None if self.factor is None else self.factor.state_dict(),
         )
         return state
@@ -752,6 +779,8 @@ class SquareRootFLYLearner(_BaseFLYLearner):
             raise ValueError("checkpoint update panel size mismatch")
         if state.get("update_trailing_chunk_size") != self.update_trailing_chunk_size:
             raise ValueError("checkpoint update trailing chunk size mismatch")
+        if state.get("first_update_backend", "gram_cholesky") != self.first_update_backend:
+            raise ValueError("checkpoint first update backend mismatch")
         self.factor = None if state["factor"] is None else CompressedUpper.load_state_dict(
             state["factor"], device=self.device
         )

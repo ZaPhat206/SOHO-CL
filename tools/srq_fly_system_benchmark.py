@@ -39,6 +39,7 @@ METHODS = (
 EXPERIMENTAL_WORKER_METHODS = (
     "optimized_eager_quant_blocked_qr_srq_int8",
     "optimized_streaming_quant_blocked_qr_srq_int8",
+    "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
 )
 WORKER_METHODS = METHODS + EXPERIMENTAL_WORKER_METHODS
 
@@ -148,6 +149,7 @@ def _learner(
         "optimized_qr_srq_int8": "stacked_qr",
         "optimized_eager_quant_blocked_qr_srq_int8": "blocked_qr",
         "optimized_streaming_quant_blocked_qr_srq_int8": "blocked_qr",
+        "optimized_implicit_ridge_streaming_blocked_qr_srq_int8": "blocked_qr",
     }
     if method not in backends:
         raise ValueError(f"unknown method: {method}")
@@ -162,8 +164,16 @@ def _learner(
         ),
         quantization_backend=(
             "streaming"
-            if method == "optimized_streaming_quant_blocked_qr_srq_int8"
+            if method in {
+                "optimized_streaming_quant_blocked_qr_srq_int8",
+                "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
+            }
             else "eager"
+        ),
+        first_update_backend=(
+            "implicit_ridge_qr"
+            if method == "optimized_implicit_ridge_streaming_blocked_qr_srq_int8"
+            else "gram_cholesky"
         ),
         quantization_batch_blocks=int(config.get("quantization_batch_blocks", 16)),
         profile_updates=profile_updates,
@@ -208,6 +218,7 @@ def run_worker(
             "optimized_chunked_blocked_qr_srq_int8",
             "optimized_eager_quant_blocked_qr_srq_int8",
             "optimized_streaming_quant_blocked_qr_srq_int8",
+            "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
         }
         else None
     )
@@ -244,6 +255,7 @@ def run_worker(
             "optimized_chunked_blocked_qr_srq_int8",
             "optimized_eager_quant_blocked_qr_srq_int8",
             "optimized_streaming_quant_blocked_qr_srq_int8",
+            "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
         }:
             learner.update_codes_consuming(codes, labels)
         else:
@@ -298,6 +310,7 @@ def run_worker(
                 "optimized_chunked_blocked_qr_srq_int8",
                 "optimized_eager_quant_blocked_qr_srq_int8",
                 "optimized_streaming_quant_blocked_qr_srq_int8",
+                "optimized_implicit_ridge_streaming_blocked_qr_srq_int8",
             }:
                 profiled.update_codes_consuming(values, labels)
             else:
