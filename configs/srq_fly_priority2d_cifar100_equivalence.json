@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-priority2d-cifar100-train-only-equivalence-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "feature_dim": 768,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "ridge_lambda": 1000000.0,
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "storage": {
+    "block_size": 256,
+    "group_size": 64
+  },
+  "update_panel_size": 128,
+  "quantization_batch_blocks": 64,
+  "probe_rows": 256,
+  "gates": {
+    "maximum_stage_accuracy_gap_pp": 0.01,
+    "maximum_relative_logit_drift": 0.00001,
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_peak_allocated_ratio_to_priority2b": 1.0,
+    "maximum_update_ratio_to_priority2b": 1.25
+  }
+}
