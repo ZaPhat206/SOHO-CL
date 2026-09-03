@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-p2b-three-dataset-final-confirmation-v1",
+  "base_protocol": {
+    "path": "configs/srq_fly_selfcontained_final.json",
+    "sha256": "e1c9fefedf9a55beb4d7734f8dcd8fafdcd551bd76af8a703d27b0b447e16759",
+    "runner_path": "tools/srq_fly_selfcontained.py",
+    "runner_sha256": "92ebd8ec12c73ac7da9ee1f591e8613d88515418db15a2918db13d1c98fe5cdc"
+  },
+  "selection_evidence": {
+    "artifact_name": "srq_fly_selfcontained_three_dataset_results.zip",
+    "artifact_sha256": "e4b630781ff6f69deaecb63dda9926d256cd6b654ef4b51a682bf3ef94e6490b",
+    "files": {
+      "cifar100": {
+        "sha256": "1785eed6aa3cc8796adb19ae077585652d2a31a05364b37f908c0a1a8843250b",
+        "fly_ridge_lambda": 1000000.0,
+        "raw_ridge_lambda": 100.0
+      },
+      "cub200": {
+        "sha256": "13c168af95869dd39120cf1ed25c8b15a2bee5ace2bb06277fe42a4c1999a7a2",
+        "fly_ridge_lambda": 100000.0,
+        "raw_ridge_lambda": 100.0
+      },
+      "imagenetr": {
+        "sha256": "9fb82e09ae8004d90e25bcf564d8e551468752ad583372258b84e72bfc49b191",
+        "fly_ridge_lambda": 1000000.0,
+        "raw_ridge_lambda": 1000.0
+      }
+    }
+  },
+  "method_identity": {
+    "optimized_learner_sha256": "40edac2e2cc88faac549f5c87217f3143d815bf53ecad8a37dfdb22c112691ae",
+    "optimized_storage_sha256": "9d288a3661985da657371e8581f406825d4a8d5e6e0c63381aacda8484490986",
+    "flyhash_sha256": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb",
+    "heldout_helper_sha256": "4ef35968912f459579607c3eb4fbddd5d855a231fe6f34ef1ec9c1b2e9985d12",
+    "code_cache_helper_sha256": "ee1efe6f793ea7ec6ba5ba4489dafefa76a8c2342447a3076bb3fae0316f088a"
+  },
+  "p2b_backend": {
+    "storage_mode": "int8",
+    "update_backend": "blocked_qr",
+    "update_panel_size": 128,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "final_evaluation": {
+    "methods": [
+      "exact_fly_10000",
+      "srq_fly_p2b_10000",
+      "raw_ridge"
+    ],
+    "inherit_replicates_from_base_protocol": true,
+    "test_tuning_allowed": false,
+    "accuracy_based_early_stop": false,
+    "prior_test_use_disclosure": "These three test splits were previously consumed by the locked legacy SRQ-FLY evaluation. This run is an optimized-backend confirmation, not a fresh first-use held-out evaluation."
+  }
+}
