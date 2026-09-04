@@ -123,6 +123,32 @@ Final ZIP có trạng thái
 `STATE_MATCHED_CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE`, `uses_test_set=true`
 và `test_tuning_allowed=false`.
 
+### 2.2. Vì sao phải nén trong không gian square-root?
+
+Artifact train-only `srq_fly_priority3_direct_control_train_only.zip`, SHA-256
+`9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e`,
+đã chạy đủ direct-quantization control trên cùng một CIFAR development stream:
+
+| Phương pháp | Validation AIA | Final | Persistent state | Kết quả |
+|---|---:|---:|---:|---|
+| Exact FLY-10000 | 92.257 | 88.140 | 444,006,540 B | Hoàn thành |
+| Direct INT8 Gram, không sửa | -- | -- | -- | Hệ mất positive definiteness ngay task 1 |
+| Direct INT8 Gram + Weyl repair | 87.342 | 80.960 | 97,166,244 B | Hoàn thành, ổn định số |
+| FP16 square-root | 92.260 | 88.130 | 144,036,540 B | Hoàn thành |
+| SRQ mixed INT8/FP32 | 92.267 | 88.050 | 97,166,228 B | Hoàn thành |
+
+Direct Gram đã sửa và SRQ gần như cùng state (chỉ lệch 16 byte), nhưng SRQ hơn
+4.925 pp validation AIA. Weyl repair không dùng label/accuracy và không retry,
+nhưng diagonal load tăng từ 112.95 lên 5,148.32 lần base Ridge qua 10 task;
+regularization quá lớn làm mất tín hiệu. Kết quả này hỗ trợ cơ chế cốt lõi:
+giữ hệ dưới dạng \(\widehat R^\top\widehat R\) có lợi hơn chỉ lượng tử hóa từng
+phần tử Gram rồi sửa SPD.
+
+Đây là ablation train-only một development seed. Nó loại được hai direct-INT8
+control cụ thể đã kiểm tra, không chứng minh mọi direct quantizer hoặc mọi SPD
+repair đều kém. Chênh lệch SRQ--Exact +0.010 pp trên stream này cũng không phải
+bằng chứng SRQ tăng accuracy.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -166,11 +192,10 @@ và `test_tuning_allowed=false`.
 
 ## 4. Việc cần làm tiếp theo
 
-1. **Chạy direct-quantization control đã khóa.** Notebook Priority 3 so sánh
-   Exact FLY, direct INT8 không sửa, direct INT8 với Weyl-certified diagonal
-   loading, FP16 square-root và SRQ P2B trên cùng CIFAR train-validation stream.
-   Hiện mới có implementation và correctness gate; chưa có số thực nghiệm nên
-   chưa được kết luận lợi ích đến từ square-root structure.
+1. **Kiểm tra độ bền theo tần suất update.** Giữ nguyên CIFAR train-validation
+   samples, class order, projection và hyperparameter trong từng replicate;
+   chạy ghép cặp 10-task và 20-task. So sánh tại các mốc số lớp trùng nhau để
+   đo riêng lỗi tích lũy khi SRQ bị decode/update/re-quantize nhiều lần hơn.
 2. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.

@@ -32,6 +32,13 @@ update time remains 1.60--2.09 times that of Exact FLY. These findings support
 SRQ-FLY as an accuracy--memory trade-off, not as an accuracy-improving
 replacement for FLY.
 
+On one separately locked CIFAR train-validation stream, a direct-int8 Gram
+control fails at the first task. A label-free Weyl-certified diagonal repair
+restores solvability and matches SRQ's state within 16 bytes, but trails SRQ by
+4.925 percentage points in validation AIA. This is mechanism evidence for
+factor-space compression on that stream, not a claim that every possible
+direct-Gram repair must fail.
+
 ## 1. Introduction
 
 Class-incremental learning requires a single predictor over all classes seen
@@ -502,14 +509,45 @@ The final state-matched control confirms the development signal that retaining
 width 10,000 while compressing state can be preferable to shrinking the
 representation. The
 direct-int8 failure shows that an unconstrained quantizer can destroy the
-solve; it does not establish that all repaired direct quantizers must fail. A
-separate Priority-3 train-only control is now preregistered and implemented,
-but has not yet been executed. It propagates a Weyl lower bound from the
-measured symmetric quantization-error infinity norm and applies a deterministic
-diagonal loading without labels, validation accuracy, adaptive retries, or test
-data. Until its artifact is audited, the paper must retain the narrow claim
-above and must not attribute the Priority-1 outcome to square-root structure
-alone.
+solve; it does not establish that all repaired direct quantizers must fail.
+
+### 8.3 Direct-Gram repair control
+
+Priority 3 evaluates the missing control on the same locked CIFAR development
+stream. The repair propagates a Weyl lower bound from the measured symmetric
+quantization-error infinity norm and applies deterministic diagonal loading.
+It uses no labels, validation accuracy, adaptive retries, or test data.
+
+| Method | Validation AIA | Final accuracy | Persistent state | Max solver residual | Outcome |
+|---|---:|---:|---:|---:|---|
+| Exact FLY, width 10,000 | 92.257 | 88.140 | 444,006,540 B | $3.17\times10^{-6}$ | Complete |
+| Direct int8 Gram, unrepaired | -- | -- | -- | -- | Non-positive-definite at task 1 |
+| Direct int8 Gram + Weyl repair | 87.342 | 80.960 | 97,166,244 B | $1.57\times10^{-6}$ | Complete |
+| FP16 square root | 92.260 | 88.130 | 144,036,540 B | $1.54\times10^{-6}$ | Complete |
+| SRQ mixed int8/FP32 | 92.267 | 88.050 | 97,166,228 B | $2.15\times10^{-6}$ | Complete |
+
+The repaired direct Gram and SRQ differ by only 16 persistent bytes, yet SRQ
+improves validation AIA by 4.925 points. The repair's required diagonal load
+grows monotonically from 112.95 to 5,148.32 times the base Ridge coefficient
+over the ten tasks. Thus entrywise direct quantization creates an unfavorable
+choice on this stream: without repair the system is not positive definite;
+with this conservative certified repair, the induced regularization destroys
+substantial predictive signal. In contrast, factor-space reconstruction has
+the form \(\widehat R^\top\widehat R\) by construction and retains the Exact
+FLY accuracy regime.
+
+This is a single-seed, train-only mechanism ablation. It rules out the specific
+unrepaired and Weyl-repaired direct-int8 controls tested here; it does not prove
+that every direct quantizer, projection, or SPD-repair strategy is inferior.
+The 0.010-point SRQ-minus-Exact AIA difference on this development stream must
+not be reported as an accuracy improvement.
+
+A subsequent Priority-4 protocol is preregistered but has no results at the
+time of writing. It pairs 10-task and 20-task CIFAR train-validation schedules
+over five fresh replicates while holding per-class sample membership, class
+order, projection, WTA codes, Ridge, and implementation fixed. Accuracy is
+compared only at the ten aligned seen-class checkpoints. This isolates whether
+twice as many factor re-quantization events materially amplify SRQ error.
 
 ## 9. System memory and runtime
 
@@ -599,6 +637,11 @@ continual learning.
 - Final status: `CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE`.
 - System artifact: `srq_fly_priority2b_memory.zip`.
 - Development ablation: `srq_fly_priority1_train_only.zip`.
+- Direct-Gram control: `srq_fly_priority3_direct_control_train_only.zip`,
+  SHA-256
+  `9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e`,
+  status `COMPLETE_REVIEW_PRIORITY3`, commit
+  `1d75073bfe0a47584997cdf7f658f59ab5cf6140`.
 - State-matched artifact: `srq_fly_state_matched_final.zip`, SHA-256
   `a5adc883089f6108a01f33d57f0737894af843262a18a50f5309d82a54f323f9`.
 - State-matched train-only checkpoint:

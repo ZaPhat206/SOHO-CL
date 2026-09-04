@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-priority4-cifar100-task-frequency-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "feature_dim": 768,
+  "seed": 2025,
+  "num_classes": 100,
+  "task_schedules": [10, 20],
+  "validation_fraction": 0.2,
+  "replicates": [
+    {"id": 1, "class_order_seed": 6101, "projection_seed": 7101, "split_seed": 8101},
+    {"id": 2, "class_order_seed": 6102, "projection_seed": 7102, "split_seed": 8102},
+    {"id": 3, "class_order_seed": 6103, "projection_seed": 7103, "split_seed": 8103},
+    {"id": 4, "class_order_seed": 6104, "projection_seed": 7104, "split_seed": 8104},
+    {"id": 5, "class_order_seed": 6105, "projection_seed": 7105, "split_seed": 8105}
+  ],
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "fly_ridge_lambda": 1000000.0,
+  "hyperparameter_policy": {
+    "selection_source": "srq_fly_p2b_final_confirmation.zip / CIFAR-100 train-only selection",
+    "reference_artifact_sha256": "14826488b8d82bc306a07e6d4f229cc389a8447150833aefc1de664961a9e85d",
+    "selection_json_sha256": "1785eed6aa3cc8796adb19ae077585652d2a31a05364b37f908c0a1a8843250b",
+    "retuning_allowed": false,
+    "accuracy_based_early_stop": false
+  },
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "storage": {
+    "block_size": 256,
+    "group_size": 64
+  },
+  "p2b_backend": {
+    "storage_mode": "int8",
+    "update_backend": "blocked_qr",
+    "update_panel_size": 128,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_aligned_aia_gap_to_exact_pp": 0.5,
+    "maximum_final_gap_to_exact_pp": 0.5,
+    "maximum_mean_added_frequency_loss_pp": 0.25,
+    "minimum_srq_exact_prediction_agreement": 0.98,
+    "maximum_exact_final_accuracy_schedule_difference_pp": 0.05,
+    "minimum_exact_final_prediction_schedule_agreement": 0.995,
+    "maximum_srq_state_fraction_of_exact": 0.25
+  }
+}
