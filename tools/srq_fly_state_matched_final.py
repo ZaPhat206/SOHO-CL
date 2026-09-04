@@ -593,6 +593,19 @@ def _validate_authorization(
     return record
 
 
+def _ordered_task_loaders(loaders, expected_tasks: int):
+    """Validate and order the dictionary returned by ``load_dataset``."""
+    if not isinstance(loaders, dict):
+        raise TypeError("test loaders must be a task-indexed dictionary")
+    expected_keys = set(range(expected_tasks))
+    if set(loaders) != expected_keys:
+        raise ValueError(
+            "test loader task IDs mismatch: "
+            f"expected {sorted(expected_keys)}, got {sorted(loaders)}"
+        )
+    return [loaders[index] for index in range(expected_tasks)]
+
+
 def extract_test(args) -> dict:
     config_path = Path(args.config).resolve()
     config = _read_config(config_path)
@@ -629,6 +642,7 @@ def extract_test(args) -> dict:
         num_workers=args.num_workers,
     )
     _, loaders = base.load_dataset(namespace)
+    ordered_loaders = _ordered_task_loaders(loaders, dataset["num_tasks"])
     device = torch.device(args.device)
     model = base.load_model(
         backbone["model_name"], checkpoint_path=args.backbone_checkpoint,
@@ -636,7 +650,7 @@ def extract_test(args) -> dict:
         expected_checkpoint_sha256=backbone["checkpoint_sha256"],
     ).eval().to(device)
     features, labels = [], []
-    for task, loader in enumerate(loaders, 1):
+    for task, loader in enumerate(ordered_loaders, 1):
         values, targets = base.feature_extract(model, loader, device)
         features.append(values.cpu()); labels.append(targets.cpu())
         print(f"TEST EXTRACT {key} task={task}/{dataset['num_tasks']} samples={len(targets)}", flush=True)

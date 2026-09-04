@@ -194,6 +194,15 @@ def test_config_has_disjoint_development_and_final_replicates():
     assert config["final_evaluation"]["accuracy_based_early_stop"] is False
 
 
+def test_test_loader_dictionary_is_validated_and_ordered():
+    first, second = object(), object()
+    assert runner._ordered_task_loaders({1: second, 0: first}, 2) == [first, second]
+    with pytest.raises(TypeError, match="task-indexed dictionary"):
+        runner._ordered_task_loaders([first, second], 2)
+    with pytest.raises(ValueError, match="task IDs mismatch"):
+        runner._ordered_task_loaders({0: first, 2: second}, 2)
+
+
 def test_colab_notebook_is_parseable_and_source_locked():
     notebook = json.loads(
         Path("notebooks/srq_fly_state_matched_final_colab.ipynb").read_text(

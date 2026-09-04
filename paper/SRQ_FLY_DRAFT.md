@@ -77,9 +77,10 @@ This paper makes three contributions:
    a structural positive-definiteness result, and bounds connecting factor
    error to the Ridge system, classifier, logits, and prediction margin.
 3. **Audited accuracy--memory evidence.** We compare P2B with same-width Exact
-   FLY and raw-feature Ridge across three datasets and six paired replicates,
-   while reporting persistent bytes, CUDA allocator peaks, numerical drift,
-   analytic update time, and inference time separately.
+   FLY, byte-matched lower-width Exact FLY, and raw-feature Ridge across three
+   datasets and six paired replicates, while reporting persistent bytes, CUDA
+   allocator peaks, numerical drift, analytic update time, and inference time
+   separately.
 
 We do not claim that SRQ-FLY improves FLY accuracy, compresses the backbone,
 removes \(O(m^2)\) arithmetic, or already generalizes empirically to every
@@ -386,10 +387,11 @@ held-out evidence. No test metric changes a method, seed, or hyperparameter.
 
 ### 6.2 Baselines and metrics
 
-The final comparison includes same-width Exact FLY, P2B, and
-float64-statistics raw-feature Ridge. A separate CIFAR train-only ablation
-includes a float16 factor, direct int8 Gram, and Exact FLY at state-matched
-width 4,409.
+The final comparison includes same-width Exact FLY, P2B, float64-statistics
+raw-feature Ridge, and Exact FLY at a byte-matched lower width. The latter
+width is derived without accuracy: 4,409 on CIFAR and 4,518 on both 200-class
+datasets. A separate CIFAR train-only ablation includes a float16 factor and
+direct int8 Gram.
 
 Final accuracy is all-seen-class accuracy after the last stage. Average
 incremental accuracy is
@@ -452,7 +454,38 @@ predictor. The maximum P2B solver relative residual over all final units is
 CIFAR-100, 4.448/4.162 on CUB, and 6.549/6.477 on ImageNet-R; these descriptive
 differences are not evidence that quantization improves forgetting.
 
-## 8. Ablation evidence
+## 8. State-matched and ablation evidence
+
+### 8.1 Final state-matched Exact-FLY control
+
+Shrinking Exact FLY's width is the simplest alternative way to meet P2B's
+persistent-state budget. For each dataset, we choose the largest integer width
+whose analytically computed Exact-FLY state does not exceed P2B state, then
+select Ridge on the locked train-only nested partitions. The selected
+configurations are:
+
+| Dataset | Exact-FLY width | Selected \(\lambda\) | Exact/P2B state bytes | Relative byte gap |
+|---|---:|---:|---:|---:|
+| CIFAR-100 | 4,409 | \(10^6\) | 97,163,276 / 97,166,236 | 0.0030% |
+| CUB-200-2011 | 4,518 | \(10^5\) | 105,149,848 / 105,166,636 | 0.0160% |
+| ImageNet-R (legacy) | 4,518 | \(10^6\) | 105,149,848 / 105,166,636 | 0.0160% |
+
+Six-replicate test results are:
+
+| Dataset | Final: matched Exact / P2B | AIA: matched Exact / P2B | P2B-minus-matched AIA (pp), 95% CI |
+|---|---:|---:|---:|
+| CIFAR-100 | 87.915\(\pm\)0.112 / 88.580\(\pm\)0.106 | 91.767\(\pm\)0.396 / 92.231\(\pm\)0.420 | +0.464 [0.340, 0.589] |
+| CUB-200-2011 | 87.856\(\pm\)0.137 / 88.126\(\pm\)0.088 | 92.552\(\pm\)0.566 / 92.683\(\pm\)0.534 | +0.132 [0.001, 0.262] |
+| ImageNet-R (legacy) | 70.675\(\pm\)0.264 / 71.869\(\pm\)0.247 | 77.297\(\pm\)0.514 / 78.153\(\pm\)0.481 | +0.856 [0.698, 1.014] |
+
+All three paired intervals lie above zero, although the CUB lower bound is
+close to zero. This supports a specific Pareto claim: at nearly equal deployed
+tensor bytes, preserving width 10,000 and compressing the square-root state is
+more accurate than reducing Exact FLY to width 4,409--4,518. It does not imply
+that quantization improves accuracy over width-10,000 Exact FLY; Section 7.1
+shows the opposite small same-width effect on CUB and ImageNet-R.
+
+### 8.2 Train-only component ablation
 
 The locked CIFAR train-only ablation uses one deterministic development stream.
 
@@ -465,12 +498,18 @@ The locked CIFAR train-only ablation uses one deterministic development stream.
 | Raw Ridge | 91.175 | 2.97 MB | Complete |
 | Direct int8 Gram | -- | -- | Non-positive-definite system at task 1 |
 
-The state-matched result suggests that retaining width 10,000 while
-compressing state can be preferable to shrinking the representation. The
+The final state-matched control confirms the development signal that retaining
+width 10,000 while compressing state can be preferable to shrinking the
+representation. The
 direct-int8 failure shows that an unconstrained quantizer can destroy the
 solve; it does not establish that all repaired direct quantizers must fail. A
-future control should preregister diagonal loading or spectral clipping rather
-than assign zero accuracy to this failed method.
+separate Priority-3 train-only control is now preregistered and implemented,
+but has not yet been executed. It propagates a Weyl lower bound from the
+measured symmetric quantization-error infinity norm and applies a deterministic
+diagonal loading without labels, validation accuracy, adaptive retries, or test
+data. Until its artifact is audited, the paper must retain the narrow claim
+above and must not attribute the Priority-1 outcome to square-root structure
+alone.
 
 ## 9. System memory and runtime
 
@@ -523,6 +562,14 @@ The current limitations are:
   untouched held-out benchmark.
 - The legacy ImageNet-R split has 19 cross-split duplicate hashes, including
   18 under conflicting labels, and cannot be called content-disjoint.
+- The current state-matched archive is recovery evidence rather than a fully
+  source-locked final artifact. Its test-feature extraction used an in-memory
+  compatibility adapter that ordered the repository's `{task_id: DataLoader}`
+  dictionary after the locked runner incorrectly iterated dictionary keys.
+  The adapter changed no sample, model, seed, width, or hyperparameter, but it
+  was not part of the original authorization source identity. A clean rerun on
+  the corrected runner is required before treating this control as final paper
+  evidence.
 
 The algebra may apply when another learner's deployed state contains an SPD
 regularized second-order matrix. This remains a hypothesis until an independent
@@ -535,10 +582,13 @@ large quadratic state. SRQ-FLY compresses the regularized FLY system through a
 mixed-precision triangular factor while preserving same-width FLY features.
 The locked P2B implementation reduces persistent state by 76.7--78.1% and
 isolated peak CUDA allocation by 23.8%, while changing mean AIA by at most
-0.083 points across the three evaluated datasets. This comes with a
-1.60--2.09 times analytic-update overhead. The evidence supports SRQ-FLY as
-structure-preserving state compression, not as an accuracy improvement or a
-universal solution for analytic continual learning.
+0.083 points across the three evaluated datasets. At nearly the same state
+budget, it improves AIA over lower-width Exact FLY by 0.132--0.856 points.
+This comes with a 1.60--2.09 times analytic-update overhead. The evidence
+supports SRQ-FLY as structure-preserving state compression that avoids the
+accuracy cost of shrinking representation width, not as an accuracy
+improvement over same-width FLY or a universal solution for analytic
+continual learning.
 
 ## Evidence provenance
 
@@ -549,6 +599,14 @@ universal solution for analytic continual learning.
 - Final status: `CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE`.
 - System artifact: `srq_fly_priority2b_memory.zip`.
 - Development ablation: `srq_fly_priority1_train_only.zip`.
+- State-matched artifact: `srq_fly_state_matched_final.zip`, SHA-256
+  `a5adc883089f6108a01f33d57f0737894af843262a18a50f5309d82a54f323f9`.
+- State-matched train-only checkpoint:
+  `srq_state_matched_train_only_checkpoint.zip`, SHA-256
+  `9c42d3f51581443b642b8b79e793d44f412a73936fc8e45cf9cd7238dcb22801`.
+- State-matched run commit:
+  `ccd211c3d3f1c5ac5e3855431bdfeba69708b422` (with the extraction-adapter
+  caveat above).
 
 ## References
 
