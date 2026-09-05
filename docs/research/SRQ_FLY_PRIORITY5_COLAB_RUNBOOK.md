@@ -3,8 +3,9 @@
 Use `notebooks/srq_fly_priority5_memory_colab.ipynb` on one Colab T4 GPU.
 
 1. Select **Runtime -> Disconnect and delete runtime**, then reconnect with
-   **Runtime -> Change runtime type -> T4 GPU**. A fresh parent process is part
-   of the memory protocol.
+   **Runtime -> Change runtime type -> T4 GPU**. Colab may still assign roughly
+   100 MiB of CUDA context to the notebook kernel; the runner records this in
+   the device baseline and attributes the primary peak to each worker PID.
 2. Open a fresh copy of the notebook from the repository; do not reuse cells
    manually copied from an older Colab tab.
 3. Run every cell from top to bottom without changing the config, seed, model,
