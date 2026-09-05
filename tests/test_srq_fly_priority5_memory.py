@@ -31,11 +31,20 @@ def test_locked_config_and_train_only_contract(tmp_path):
 
 
 def test_priority5_composes_repository_transform_list():
+    from PIL import Image
+    from torchvision import transforms
+    from utils.data_utils import build_transform
+
     source = (ROOT / "tools/srq_fly_priority5_memory.py").read_text(
         encoding="utf-8"
     )
     assert "transforms.Compose([" in source
     assert "*build_transform(is_cifar=True, data_augmentation=\"vit\")" in source
+    pipeline = transforms.Compose([
+        *build_transform(is_cifar=True, data_augmentation="vit")
+    ])
+    output = pipeline(Image.new("RGB", (32, 32)))
+    assert tuple(output.shape) == (3, 224, 224)
 
 
 def test_monitor_attributes_process_and_stage_peaks(tmp_path, monkeypatch):
