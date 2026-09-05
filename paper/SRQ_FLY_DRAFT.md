@@ -542,12 +542,32 @@ that every direct quantizer, projection, or SPD-repair strategy is inferior.
 The 0.010-point SRQ-minus-Exact AIA difference on this development stream must
 not be reported as an accuracy improvement.
 
-A subsequent Priority-4 protocol is preregistered but has no results at the
-time of writing. It pairs 10-task and 20-task CIFAR train-validation schedules
-over five fresh replicates while holding per-class sample membership, class
-order, projection, WTA codes, Ridge, and implementation fixed. Accuracy is
-compared only at the ten aligned seen-class checkpoints. This isolates whether
-twice as many factor re-quantization events materially amplify SRQ error.
+### 8.4 Task-frequency robustness
+
+Priority 4 pairs 10-task and 20-task CIFAR train-validation schedules over
+five fresh replicates while holding per-class sample membership, class order,
+projection, WTA codes, Ridge, and implementation fixed. Accuracy is compared
+at the ten aligned seen-class checkpoints, so the intervention changes only
+the number of factor decode/update/re-quantize events.
+
+| Schedule | Exact aligned AIA | SRQ aligned AIA | Exact-minus-SRQ (pp), paired 95% CI | Exact / SRQ final |
+|---|---:|---:|---:|---:|
+| 10 tasks | 92.154 | 92.093 | 0.061 [0.028, 0.095] | 88.300 / 88.206 |
+| 20 tasks | 92.154 | 92.069 | 0.085 [0.024, 0.146] | 88.300 / 88.142 |
+
+The additional aligned-AIA loss caused by doubling the update count is 0.023
+points with paired 95% CI [-0.022, 0.069]. The additional final-accuracy loss
+is 0.064 points with CI [-0.030, 0.158]. Thus the experiment detects the small
+SRQ approximation cost relative to Exact FLY, but does not detect a material
+increase in that cost from ten additional quantization events. Exact FLY has
+identical final predictions under both schedules, validating the pairing.
+Across all units, the minimum SRQ/Exact prediction agreement is 0.9841 and the
+maximum solver residual is $3.13\times10^{-6}$. SRQ retains 21.884% of Exact
+FLY's persistent tensor bytes.
+
+This evidence is train-only and CIFAR-specific. It supports robustness from
+10 to 20 tasks, not equivalence to Exact FLY, arbitrary stream lengths, or
+held-out generalization.
 
 ## 9. System memory and runtime
 
@@ -578,6 +598,18 @@ P2B remains slower during analytic updates because it decodes, applies blocked
 QR, re-encodes the factor, and performs triangular solves. Inference semantics
 are unchanged and measured inference time is similar. Shared feature
 extraction is excluded.
+
+### 9.3 Whole-process measurement (preregistered, result pending)
+
+Priority 5 measures Exact FLY and P2B from frozen ViT loading through full
+CIFAR-100 training-feature extraction and ten analytic updates in separate
+processes. It records persistent tensor bytes, stage-scoped PyTorch
+allocated/reserved peaks, process-attributed NVML peaks, and diagnostic
+device-wide NVML peaks as distinct quantities. The test dataset is never
+instantiated. Because shared feature extraction may dominate both methods,
+the protocol gates the analytic-stage reduction but reports the whole-process
+peak without requiring it to decrease. No Priority-5 number is reported here
+until the source-locked Colab artifact is audited.
 
 ## 10. Discussion and limitations
 
@@ -642,6 +674,11 @@ continual learning.
   `9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e`,
   status `COMPLETE_REVIEW_PRIORITY3`, commit
   `1d75073bfe0a47584997cdf7f658f59ab5cf6140`.
+- Task-frequency artifact: `srq_fly_priority4_task_frequency_train_only.zip`,
+  SHA-256
+  `2891b3ca7ed53c62bd63aa1cb5b3dabb374f4de392de6fa5ccf14fb7bb6690c4`,
+  status `PASS_PRIORITY4_TASK_FREQUENCY`, commit
+  `59b8d77c1c89f76e387a6aea878e717b468731f8`.
 - State-matched artifact: `srq_fly_state_matched_final.zip`, SHA-256
   `a5adc883089f6108a01f33d57f0737894af843262a18a50f5309d82a54f323f9`.
 - State-matched train-only checkpoint:

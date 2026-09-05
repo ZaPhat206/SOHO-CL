@@ -149,6 +149,29 @@ control cụ thể đã kiểm tra, không chứng minh mọi direct quantizer h
 repair đều kém. Chênh lệch SRQ--Exact +0.010 pp trên stream này cũng không phải
 bằng chứng SRQ tăng accuracy.
 
+### 2.3. Độ bền khi tăng từ 10 lên 20 task
+
+Artifact `srq_fly_priority4_task_frequency_train_only.zip`, SHA-256
+`2891b3ca7ed53c62bd63aa1cb5b3dabb374f4de392de6fa5ccf14fb7bb6690c4`,
+chạy năm replicate CIFAR train-only. Trong mỗi replicate, 10-task và 20-task
+dùng cùng mẫu train/validation theo lớp, class order, projection, WTA code,
+Ridge và implementation; chỉ cách gom lớp thành task thay đổi.
+
+| Schedule | Exact aligned AIA | SRQ aligned AIA | Exact-SRQ, paired 95% CI | Exact / SRQ final |
+|---|---:|---:|---:|---:|
+| 10 task | 92.154 | 92.093 | 0.061 [0.028, 0.095] pp | 88.300 / 88.206 |
+| 20 task | 92.154 | 92.069 | 0.085 [0.024, 0.146] pp | 88.300 / 88.142 |
+
+Tăng gấp đôi số lần lượng tử hóa chỉ làm tăng aligned-AIA loss trung bình
+0.023 pp, CI 95% `[-0.022, 0.069]`; final-loss tăng 0.064 pp, CI
+`[-0.030, 0.158]`. Hai khoảng đều chứa 0. Vì vậy chưa có bằng chứng lỗi tích
+lũy đáng kể từ 10 lên 20 task. Tuy nhiên SRQ vẫn thấp hơn Exact một lượng nhỏ;
+kết quả này không chứng minh hai phương pháp hoàn toàn tương đương.
+
+Exact FLY cho final prediction giống hệt giữa hai schedule, residual lớn nhất
+là `3.13e-6`, prediction agreement nhỏ nhất giữa SRQ và Exact là 98.41%, và SRQ
+giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10 unit.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -192,25 +215,25 @@ bằng chứng SRQ tăng accuracy.
 
 ## 4. Việc cần làm tiếp theo
 
-1. **Kiểm tra độ bền theo tần suất update.** Giữ nguyên CIFAR train-validation
-   samples, class order, projection và hyperparameter trong từng replicate;
-   chạy ghép cặp 10-task và 20-task. So sánh tại các mốc số lớp trùng nhau để
-   đo riêng lỗi tích lũy khi SRQ bị decode/update/re-quantize nhiều lần hơn.
+1. **Đo whole-process peak memory.** Chạy Exact FLY và SRQ trong process tách
+   biệt trên cùng T4, đồng thời lấy NVML device/process peak và PyTorch
+   allocated/reserved peak. Báo riêng feature-extraction peak, analytic-stage
+   peak, persistent tensor bytes và disk cache; không dùng một con số thay cho
+   các đại lượng còn lại. Protocol/runner/notebook Priority 5 đã được triển
+   khai; chưa điền số liệu cho đến khi artifact Colab được trả về và audit.
 2. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
-3. **Đo whole-process peak memory.** Bổ sung NVML peak trên cùng GPU/software
-   stack và giữ riêng persistent state, allocator peak và disk cache.
-4. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
+3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
-5. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
+4. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
    không được tuyên bố giảm byte. Cần pack hai giá trị mỗi byte, kiểm tra kernel,
    tốc độ giải mã và accuracy-memory Pareto.
-6. **Củng cố lý thuyết.** Bổ sung bound tích lũy lỗi factor qua task, bound
+5. **Củng cố lý thuyết.** Bổ sung bound tích lũy lỗi factor qua task, bound
    perturbation nghiệm/logit và điều kiện margin bảo toàn prediction. Không tái
    sử dụng định lý hội tụ Shampoo ngoài phạm vi của nó.
-7. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
+6. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
    thay ImageNet-R legacy bằng split sạch hoặc thêm một dataset chưa mở test.
    Báo Exact FLY là baseline chính, raw Ridge là lower-memory baseline và SOHO
    replay ở bảng riêng với toàn bộ sample-level state bytes.

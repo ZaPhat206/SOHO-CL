@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-fly-priority5-cifar100-whole-process-memory-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_size": 346284714,
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "feature_dim": 768,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "train_samples": 50000,
+  "batch_size": 128,
+  "num_workers": 2,
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3
+  },
+  "ridge_lambda": 1000000.0,
+  "storage": {
+    "block_size": 256,
+    "group_size": 64
+  },
+  "p2b_backend": {
+    "storage_mode": "int8",
+    "update_backend": "blocked_qr",
+    "update_panel_size": 128,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "methods": [
+    "exact_fly_10000",
+    "srq_fly_p2b_10000"
+  ],
+  "nvml": {
+    "device_index": 0,
+    "poll_interval_seconds": 0.02,
+    "minimum_worker_samples": 20
+  },
+  "gates": {
+    "minimum_prediction_agreement": 0.98,
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_srq_state_fraction_of_exact": 0.25,
+    "maximum_srq_analytic_torch_peak_ratio": 0.9,
+    "maximum_srq_analytic_nvml_peak_ratio": 0.95
+  }
+}
