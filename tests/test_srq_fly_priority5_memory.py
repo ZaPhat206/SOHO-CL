@@ -47,6 +47,28 @@ def test_priority5_composes_repository_transform_list():
     assert tuple(output.shape) == (3, 224, 224)
 
 
+def test_streaming_extractor_breaks_backing_storage_alias():
+    import torch
+
+    class ViewModel(torch.nn.Module):
+        def forward(self, data):
+            tokens = torch.stack((data, data + 1000.0), dim=1)
+            return tokens[:, 0, :]
+
+    first = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    second = torch.arange(8, dtype=torch.float32).reshape(2, 4) + 20
+    loader = [
+        (first, torch.tensor([0, 1, 2])),
+        (second, torch.tensor([3, 4])),
+    ]
+    features, labels = priority5._extract_train_features_to_cpu(
+        torch, ViewModel(), loader, torch.device("cpu"), 4
+    )
+    assert torch.equal(features, torch.cat((first, second)))
+    assert labels.tolist() == [0, 1, 2, 3, 4]
+    assert features.untyped_storage().nbytes() == features.numel() * features.element_size()
+
+
 def test_monitor_attributes_process_and_stage_peaks(tmp_path, monkeypatch):
     marker = tmp_path / "stage.json"
     marker.write_text(json.dumps({"stage": "analytic_update"}), encoding="utf-8")

@@ -9,6 +9,10 @@ Priority 2B already measured isolated analytic workers on synthetic streams.
 Priority 5 measures the full train-only path on CIFAR-100: frozen ViT loading,
 training-feature extraction, backbone release, ten analytic updates, and one
 fixed probe. Exact FLY and the locked P2B SRQ backend run in fresh processes.
+During the shared extraction stage, each pooled 768D batch is copied to CPU
+immediately. This breaks the CLS view's alias to the full ViT token storage and
+prevents an implementation artifact from retaining every historical token
+tensor on GPU. Exact FLY and SRQ use the identical extraction path.
 
 ## Locked pairing
 

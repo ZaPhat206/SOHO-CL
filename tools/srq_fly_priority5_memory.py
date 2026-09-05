@@ -254,6 +254,37 @@ def _build_train_loader(config: dict, root: Path, view_root: Path):
     )
 
 
+def _extract_train_features_to_cpu(torch, model, loader, device, expected_dim: int):
+    """Extract frozen features without retaining ViT token storage on CUDA.
+
+    A pooled CLS output can be a small view backed by the full token tensor.
+    Keeping those views in a GPU list therefore retains roughly
+    ``batch * tokens * dimension`` values per batch.  An explicit CPU copy
+    breaks that storage alias while preserving the exact pooled values.
+    """
+    from tqdm.auto import tqdm
+
+    feature_parts = []
+    label_parts = []
+    with torch.no_grad():
+        for data, labels in tqdm(
+            loader, desc="Extracting train features to CPU", leave=False
+        ):
+            data = data.to(device, non_blocking=True)
+            embedding = model(data)
+            if embedding.ndim != 2 or embedding.shape[1] != int(expected_dim):
+                raise RuntimeError(
+                    f"backbone output must have shape (B, {expected_dim}); "
+                    f"got {tuple(embedding.shape)}"
+                )
+            feature_parts.append(
+                embedding.detach().to(device="cpu", copy=True).contiguous()
+            )
+            label_parts.append(labels.detach().to(device="cpu", copy=True))
+            del data, embedding
+    return torch.cat(feature_parts, dim=0), torch.cat(label_parts, dim=0)
+
+
 def _task_indices(torch, labels, config: dict):
     order = random.Random(int(config["seed"])).sample(
         list(range(int(config["num_classes"]))), int(config["num_classes"])
@@ -288,7 +319,7 @@ def run_worker(args) -> dict:
 
     from models.backbone import load_model
     from tools import srq_fly_system_benchmark as system_benchmark
-    from utils.train_utils import feature_extract, random_initialization
+    from utils.train_utils import random_initialization
 
     config_path = Path(args.config).resolve()
     config = _read_config(config_path)
@@ -319,10 +350,9 @@ def run_worker(args) -> dict:
         ).eval().to(device)
 
     with _torch_stage(torch, device, marker, "feature_extraction", records):
-        features, labels = feature_extract(backbone, loader, device)
-        train_features = features.cpu()
-        train_labels = labels.cpu()
-        del features, labels
+        train_features, train_labels = _extract_train_features_to_cpu(
+            torch, backbone, loader, device, int(config["feature_dim"])
+        )
     del backbone, loader
     torch.cuda.empty_cache()
     if tuple(train_features.shape) != (config["train_samples"], config["feature_dim"]):
