@@ -30,6 +30,14 @@ def test_locked_config_and_train_only_contract(tmp_path):
         priority5._read_config(path)
 
 
+def test_priority5_composes_repository_transform_list():
+    source = (ROOT / "tools/srq_fly_priority5_memory.py").read_text(
+        encoding="utf-8"
+    )
+    assert "transforms.Compose([" in source
+    assert "*build_transform(is_cifar=True, data_augmentation=\"vit\")" in source
+
+
 def test_monitor_attributes_process_and_stage_peaks(tmp_path, monkeypatch):
     marker = tmp_path / "stage.json"
     marker.write_text(json.dumps({"stage": "analytic_update"}), encoding="utf-8")

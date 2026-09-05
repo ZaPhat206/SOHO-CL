@@ -227,7 +227,7 @@ def _projection_sha256(torch, projection) -> str:
 
 def _build_train_loader(config: dict, root: Path, view_root: Path):
     from torch.utils.data import DataLoader
-    from torchvision import datasets
+    from torchvision import datasets, transforms
     from utils.data_utils import build_transform, resolve_cifar100_directory
 
     source = Path(resolve_cifar100_directory(str(root))).resolve()
@@ -240,7 +240,11 @@ def _build_train_loader(config: dict, root: Path, view_root: Path):
     os.symlink(source, view_root / "cifar-100-python", target_is_directory=True)
     dataset = datasets.CIFAR100(
         root=str(view_root), train=True, download=False,
-        transform=build_transform(is_cifar=True, data_augmentation="vit"),
+        # ``build_transform`` returns the repository's ordered transform list;
+        # match ``load_dataset`` by converting it into one callable pipeline.
+        transform=transforms.Compose([
+            *build_transform(is_cifar=True, data_augmentation="vit")
+        ]),
     )
     if len(dataset) != int(config["train_samples"]):
         raise RuntimeError("unexpected CIFAR training size")
