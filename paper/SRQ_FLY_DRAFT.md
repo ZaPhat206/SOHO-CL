@@ -27,10 +27,13 @@ CUB-200-2011, and a disclosed legacy ImageNet-R split, P2B reduces measured
 persistent learner state by 76.7--78.1% relative to width-10,000 Exact FLY.
 The changes in average incremental accuracy are -0.018, -0.083, and -0.062
 percentage points. In an isolated two-update Tesla T4 benchmark, P2B reduces
-peak PyTorch CUDA allocation by 23.8%; in the real-data confirmation, analytic
-update time remains 1.60--2.09 times that of Exact FLY. These findings support
-SRQ-FLY as an accuracy--memory trade-off, not as an accuracy-improving
-replacement for FLY.
+peak PyTorch CUDA allocation by 23.8%. A source-locked CIFAR-100 train-only
+audit that includes frozen-backbone extraction reduces the process-attributed
+NVML whole-process peak by 13.9% and the analytic-stage PyTorch allocation
+peak by 22.0%; total measured stage time rises by 2.7%. In the three-dataset
+accuracy confirmation, analytic update time remains 1.60--2.09 times that of
+Exact FLY. These findings support SRQ-FLY as an accuracy--memory trade-off,
+not as an accuracy-improving replacement for FLY.
 
 On one separately locked CIFAR train-validation stream, a direct-int8 Gram
 control fails at the first task. A label-free Weyl-certified diagonal repair
@@ -599,17 +602,40 @@ QR, re-encodes the factor, and performs triangular solves. Inference semantics
 are unchanged and measured inference time is similar. Shared feature
 extraction is excluded.
 
-### 9.3 Whole-process measurement (preregistered, result pending)
+### 9.3 Whole-process measurement
 
 Priority 5 measures Exact FLY and P2B from frozen ViT loading through full
-CIFAR-100 training-feature extraction and ten analytic updates in separate
-processes. It records persistent tensor bytes, stage-scoped PyTorch
-allocated/reserved peaks, process-attributed NVML peaks, and diagnostic
-device-wide NVML peaks as distinct quantities. The test dataset is never
-instantiated. Because shared feature extraction may dominate both methods,
-the protocol gates the analytic-stage reduction but reports the whole-process
-peak without requiring it to decrease. No Priority-5 number is reported here
-until the source-locked Colab artifact is audited.
+CIFAR-100 training-feature extraction, ten analytic updates, and a fixed
+512-sample probe in separate processes on one Tesla T4. Both workers use the
+same 50,000 training images, frozen ViT-B/16, projection, WTA codes, class
+order, and Ridge coefficient. The test dataset is never instantiated. Each
+pooled feature batch is copied to CPU immediately in both workers so that a
+CLS view cannot retain the backing full-token tensor on CUDA.
+
+| Quantity | Exact FLY | P2B | P2B/Exact or change |
+|---|---:|---:|---:|
+| Persistent learner tensors | 423.44 MiB | 92.66 MiB | 0.219 (-78.1%) |
+| Analytic PyTorch peak allocated | 1,802.76 MiB | 1,405.30 MiB | 0.780 (-22.0%) |
+| Analytic PyTorch peak reserved | 2,422 MiB | 2,062 MiB | 0.851 (-14.9%) |
+| Analytic NVML worker peak | 2,586 MiB | 2,228 MiB | 0.862 (-13.8%) |
+| Whole-process NVML worker peak | 2,588 MiB | 2,228 MiB | 0.861 (-13.9%) |
+| Analytic-stage time | 12.01 s | 22.46 s | 1.87 times |
+| Sum of measured stage times | 542.50 s | 557.25 s | +2.7% |
+
+The shared feature-extraction worker peak is 1,696 MiB for both methods. The
+whole-process saving is therefore smaller than the 78.1% persistent-state
+saving because the backbone, extraction workspace, code generation, solver
+workspace, and CUDA-library allocations are not all compressed. P2B agrees
+with Exact FLY on 510 of 512 probe predictions (99.609%), and its solver
+relative residual is $1.61\times10^{-6}$. Relative probe-logit drift is
+0.167, so prediction agreement must not be described as logit equivalence.
+
+All preregistered Priority-5 gates pass. This is real-data evidence that P2B
+reduces actual runtime GPU memory, rather than only serialized tensor bytes,
+under the reported CIFAR-100/T4 pipeline. It remains a single-seed train-only
+systems measurement, not an accuracy result or a guarantee for other hardware
+and pipelines. Process-attributed NVML is the primary whole-process metric;
+device-wide NVML and PyTorch allocator counters retain their distinct scopes.
 
 ## 10. Discussion and limitations
 
@@ -627,6 +653,8 @@ The current limitations are:
 - Structural positive definiteness does not guarantee conditioning or
   accuracy preservation.
 - Final evidence covers one frozen ViT-B/16 and one FLY-style learner.
+- Whole-process GPU memory is measured on one CIFAR-100 stream and one Tesla
+  T4 run per method; it has no cross-hardware or repeated-run interval.
 - Six replicates vary seeds but reuse the same dataset test samples.
 - P2B confirms a backend on previously consumed test splits rather than an
   untouched held-out benchmark.
@@ -652,13 +680,16 @@ large quadratic state. SRQ-FLY compresses the regularized FLY system through a
 mixed-precision triangular factor while preserving same-width FLY features.
 The locked P2B implementation reduces persistent state by 76.7--78.1% and
 isolated peak CUDA allocation by 23.8%, while changing mean AIA by at most
-0.083 points across the three evaluated datasets. At nearly the same state
-budget, it improves AIA over lower-width Exact FLY by 0.132--0.856 points.
-This comes with a 1.60--2.09 times analytic-update overhead. The evidence
-supports SRQ-FLY as structure-preserving state compression that avoids the
-accuracy cost of shrinking representation width, not as an accuracy
-improvement over same-width FLY or a universal solution for analytic
-continual learning.
+0.083 points across the three evaluated datasets. A separate source-locked
+CIFAR-100/T4 audit observes a 13.9% reduction in process-attributed NVML
+whole-process peak and a 22.0% reduction in analytic PyTorch peak allocation.
+At nearly the same state budget, P2B improves AIA over lower-width Exact FLY
+by 0.132--0.856 points. This comes with a 1.60--2.09 times analytic-update
+overhead, although measured whole-process stage time in the CIFAR audit rises
+by only 2.7% because feature extraction dominates. The evidence supports
+SRQ-FLY as structure-preserving state compression that avoids the accuracy
+cost of shrinking representation width, not as an accuracy improvement over
+same-width FLY or a universal solution for analytic continual learning.
 
 ## Evidence provenance
 
@@ -668,6 +699,11 @@ continual learning.
   `86a9e8f242925d5c50d1ab251088e6fbb9e2944a`.
 - Final status: `CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE`.
 - System artifact: `srq_fly_priority2b_memory.zip`.
+- Whole-process memory artifact:
+  `srq_fly_priority5_whole_process_memory.zip`, SHA-256
+  `7f111e80ec3e4d12fafae39a868795fc36c967d223c99f8ade98107b5b180403`,
+  status `PASS_PRIORITY5_MEMORY`, commit
+  `a3dbe581e2b7c61d54203139c5d07649ec7dbfd5`.
 - Development ablation: `srq_fly_priority1_train_only.zip`.
 - Direct-Gram control: `srq_fly_priority3_direct_control_train_only.zip`,
   SHA-256

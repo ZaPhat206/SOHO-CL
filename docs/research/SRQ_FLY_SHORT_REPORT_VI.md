@@ -172,6 +172,31 @@ Exact FLY cho final prediction giống hệt giữa hai schedule, residual lớn
 là `3.13e-6`, prediction agreement nhỏ nhất giữa SRQ và Exact là 98.41%, và SRQ
 giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10 unit.
 
+### 2.4. Peak GPU memory của toàn pipeline
+
+Artifact `srq_fly_priority5_whole_process_memory.zip`, SHA-256
+`7f111e80ec3e4d12fafae39a868795fc36c967d223c99f8ade98107b5b180403`,
+đo Exact FLY và P2B trong hai worker tách biệt trên một Tesla T4. Luồng đo gồm
+load frozen ViT-B/16, trích xuất đủ 50.000 feature train CIFAR-100, giải phóng
+backbone, chạy 10 analytic update và probe cố định 512 mẫu. Hai phương pháp dùng
+cùng dữ liệu, projection, WTA, class order và Ridge; test set không được tạo.
+
+| Đại lượng | Exact FLY | P2B | Thay đổi |
+|---|---:|---:|---:|
+| Persistent state | 423.44 MiB | 92.66 MiB | giảm 78.1% |
+| Analytic PyTorch peak allocated | 1,802.76 MiB | 1,405.30 MiB | giảm 22.0% |
+| Analytic PyTorch peak reserved | 2,422 MiB | 2,062 MiB | giảm 14.9% |
+| Whole-process NVML worker peak | 2,588 MiB | 2,228 MiB | giảm 13.9% |
+| Analytic-stage time | 12.01 s | 22.46 s | P2B chậm 1.87 lần |
+| Tổng thời gian các stage | 542.50 s | 557.25 s | P2B chậm 2.7% |
+
+Feature-extraction peak là 1,696 MiB ở cả hai worker. Vì backbone và workspace
+chung không được nén, giảm peak toàn pipeline nhỏ hơn nhiều so với giảm
+persistent state. P2B đồng ý 510/512 prediction với Exact FLY (99.609%), có
+solver residual `1.61e-6`, nhưng relative logit drift vẫn là 0.167. Tất cả gate
+đều pass với trạng thái `PASS_PRIORITY5_MEMORY`. Đây là bằng chứng train-only
+trên một CIFAR/T4 run, không phải accuracy result hay bảo đảm cho mọi GPU.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -186,6 +211,8 @@ giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10
 - Exemplar-free **ở learner-state level**: checkpoint không chứa raw image,
   historical feature, WTA code hay tensor theo từng sample.
 - Inference time thực nghiệm gần Exact FLY.
+- Whole-process audit xác nhận lợi ích không chỉ nằm trên giấy: process-attributed
+  NVML peak giảm 13.9% và analytic PyTorch allocation peak giảm 22.0% trên T4.
 
 ### Hạn chế hiện tại
 
@@ -196,8 +223,8 @@ giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10
 - State 97-105 MB vẫn lớn hơn raw Ridge nhiều lần; đây là memory-accuracy
   trade-off, không phải phương pháp nhỏ nhất.
 - Code là int8, chưa phải 4-bit như bài ICCV, và chưa dùng error feedback.
-- Isolated T4 benchmark đã đo peak PyTorch CUDA allocation: P2B giảm 23.8% so
-  với Exact FLY. Đây chưa phải whole-process/NVML peak memory.
+- Whole-process memory hiện mới được đo một lần trên CIFAR-100/T4; chưa có lặp
+  lại để lập khoảng tin cậy và chưa chứng minh mức giảm tương tự trên GPU khác.
 - Frozen feature/WTA caches trên disk chứa dữ liệu theo sample và có thể rất
   lớn. Chúng là hạ tầng thí nghiệm, không phải learner state, và không được đóng
   gói vào checkpoint khi tuyên bố exemplar-free.
@@ -215,15 +242,12 @@ giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10
 
 ## 4. Việc cần làm tiếp theo
 
-1. **Đo whole-process peak memory.** Chạy Exact FLY và SRQ trong process tách
-   biệt trên cùng T4, đồng thời lấy NVML device/process peak và PyTorch
-   allocated/reserved peak. Báo riêng feature-extraction peak, analytic-stage
-   peak, persistent tensor bytes và disk cache; không dùng một con số thay cho
-   các đại lượng còn lại. Protocol/runner/notebook Priority 5 đã được triển
-   khai; chưa điền số liệu cho đến khi artifact Colab được trả về và audit.
-2. **Đóng lại provenance của state-matched control.** Rerun extraction/final
+1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
+2. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
+   nhiều replicate hoặc GPU khác nếu muốn tuyên bố mức giảm peak tổng quát;
+   luôn tách NVML process, NVML device, PyTorch allocated và reserved.
 3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
@@ -243,7 +267,8 @@ giảm 78.116% persistent state. Artifact có `uses_test_set=false` và đủ 10
 SRQ-FLY hiện là một hướng **khả thi và có tín hiệu paper rõ về
 memory-accuracy trade-off**: giảm khoảng bốn phần năm persistent state của
 Exact FLY trong khi chỉ mất 0.02-0.08 pp AIA, đồng thời hơn FLY giảm-width tại
-cùng state budget từ 0.132 đến 0.856 pp AIA. Tuy nhiên, nó chưa phải phương pháp
+cùng state budget từ 0.132 đến 0.856 pp AIA. Whole-process audit còn xác nhận
+NVML worker peak giảm 13.9% trên CIFAR/T4. Tuy nhiên, nó chưa phải phương pháp
 tăng accuracy so với FLY cùng width và update vẫn chậm hơn 1.60-2.09 lần. Định
 vị trung thực nhất hiện tại là “structure-preserving compression that preserves
 representation width”, không phải “better FLY in every metric”.

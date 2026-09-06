@@ -1,7 +1,28 @@
 # SRQ-FLY manuscript validation
 
-Validation date: 2026-08-21. No dataset, feature cache, WTA cache, or held-out
-example was opened by these checks.
+Initial validation date: 2026-08-21. Priority-5 artifact audit date:
+2026-09-06. No dataset, feature cache, WTA cache, or held-out example was
+opened by these checks.
+
+## Priority-5 whole-process memory artifact
+
+The returned artifact `srq_fly_priority5_whole_process_memory.zip` was audited
+read-only. Its SHA-256 is
+`7f111e80ec3e4d12fafae39a868795fc36c967d223c99f8ade98107b5b180403`.
+ZIP CRC validation passed; the SHA-256 of `priority5_memory_results.json`
+matches the internal manifest; the locked config hash is
+`ba02e0e742fdaf17e364d6ef182d8e32f8220ac5140253ec2155572054db75da`;
+and the source commit is
+`a3dbe581e2b7c61d54203139c5d07649ec7dbfd5`.
+
+The result status is `PASS_PRIORITY5_MEMORY`; all ten preregistered gates are
+true. Both isolated workers completed, remained train-only, used paired data
+and projection identities, and were observed by NVML across all required
+stages. The audit records a 0.21884 state ratio, 0.77953 analytic PyTorch peak
+ratio, 0.86156 analytic NVML worker-peak ratio, 0.86090 whole-process NVML
+worker-peak ratio, and 0.99609 fixed-probe prediction agreement. This validates
+the reported CIFAR-100/Tesla-T4 systems result only; it does not convert the
+train-only probe into an accuracy result.
 
 ## Focused SRQ regression suite
 
