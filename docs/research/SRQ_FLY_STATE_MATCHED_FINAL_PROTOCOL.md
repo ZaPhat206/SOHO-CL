@@ -57,6 +57,25 @@ The lower-width control gets its own Ridge selection. For every dataset:
 
 The selection runner refuses a visible `test.pt`.
 
+## Source-provenance repair
+
+The original train-only checkpoint is reused rather than retuned. Its locked
+SHA-256 is
+`9c42d3f51581443b642b8b79e793d44f412a73936fc8e45cf9cd7238dcb22801`.
+The checkpoint selections were produced by runner SHA-256
+`8c236b4b1be4d06b4fdeeb5631e96058e60ac3b980a0e9b332143c60a4dce9bf`
+at commit `ccd211c3d3f1c5ac5e3855431bdfeba69708b422`.
+
+Before restoration, the clean-rerun runner verifies the checkpoint CRC and
+SHA-256, retrieves that historical runner directly from Git, verifies its
+SHA-256, and compares canonical ASTs for every selection-relevant function.
+Only if those ASTs are identical may the old `selection.json` files be used.
+The current and historical runners differ in test-loader handling, not in
+width derivation, partitioning, candidate evaluation, scoring, or tie-breaks.
+The new authorization binds the original checkpoint hash, per-dataset
+selection hashes, AST attestation, corrected runner, and clean Git commit.
+No prior test result is read to restore or alter a hyperparameter.
+
 ## Confirmation
 
 After all three selections and the immutable P2B final artifact are hashed into

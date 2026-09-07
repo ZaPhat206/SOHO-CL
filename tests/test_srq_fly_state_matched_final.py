@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 import zipfile
 
@@ -194,6 +195,71 @@ def test_config_has_disjoint_development_and_final_replicates():
     assert config["final_evaluation"]["accuracy_based_early_stop"] is False
 
 
+def test_legacy_and_current_selection_logic_ast_are_identical():
+    legacy = subprocess.check_output(
+        [
+            "git", "show",
+            f"{runner.LEGACY_SELECTION_COMMIT}:"
+            "tools/srq_fly_state_matched_final.py",
+        ]
+    )
+    current = Path(runner.__file__).read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(legacy).hexdigest() == runner.LEGACY_SELECTION_RUNNER_SHA256
+    assert runner._selection_logic_sha256(legacy) == runner._selection_logic_sha256(
+        current
+    )
+
+
+def test_restore_content_addressed_train_only_selections(tmp_path, monkeypatch):
+    config = runner._read_config(CONFIG)
+    checkpoint = tmp_path / "selection_checkpoint.zip"
+    with zipfile.ZipFile(checkpoint, "w") as archive:
+        for key in runner.DATASET_KEYS:
+            match = runner.closest_non_exceeding_width(
+                target_bytes=config["state_matching"]["p2b_target_bytes"][key],
+                feature_dim=config["state_matching"]["feature_dim"],
+                synaptic_degree=config["state_matching"]["synaptic_degree"],
+                num_classes=config["datasets"][key]["num_classes"],
+                maximum_width=config["state_matching"]["large_width"] - 1,
+            )
+            payload = {
+                "status": "SELECTION_COMPLETE",
+                "uses_test_set": False,
+                "held_out_test_authorized": False,
+                "config_sha256": runner._sha256_file(CONFIG),
+                "runner_sha256": runner.LEGACY_SELECTION_RUNNER_SHA256,
+                "state_match": match,
+                "grid": list(map(float, config["selection"]["ridge_grid"])),
+                "selected_ridge_lambda": 100.0,
+            }
+            archive.writestr(f"{key}/selection.json", json.dumps(payload))
+    monkeypatch.setattr(
+        runner,
+        "LEGACY_SELECTION_CHECKPOINT_SHA256",
+        runner._sha256_file(checkpoint),
+    )
+    selection_root = tmp_path / "restored"
+    attestation = runner.restore_legacy_selections(
+        SimpleNamespace(
+            config=str(CONFIG),
+            selection_checkpoint=str(checkpoint),
+            selection_root=str(selection_root),
+        )
+    )
+    assert attestation["status"] == "LEGACY_TRAIN_ONLY_SELECTION_RESTORED"
+    assert attestation["uses_test_set"] is False
+    selections = runner._validate_selections(
+        CONFIG, config, selection_root, checkpoint
+    )
+    assert {key: row["ridge_lambda"] for key, row in selections.items()} == {
+        key: 100.0 for key in runner.DATASET_KEYS
+    }
+    tampered = selection_root / "cifar100" / "selection.json"
+    tampered.write_bytes(tampered.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="legacy selection evidence mismatch"):
+        runner._validate_selections(CONFIG, config, selection_root, checkpoint)
+
+
 def test_test_loader_dictionary_is_validated_and_ordered():
     first, second = object(), object()
     assert runner._ordered_task_loaders({1: second, 0: first}, 2) == [first, second]
@@ -220,6 +286,9 @@ def test_colab_notebook_is_parseable_and_source_locked():
     assert "EXPECTED_CONFIG_SHA256" in joined
     assert "EXPECTED_RUNNER_SHA256" in joined
     assert "EXPECTED_REFERENCE_SHA256" in joined
+    assert "EXPECTED_SELECTION_CHECKPOINT_SHA256" in joined
+    assert "restore-selection" in joined
+    assert "--selection-checkpoint" in joined
     assert "test.pt" in joined
     assert "--require-clean-git" in joined
     assert "paired_p2b_minus_state_matched_fly_aia" in joined

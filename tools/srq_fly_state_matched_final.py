@@ -9,6 +9,7 @@ and the current clean Git commit have been bound into an authorization record.
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import hashlib
 import json
@@ -49,6 +50,25 @@ DATASET_KEYS = ("cifar100", "cub200", "imagenetr")
 REFERENCE_METHODS = (
     "exact_fly_10000", "srq_fly_p2b_10000", "raw_ridge",
 )
+LEGACY_SELECTION_CHECKPOINT_SHA256 = (
+    "9c42d3f51581443b642b8b79e793d44f412a73936fc8e45cf9cd7238dcb22801"
+)
+LEGACY_SELECTION_COMMIT = "ccd211c3d3f1c5ac5e3855431bdfeba69708b422"
+LEGACY_SELECTION_RUNNER_SHA256 = (
+    "8c236b4b1be4d06b4fdeeb5631e96058e60ac3b980a0e9b332143c60a4dce9bf"
+)
+SELECTION_LOGIC_FUNCTIONS = (
+    "_source_identity",
+    "closest_non_exceeding_width",
+    "_read_config",
+    "_base_protocol",
+    "_representation",
+    "_cache_config",
+    "_candidate_config",
+    "_run_train_unit",
+    "_evaluate_train_exact",
+    "select_dataset",
+)
 
 
 def _source_identity() -> dict[str, str]:
@@ -64,6 +84,132 @@ def _source_identity() -> dict[str, str]:
         "heldout_helper_sha256": _sha256_file(ROOT / "tools/srq_fly_heldout.py"),
         "code_cache_helper_sha256": _sha256_file(ROOT / "tools/twa_fly_pilot.py"),
     }
+
+
+def _selection_logic_sha256(source: bytes) -> str:
+    """Hash the selection-relevant AST independently of final evaluation code."""
+    tree = ast.parse(source.decode("utf-8"))
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    missing = set(SELECTION_LOGIC_FUNCTIONS) - set(functions)
+    if missing:
+        raise ValueError(f"selection runner is missing functions: {sorted(missing)}")
+    canonical = "\n".join(
+        ast.dump(functions[name], annotate_fields=True, include_attributes=False)
+        for name in SELECTION_LOGIC_FUNCTIONS
+    ).encode("utf-8")
+    return _sha256_bytes(canonical)
+
+
+def _legacy_selection_evidence(
+    checkpoint: Path, config_path: Path, config: dict,
+) -> dict:
+    """Verify the immutable train-only checkpoint and its historical source."""
+    checkpoint = checkpoint.resolve()
+    if not checkpoint.is_file():
+        raise FileNotFoundError("state-matched train-only checkpoint is missing")
+    if _sha256_file(checkpoint) != LEGACY_SELECTION_CHECKPOINT_SHA256:
+        raise ValueError("state-matched train-only checkpoint SHA-256 mismatch")
+    try:
+        legacy_source = subprocess.check_output(
+            [
+                "git", "show",
+                f"{LEGACY_SELECTION_COMMIT}:tools/srq_fly_state_matched_final.py",
+            ],
+            cwd=ROOT,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError("locked legacy selection runner is absent from Git history") from error
+    if _sha256_bytes(legacy_source) != LEGACY_SELECTION_RUNNER_SHA256:
+        raise ValueError("legacy selection runner SHA-256 mismatch")
+    current_source = Path(__file__).resolve().read_bytes().replace(b"\r\n", b"\n")
+    legacy_logic = _selection_logic_sha256(legacy_source)
+    current_logic = _selection_logic_sha256(current_source)
+    if current_logic != legacy_logic:
+        raise ValueError("selection logic changed since the train-only checkpoint")
+    if not zipfile.is_zipfile(checkpoint):
+        raise ValueError("state-matched train-only checkpoint is not a ZIP")
+    selections = {}
+    with zipfile.ZipFile(checkpoint) as archive:
+        damaged = archive.testzip()
+        if damaged is not None:
+            raise ValueError(f"damaged train-only checkpoint member: {damaged}")
+        for key in DATASET_KEYS:
+            member = f"{key}/selection.json"
+            try:
+                raw = archive.read(member)
+            except KeyError as error:
+                raise FileNotFoundError(f"checkpoint selection is missing: {key}") from error
+            payload = json.loads(raw)
+            expected_match = closest_non_exceeding_width(
+                target_bytes=config["state_matching"]["p2b_target_bytes"][key],
+                feature_dim=config["state_matching"]["feature_dim"],
+                synaptic_degree=config["state_matching"]["synaptic_degree"],
+                num_classes=config["datasets"][key]["num_classes"],
+                maximum_width=config["state_matching"]["large_width"] - 1,
+            )
+            if (
+                payload.get("status") != "SELECTION_COMPLETE"
+                or payload.get("uses_test_set") is not False
+                or payload.get("held_out_test_authorized") is not False
+                or payload.get("config_sha256") != _sha256_file(config_path)
+                or payload.get("runner_sha256") != LEGACY_SELECTION_RUNNER_SHA256
+                or payload.get("state_match") != expected_match
+                or payload.get("grid")
+                != list(map(float, config["selection"]["ridge_grid"]))
+                or float(payload.get("selected_ridge_lambda", 0)) <= 0
+            ):
+                raise ValueError(f"invalid checkpoint selection: {key}")
+            selections[key] = {
+                "member": member,
+                "sha256": _sha256_bytes(raw),
+                "ridge_lambda": float(payload["selected_ridge_lambda"]),
+                "width": expected_match["width"],
+            }
+    return {
+        "checkpoint_sha256": LEGACY_SELECTION_CHECKPOINT_SHA256,
+        "legacy_commit": LEGACY_SELECTION_COMMIT,
+        "legacy_runner_sha256": LEGACY_SELECTION_RUNNER_SHA256,
+        "selection_logic_sha256": legacy_logic,
+        "selections": selections,
+    }
+
+
+def restore_legacy_selections(args) -> dict:
+    """Restore only locked train-only selections; never read a test result."""
+    config_path = Path(args.config).resolve()
+    config = _read_config(config_path)
+    checkpoint = Path(args.selection_checkpoint).resolve()
+    evidence = _legacy_selection_evidence(checkpoint, config_path, config)
+    output = Path(args.selection_root).resolve()
+    with zipfile.ZipFile(checkpoint) as archive:
+        for key, record in evidence["selections"].items():
+            raw = archive.read(record["member"])
+            path = output / key / "selection.json"
+            if path.is_file() and path.read_bytes() != raw:
+                raise RuntimeError(f"existing restored selection differs: {key}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".json.tmp")
+            temporary.write_bytes(raw)
+            os.replace(temporary, path)
+    attestation = {
+        "schema_version": 1,
+        "status": "LEGACY_TRAIN_ONLY_SELECTION_RESTORED",
+        "uses_test_set": False,
+        "config_sha256": _sha256_file(config_path),
+        "current_runner_sha256": _source_identity()["runner_sha256"],
+        **evidence,
+    }
+    base._atomic_json(output / "selection_restore_attestation.json", attestation)
+    print(
+        "TRAIN-ONLY SELECTION RESTORE: PASS "
+        f"checkpoint={evidence['checkpoint_sha256']}",
+        flush=True,
+    )
+    return attestation
 
 
 def closest_non_exceeding_width(
@@ -472,7 +618,20 @@ def read_reference_artifact(config: dict, artifact_path: Path) -> dict:
     return {"summary": summary, "results": results}
 
 
-def _validate_selections(config_path: Path, config: dict, selection_root: Path) -> dict:
+def _validate_selections(
+    config_path: Path,
+    config: dict,
+    selection_root: Path,
+    selection_checkpoint: Path | None = None,
+) -> dict:
+    legacy = (
+        None
+        if selection_checkpoint is None
+        else _legacy_selection_evidence(selection_checkpoint, config_path, config)
+    )
+    allowed_runner_hashes = {_source_identity()["runner_sha256"]}
+    if legacy is not None:
+        allowed_runner_hashes.add(legacy["legacy_runner_sha256"])
     selections = {}
     for key in DATASET_KEYS:
         path = selection_root / key / "selection.json"
@@ -491,12 +650,15 @@ def _validate_selections(config_path: Path, config: dict, selection_root: Path) 
             or payload.get("uses_test_set") is not False
             or payload.get("held_out_test_authorized") is not False
             or payload.get("config_sha256") != _sha256_file(config_path)
-            or payload.get("runner_sha256") != _source_identity()["runner_sha256"]
+            or payload.get("runner_sha256") not in allowed_runner_hashes
             or payload.get("state_match") != expected_match
             or payload.get("grid") != list(map(float, config["selection"]["ridge_grid"]))
             or float(payload.get("selected_ridge_lambda", 0)) <= 0
         ):
             raise ValueError(f"invalid state-matched selection: {key}")
+        if payload.get("runner_sha256") == LEGACY_SELECTION_RUNNER_SHA256:
+            if legacy is None or _sha256_file(path) != legacy["selections"][key]["sha256"]:
+                raise ValueError(f"legacy selection evidence mismatch: {key}")
         selections[key] = {
             "path": str(path), "sha256": _sha256_file(path),
             "width": expected_match["width"],
@@ -510,7 +672,19 @@ def lock_confirmation(args) -> dict:
     config_path = Path(args.config).resolve()
     config = _read_config(config_path)
     selection_root = Path(args.selection_root).resolve()
-    selections = _validate_selections(config_path, config, selection_root)
+    selection_checkpoint = (
+        None
+        if getattr(args, "selection_checkpoint", None) is None
+        else Path(args.selection_checkpoint).resolve()
+    )
+    selection_provenance = (
+        None
+        if selection_checkpoint is None
+        else _legacy_selection_evidence(selection_checkpoint, config_path, config)
+    )
+    selections = _validate_selections(
+        config_path, config, selection_root, selection_checkpoint
+    )
     artifact = Path(args.reference_artifact).resolve()
     read_reference_artifact(config, artifact)
     dirty = subprocess.check_output(
@@ -525,6 +699,10 @@ def lock_confirmation(args) -> dict:
         "source_identity": _source_identity(),
         "reference_artifact_sha256": config["p2b_reference"]["artifact_sha256"],
         "selection_sha256": {key: value["sha256"] for key, value in selections.items()},
+        "selection_checkpoint_sha256": (
+            None if selection_checkpoint is None else _sha256_file(selection_checkpoint)
+        ),
+        "selection_provenance": selection_provenance,
         "selected_hyperparameters": {
             key: {"width": value["width"], "ridge_lambda": value["ridge_lambda"]}
             for key, value in selections.items()
@@ -545,7 +723,8 @@ def lock_confirmation(args) -> dict:
         previous = json.loads(output.read_text(encoding="utf-8"))
         immutable = (
             "config_sha256", "source_identity", "reference_artifact_sha256",
-            "selection_sha256", "selected_hyperparameters", "state_match",
+            "selection_sha256", "selection_checkpoint_sha256",
+            "selection_provenance", "selected_hyperparameters", "state_match",
             "git_commit", "git_dirty", "test_tuning_allowed",
             "accuracy_based_early_stop",
         )
@@ -560,7 +739,7 @@ def lock_confirmation(args) -> dict:
 
 def _validate_authorization(
     *, path: Path, config_path: Path, config: dict, selection_root: Path,
-    reference_artifact: Path,
+    reference_artifact: Path, selection_checkpoint: Path | None = None,
 ) -> dict:
     if not path.is_file():
         raise FileNotFoundError("state-matched authorization is missing")
@@ -568,7 +747,14 @@ def _validate_authorization(
     claimed = record.get("authorization_id")
     identity = dict(record)
     identity.pop("authorization_id", None)
-    selections = _validate_selections(config_path, config, selection_root)
+    selections = _validate_selections(
+        config_path, config, selection_root, selection_checkpoint
+    )
+    selection_provenance = (
+        None
+        if selection_checkpoint is None
+        else _legacy_selection_evidence(selection_checkpoint, config_path, config)
+    )
     current_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
@@ -581,6 +767,13 @@ def _validate_authorization(
         or record.get("reference_artifact_sha256") != _sha256_file(reference_artifact)
         or record.get("selection_sha256")
         != {key: value["sha256"] for key, value in selections.items()}
+        or record.get("selection_checkpoint_sha256")
+        != (
+            None
+            if selection_checkpoint is None
+            else _sha256_file(selection_checkpoint)
+        )
+        or record.get("selection_provenance") != selection_provenance
         or record.get("git_commit") != current_commit
         or record.get("git_dirty") is not False
         or bool(dirty)
@@ -616,6 +809,11 @@ def extract_test(args) -> dict:
         path=Path(args.authorization).resolve(), config_path=config_path,
         config=config, selection_root=Path(args.selection_root).resolve(),
         reference_artifact=Path(args.reference_artifact).resolve(),
+        selection_checkpoint=(
+            None
+            if getattr(args, "selection_checkpoint", None) is None
+            else Path(args.selection_checkpoint).resolve()
+        ),
     )
     test_path = feature_cache / "test.pt"
     metadata_path = feature_cache / "metadata.json"
@@ -693,11 +891,19 @@ def evaluate_dataset(args) -> dict:
     protocol = _base_protocol(config)
     key = args.dataset_key
     selection_root = Path(args.selection_root).resolve()
-    selections = _validate_selections(config_path, config, selection_root)
+    selection_checkpoint = (
+        None
+        if getattr(args, "selection_checkpoint", None) is None
+        else Path(args.selection_checkpoint).resolve()
+    )
+    selections = _validate_selections(
+        config_path, config, selection_root, selection_checkpoint
+    )
     authorization = _validate_authorization(
         path=Path(args.authorization).resolve(), config_path=config_path,
         config=config, selection_root=selection_root,
         reference_artifact=Path(args.reference_artifact).resolve(),
+        selection_checkpoint=selection_checkpoint,
     )
     reference = read_reference_artifact(
         config, Path(args.reference_artifact).resolve()
@@ -758,6 +964,11 @@ def evaluate_dataset(args) -> dict:
             "authorization_id": authorization["authorization_id"],
             "reference_artifact_sha256": config["p2b_reference"]["artifact_sha256"],
             "selection_sha256": selections[key]["sha256"],
+            "selection_checkpoint_sha256": (
+                None
+                if selection_checkpoint is None
+                else _sha256_file(selection_checkpoint)
+            ),
             "dataset_key": key, "replicate": replicate,
             "class_order": class_order,
             "training_indices_sha256": _sequence_sha256(training_parts),
@@ -808,6 +1019,11 @@ def evaluate_dataset(args) -> dict:
         "authorization_id": authorization["authorization_id"],
         "reference_artifact_sha256": config["p2b_reference"]["artifact_sha256"],
         "selection_sha256": selections[key]["sha256"],
+        "selection_checkpoint_sha256": (
+            None
+            if selection_checkpoint is None
+            else _sha256_file(selection_checkpoint)
+        ),
         "selected_hyperparameters": {
             "width": selections[key]["width"],
             "ridge_lambda": selections[key]["ridge_lambda"],
@@ -843,6 +1059,7 @@ def summarize(args) -> dict:
     )
     output = Path(args.output_root).resolve()
     summaries, paired_state, rows, curves = {}, {}, [], []
+    selection_checkpoint_hashes = set()
     for key in DATASET_KEYS:
         path = output / key / "state_matched_results.json"
         if not path.is_file():
@@ -856,6 +1073,9 @@ def summarize(args) -> dict:
             != config["p2b_reference"]["artifact_sha256"]
         ):
             raise ValueError(f"invalid state-matched result contract: {key}")
+        selection_checkpoint_hashes.add(
+            payload.get("selection_checkpoint_sha256")
+        )
         matched_results = [item["method"] for item in payload["seed_results"]]
         reference_rows = reference["results"][key]["seed_results"]
         summaries[key] = {
@@ -894,6 +1114,16 @@ def summarize(args) -> dict:
                     "task_fraction": task / len(matched["stage_accuracy"]),
                     "average_seen_accuracy": accuracy,
                 })
+    if len(selection_checkpoint_hashes) != 1:
+        raise ValueError(
+            "dataset results do not share one selection checkpoint identity"
+        )
+    selection_checkpoint_sha256 = next(iter(selection_checkpoint_hashes))
+    if (
+        selection_checkpoint_sha256 is not None
+        and selection_checkpoint_sha256 != LEGACY_SELECTION_CHECKPOINT_SHA256
+    ):
+        raise ValueError("unexpected train-only selection checkpoint identity")
     summary = {
         "schema_version": 1, "study_id": config["study_id"],
         "status": "STATE_MATCHED_CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE",
@@ -902,6 +1132,7 @@ def summarize(args) -> dict:
         "config_sha256": _sha256_file(config_path),
         "source_identity": _source_identity(),
         "reference_artifact_sha256": config["p2b_reference"]["artifact_sha256"],
+        "selection_checkpoint_sha256": selection_checkpoint_sha256,
         "dataset_method_summaries": summaries,
         "paired_p2b_minus_state_matched_fly_aia": paired_state,
         "paired_p2b_minus_same_width_exact_fly_aia": reference["summary"][
@@ -928,6 +1159,10 @@ def summarize(args) -> dict:
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
+    restore = sub.add_parser("restore-selection")
+    restore.add_argument("--config", required=True)
+    restore.add_argument("--selection-checkpoint", required=True)
+    restore.add_argument("--selection-root", required=True)
     select = sub.add_parser("select")
     select.add_argument("--config", required=True)
     select.add_argument("--dataset-key", choices=DATASET_KEYS, required=True)
@@ -939,6 +1174,7 @@ def parse_args(argv=None):
     lock = sub.add_parser("lock")
     lock.add_argument("--config", required=True)
     lock.add_argument("--selection-root", required=True)
+    lock.add_argument("--selection-checkpoint")
     lock.add_argument("--reference-artifact", required=True)
     lock.add_argument("--output-root", required=True)
     lock.add_argument("--require-clean-git", action="store_true")
@@ -946,6 +1182,7 @@ def parse_args(argv=None):
     extract.add_argument("--config", required=True)
     extract.add_argument("--dataset-key", choices=DATASET_KEYS, required=True)
     extract.add_argument("--selection-root", required=True)
+    extract.add_argument("--selection-checkpoint")
     extract.add_argument("--reference-artifact", required=True)
     extract.add_argument("--authorization", required=True)
     extract.add_argument("--feature-cache-dir", required=True)
@@ -958,6 +1195,7 @@ def parse_args(argv=None):
     evaluate.add_argument("--config", required=True)
     evaluate.add_argument("--dataset-key", choices=DATASET_KEYS, required=True)
     evaluate.add_argument("--selection-root", required=True)
+    evaluate.add_argument("--selection-checkpoint")
     evaluate.add_argument("--reference-artifact", required=True)
     evaluate.add_argument("--authorization", required=True)
     evaluate.add_argument("--feature-cache-dir", required=True)
@@ -974,7 +1212,9 @@ def parse_args(argv=None):
 
 def main(argv=None) -> None:
     args = parse_args(argv)
-    if args.command == "select":
+    if args.command == "restore-selection":
+        restore_legacy_selections(args)
+    elif args.command == "select":
         select_dataset(args)
     elif args.command == "lock":
         lock_confirmation(args)
