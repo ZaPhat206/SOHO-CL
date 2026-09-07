@@ -68,13 +68,38 @@ artifact hash and status here.
 - SRQ state: approximately 23.27% of exact FLY-10000 and within 0.1% of
   exact FLY-4518 for every seed.
 
-## Missing paper evidence
+## M0 paper evidence freeze
 
-- no CUB held-out result;
-- no ImageNet-R held-out result; the current processed artifact failed the
-  content-disjointness audit with 19 cross-split duplicate hashes;
+The machine-readable source of truth for the current manuscript tables is
+`paper/EXPERIMENTS_MANIFEST.json`. It distinguishes fresh train-only evidence,
+test-used confirmation, and recovery evidence. The current paper uses:
+
+- P2B same-width confirmation, artifact SHA-256
+  `14826488b8d82bc306a07e6d4f229cc389a8447150833aefc1de664961a9e85d`;
+- state-matched secondary control, artifact SHA-256
+  `a5adc883089f6108a01f33d57f0737894af843262a18a50f5309d82a54f323f9`;
+- direct-quantization train-only control, artifact SHA-256
+  `9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e`;
+- task-frequency train-only control, artifact SHA-256
+  `2891b3ca7ed53c62bd63aa1cb5b3dabb374f4de392de6fa5ccf14fb7bb6690c4`;
+- whole-process train-only memory audit, artifact SHA-256
+  `7f111e80ec3e4d12fafae39a868795fc36c967d223c99f8ade98107b5b180403`.
+
+The P2B and state-matched results use previously consumed test splits and are
+not fresh first-use held-out evidence. The current state-matched archive also
+retains its disclosed runtime-adapter caveat and is not promoted to primary
+source-locked evidence by this ledger update.
+
+## Open paper evidence
+
+- no independent non-FLY analytic frontend has passed a plug-in gate;
+- no low-rank or streaming-sketch baseline has been evaluated at matched
+  persistent bytes;
 - no second-backbone result;
-- no controlled paper-hardware runtime comparison;
-- no error-feedback or lower-bit result;
+- whole-process memory has one isolated run per method on one Tesla T4 rather
+  than a repeated or cross-hardware interval;
+- the legacy ImageNet-R processed split failed the content-disjointness audit
+  with 19 cross-split duplicate hashes;
+- no error-feedback or true packed lower-bit result;
 - the bibliography has a verified primary-source ledger but still needs an
   exhaustive venue-specific literature review.

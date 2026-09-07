@@ -7,3 +7,9 @@ checkpoints/
 *.pth
 __pycache__/
 .pytest_cache/
+tmp/
+paper/*.log
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.out

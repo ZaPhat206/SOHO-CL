@@ -64,18 +64,33 @@ Các số dưới đây là mean ± sample standard deviation qua sáu replicate
 lệch accuracy là SRQ trừ Exact FLY; thời gian update là tổng analytic update,
 không gồm feature extraction dùng chung.
 
-| Dataset | Final: Exact / SRQ | Δ final (pp) | AIA: Exact / SRQ | Δ AIA (pp) | State: Exact / SRQ | Giảm state | Update SRQ/Exact |
+Các ký hiệu trong các bảng accuracy:
+
+- **AIA (Average Incremental Accuracy)** là trung bình accuracy sau từng bước
+  học liên tục. Nếu \(a_t\) là accuracy trung bình trên tất cả lớp đã thấy sau
+  task \(t\), thì
+  \[
+  \mathrm{AIA}=\frac{1}{T}\sum_{t=1}^{T}a_t.
+  \]
+  AIA phản ánh chất lượng của toàn bộ quá trình học, không chỉ trạng thái cuối.
+- **\(A_{\mathrm{final}}\)** là accuracy trung bình trên tất cả lớp sau task
+  cuối, tức \(a_T\). Đây là kết quả cuối cùng sau khi mô hình đã thấy toàn bộ
+  class stream.
+- **Update SRQ/Exact** là
+  \(\text{tổng thời gian analytic update của SRQ}/\text{tổng thời gian analytic
+  update của Exact FLY}\). Tỷ lệ lớn hơn 1 nghĩa là SRQ cập nhật chậm hơn. Ví
+  dụ `2.09×` nghĩa là phần update của SRQ mất khoảng 2.09 lần thời gian của
+  Exact FLY; con số này không bao gồm feature extraction dùng chung.
+
+| Dataset | \(A_{\mathrm{final}}\): Exact / SRQ | Δ \(A_{\mathrm{final}}\) (pp) | AIA: Exact / SRQ | Δ AIA (pp) | State: Exact / SRQ | Giảm state | Update SRQ/Exact |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | CIFAR-100 | 88.632±0.138 / 88.580±0.106 | -0.052 | 92.249±0.447 / 92.231±0.420 | -0.018 | 444.01 / 97.17 MB | 78.1% | 2.09× |
 | CUB-200-2011 | 88.297±0.115 / 88.126±0.088 | -0.170 | 92.766±0.534 / 92.683±0.534 | -0.083 | 452.01 / 105.17 MB | 76.7% | 1.60× |
 | ImageNet-R | 71.948±0.256 / 71.869±0.247 | -0.079 | 78.215±0.472 / 78.153±0.481 | -0.062 | 452.01 / 105.17 MB | 76.7% | 1.86× |
 
-Paired 95% CI của chênh lệch AIA SRQ - Exact FLY là
-`[-0.076,+0.040]` trên CIFAR-100, `[-0.149,-0.017]` trên CUB và
-`[-0.094,-0.030]` trên ImageNet-R. Vì vậy kết luận đúng là SRQ bám rất sát
-Exact FLY với state nhỏ hơn nhiều; không được kết luận SRQ tăng accuracy hoặc
-hoàn toàn tương đương thống kê trên cả ba dataset. Inference time gần như giữ
-nguyên (tỷ lệ SRQ/Exact từ 0.977 đến 1.027).
+Kết luận đúng là SRQ bám rất sát Exact FLY với state nhỏ hơn nhiều; không được
+kết luận SRQ tăng accuracy. Inference time gần như giữ nguyên (tỷ lệ SRQ/Exact
+từ 0.977 đến 1.027).
 
 Raw-feature Ridge dùng state nhỏ hơn nhiều (5.95-7.18 MB) nhưng final accuracy
 thấp hơn SRQ khoảng 1.47 pp trên CIFAR-100, 2.33 pp trên CUB và 2.73 pp trên
@@ -104,11 +119,11 @@ ra chỉ từ công thức byte, trước khi nhìn accuracy:
 
 Kết quả test sáu replicate:
 
-| Dataset | Final: FLY-matched / P2B | AIA: FLY-matched / P2B | Δ AIA P2B-FLY (pp), paired 95% CI |
+| Dataset | \(A_{\mathrm{final}}\): FLY-matched / P2B | AIA: FLY-matched / P2B | Δ AIA P2B-FLY (pp) |
 |---|---:|---:|---:|
-| CIFAR-100 | 87.915±0.112 / 88.580±0.106 | 91.767±0.396 / 92.231±0.420 | +0.464 [+0.340,+0.589] |
-| CUB-200-2011 | 87.856±0.137 / 88.126±0.088 | 92.552±0.566 / 92.683±0.534 | +0.132 [+0.001,+0.262] |
-| ImageNet-R | 70.675±0.264 / 71.869±0.247 | 77.297±0.514 / 78.153±0.481 | +0.856 [+0.698,+1.014] |
+| CIFAR-100 | 87.915±0.112 / 88.580±0.106 | 91.767±0.396 / 92.231±0.420 | +0.464 |
+| CUB-200-2011 | 87.856±0.137 / 88.126±0.088 | 92.552±0.566 / 92.683±0.534 | +0.132 |
+| ImageNet-R | 70.675±0.264 / 71.869±0.247 | 77.297±0.514 / 78.153±0.481 | +0.856 |
 
 Đây là bằng chứng quan trọng nhất cho cơ chế của SRQ: tại gần như cùng state
 budget, giữ width 10,000 rồi nén factor tốt hơn giảm width của FLY xuống khoảng
@@ -129,7 +144,30 @@ Artifact train-only `srq_fly_priority3_direct_control_train_only.zip`, SHA-256
 `9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e`,
 đã chạy đủ direct-quantization control trên cùng một CIFAR development stream:
 
-| Phương pháp | Validation AIA | Final | Persistent state | Kết quả |
+Năm phương pháp được đặt cạnh nhau để tách riêng hai câu hỏi: lợi ích có đến
+từ việc dùng ít bit hay từ việc biểu diễn hệ Ridge trong không gian
+square-root, và mức giảm state có phải đánh đổi bằng mất accuracy hay không.
+
+- **Exact FLY-10000** là mốc tham chiếu không nén. Nó giữ dense Gram
+  \(G\) ở FP32 với width 10,000 và giải hệ Ridge gốc. Phương pháp này cho biết
+  accuracy tham chiếu cần cố giữ và chi phí state trước khi nén.
+- **Direct INT8 Gram, không sửa** lượng tử hóa trực tiếp từng phần tử của
+  \(G\) sang INT8 rồi giải hệ. Control này kiểm tra phương án đơn giản nhất:
+  chỉ giảm bit mà không khai thác cấu trúc. Sai số lượng tử có thể làm ma trận
+  đối xứng không còn dương xác định, nên Cholesky có thể thất bại.
+- **Direct INT8 Gram + Weyl repair** cũng lượng tử hóa trực tiếp \(G\), nhưng
+  cộng một diagonal load được tính từ biên trị riêng để ép hệ trở lại SPD.
+  Control này trả lời liệu lỗi của direct INT8 chỉ là lỗi số có thể sửa rẻ hay
+  không. Repair không dùng label hoặc validation accuracy.
+- **FP16 square-root** lưu Cholesky factor \(R\) ở FP16 thay vì lưu Gram.
+  Nó giữ cấu trúc \(R^\top R\) nhưng nén ít hơn SRQ, giúp phân biệt lợi ích của
+  factorization với lợi ích riêng của INT8.
+- **SRQ mixed INT8/FP32** là phương pháp đề xuất: giữ đường chéo của \(R\) ở
+  FP32 và lượng tử hóa groupwise INT8 phần strict-upper. Khi giải mã, hệ luôn
+  được dựng dưới dạng \(\widehat R^\top\widehat R\), nên giữ SPD theo cấu trúc
+  nếu đường chéo dương.
+
+| Phương pháp | Validation AIA | \(A_{\mathrm{final}}\) | Persistent state | Kết quả |
 |---|---:|---:|---:|---|
 | Exact FLY-10000 | 92.257 | 88.140 | 444,006,540 B | Hoàn thành |
 | Direct INT8 Gram, không sửa | -- | -- | -- | Hệ mất positive definiteness ngay task 1 |
@@ -144,6 +182,13 @@ regularization quá lớn làm mất tín hiệu. Kết quả này hỗ trợ c�
 giữ hệ dưới dạng \(\widehat R^\top\widehat R\) có lợi hơn chỉ lượng tử hóa từng
 phần tử Gram rồi sửa SPD.
 
+Vì vậy, bảng này không nhằm chứng minh SRQ luôn tốt hơn mọi kỹ thuật INT8. Nó
+cho thấy trong cùng implementation và cùng stream: (i) direct INT8 ngây thơ
+không ổn định; (ii) sửa SPD bằng diagonal loading có thể làm hệ quá
+regularized; và (iii) nén factor vừa đạt state gần direct INT8 đã sửa, vừa giữ
+accuracy gần Exact FLY. FP16 square-root là cầu nối quan trọng để chỉ ra rằng
+cấu trúc factor đã hữu ích trước cả khi giảm xuống 8 bit.
+
 Đây là ablation train-only một development seed. Nó loại được hai direct-INT8
 control cụ thể đã kiểm tra, không chứng minh mọi direct quantizer hoặc mọi SPD
 repair đều kém. Chênh lệch SRQ--Exact +0.010 pp trên stream này cũng không phải
@@ -157,16 +202,16 @@ chạy năm replicate CIFAR train-only. Trong mỗi replicate, 10-task và 20-ta
 dùng cùng mẫu train/validation theo lớp, class order, projection, WTA code,
 Ridge và implementation; chỉ cách gom lớp thành task thay đổi.
 
-| Schedule | Exact aligned AIA | SRQ aligned AIA | Exact-SRQ, paired 95% CI | Exact / SRQ final |
+| Schedule | Exact aligned AIA | SRQ aligned AIA | Δ AIA Exact-SRQ (pp) | \(A_{\mathrm{final}}\): Exact / SRQ |
 |---|---:|---:|---:|---:|
-| 10 task | 92.154 | 92.093 | 0.061 [0.028, 0.095] pp | 88.300 / 88.206 |
-| 20 task | 92.154 | 92.069 | 0.085 [0.024, 0.146] pp | 88.300 / 88.142 |
+| 10 task | 92.154 | 92.093 | 0.061 | 88.300 / 88.206 |
+| 20 task | 92.154 | 92.069 | 0.085 | 88.300 / 88.142 |
 
 Tăng gấp đôi số lần lượng tử hóa chỉ làm tăng aligned-AIA loss trung bình
-0.023 pp, CI 95% `[-0.022, 0.069]`; final-loss tăng 0.064 pp, CI
-`[-0.030, 0.158]`. Hai khoảng đều chứa 0. Vì vậy chưa có bằng chứng lỗi tích
-lũy đáng kể từ 10 lên 20 task. Tuy nhiên SRQ vẫn thấp hơn Exact một lượng nhỏ;
-kết quả này không chứng minh hai phương pháp hoàn toàn tương đương.
+0.023 pp; final-loss tăng 0.064 pp. Mức thay đổi quan sát được là nhỏ, nên thí
+nghiệm chưa cho thấy lỗi tích lũy đáng kể từ 10 lên 20 task. Tuy nhiên SRQ vẫn
+thấp hơn Exact một lượng nhỏ; kết quả này không chứng minh hai phương pháp hoàn
+toàn tương đương.
 
 Exact FLY cho final prediction giống hệt giữa hai schedule, residual lớn nhất
 là `3.13e-6`, prediction agreement nhỏ nhất giữa SRQ và Exact là 98.41%, và SRQ

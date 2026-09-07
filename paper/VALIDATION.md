@@ -4,6 +4,16 @@ Initial validation date: 2026-08-21. Priority-5 artifact audit date:
 2026-09-06. No dataset, feature cache, WTA cache, or held-out example was
 opened by these checks.
 
+## SRQ generalization M0 baseline lock
+
+On 2026-09-07, the current paper evidence was frozen in
+`paper/EXPERIMENTS_MANIFEST.json` before generic-backend refactoring. The
+manifest gate passed `4/4`, the focused SRQ regression suite passed `77/77`,
+and the full repository suite passed `478/478`. Exact commands, environment,
+worktree caveat, and warning classes are recorded in
+`docs/research/SRQ_GENERALIZATION_M0_BASELINE_LOCK.md`. M0 authorizes local M1
+refactoring only; it does not authorize a held-out or dirty-worktree run.
+
 ## Priority-5 whole-process memory artifact
 
 The returned artifact `srq_fly_priority5_whole_process_memory.zip` was audited

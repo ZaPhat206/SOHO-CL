@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "manifest_id": "srq-fly-paper-evidence-lock-m0-v1",
+  "created_date": "2026-09-07",
+  "repository": {
+    "branch": "experiment/soho-selfcontained",
+    "baseline_head": "1e4c86b",
+    "baseline_head_full": "1e4c86b86100c4d7089db57136ac638a63b99144",
+    "worktree_policy": "Local documentation may coexist with unrelated dirty files; every experiment worker must use a clean committed clone.",
+    "method_files": {
+      "methods/srq_fly_optimized/learner.py": "40edac2e2cc88faac549f5c87217f3143d815bf53ecad8a37dfdb22c112691ae",
+      "methods/srq_fly_optimized/storage.py": "9d288a3661985da657371e8581f406825d4a8d5e6e0c63381aacda8484490986"
+    }
+  },
+  "evidence": [
+    {
+      "id": "p2b_same_width_three_dataset",
+      "artifact": "srq_fly_p2b_final_confirmation.zip",
+      "artifact_sha256": "14826488b8d82bc306a07e6d4f229cc389a8447150833aefc1de664961a9e85d",
+      "source_commit": "86a9e8f242925d5c50d1ab251088e6fbb9e2944a",
+      "config": "configs/srq_fly_p2b_final_confirmation.json",
+      "repository_config_sha256": "c5716da80ee732b6456d69b57175b999715c97efa9b9e8f6ab464be94a9211f3",
+      "status": "CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE",
+      "datasets": ["cifar100", "cub200", "imagenetr"],
+      "uses_test_set": true,
+      "test_tuning_allowed": false,
+      "replicates": [
+        {"class_order_seed": 3031, "projection_seed": 5031},
+        {"class_order_seed": 3032, "projection_seed": 5032},
+        {"class_order_seed": 3033, "projection_seed": 5033},
+        {"class_order_seed": 3034, "projection_seed": 5034},
+        {"class_order_seed": 3035, "projection_seed": 5035},
+        {"class_order_seed": 3036, "projection_seed": 5036}
+      ],
+      "paper_roles": ["same_width", "raw_ridge", "inference_time"],
+      "caveat": "Previously consumed test splits; optimized-backend confirmation, not fresh first-use held-out evidence."
+    },
+    {
+      "id": "p2b_state_matched_three_dataset",
+      "artifact": "srq_fly_state_matched_final.zip",
+      "artifact_sha256": "a5adc883089f6108a01f33d57f0737894af843262a18a50f5309d82a54f323f9",
+      "selection_artifact": "srq_state_matched_train_only_checkpoint.zip",
+      "selection_artifact_sha256": "9c42d3f51581443b642b8b79e793d44f412a73936fc8e45cf9cd7238dcb22801",
+      "source_commit": "ccd211c3d3f1c5ac5e3855431bdfeba69708b422",
+      "config": "configs/srq_fly_state_matched_final.json",
+      "repository_config_sha256": "c77bc7ae6fc627369623c1969cc6daca8f7274fc57c43ff8e9e75c6c547fe84d",
+      "status": "STATE_MATCHED_CONFIRMATION_REPORTED_WITHOUT_ACCURACY_GATE",
+      "datasets": ["cifar100", "cub200", "imagenetr"],
+      "uses_test_set": true,
+      "test_tuning_allowed": false,
+      "paper_roles": ["state_matched"],
+      "caveat": "Recovery evidence: test-feature extraction used an in-memory dictionary-loader ordering adapter outside the original source identity."
+    },
+    {
+      "id": "direct_quantization_control",
+      "artifact": "srq_fly_priority3_direct_control_train_only.zip",
+      "artifact_sha256": "9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e",
+      "source_commit": "1d75073bfe0a47584997cdf7f658f59ab5cf6140",
+      "config": "configs/srq_fly_priority3_direct_control_cifar100_train_only.json",
+      "repository_config_sha256": "909fbd4da753018c3e8b3e8dcd8ea33e78dc5c5f6f32880035875d2b2b51e4dd",
+      "status": "COMPLETE_REVIEW_PRIORITY3",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["mechanism_ablation"]
+    },
+    {
+      "id": "task_frequency_control",
+      "artifact": "srq_fly_priority4_task_frequency_train_only.zip",
+      "artifact_sha256": "2891b3ca7ed53c62bd63aa1cb5b3dabb374f4de392de6fa5ccf14fb7bb6690c4",
+      "source_commit": "59b8d77c1c89f76e387a6aea878e717b468731f8",
+      "config": "configs/srq_fly_priority4_cifar100_task_frequency_train_only.json",
+      "repository_config_sha256": "d4165de428a71cebd3d1272ca623b0604b092e876fdcd159fd599aac00d0bd6c",
+      "status": "PASS_PRIORITY4_TASK_FREQUENCY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["task_frequency"]
+    },
+    {
+      "id": "whole_process_memory",
+      "artifact": "srq_fly_priority5_whole_process_memory.zip",
+      "artifact_sha256": "7f111e80ec3e4d12fafae39a868795fc36c967d223c99f8ade98107b5b180403",
+      "source_commit": "a3dbe581e2b7c61d54203139c5d07649ec7dbfd5",
+      "config": "configs/srq_fly_priority5_cifar100_whole_process_memory.json",
+      "repository_config_sha256": "ba02e0e742fdaf17e364d6ef182d8e32f8220ac5140253ec2155572054db75da",
+      "status": "PASS_PRIORITY5_MEMORY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["whole_process_memory"],
+      "caveat": "One isolated run per method on one Tesla T4; not a cross-hardware interval."
+    }
+  ],
+  "known_open_evidence": [
+    "No independent non-FLY analytic frontend has passed an SRQ integration gate.",
+    "No low-rank or streaming-sketch baseline has been evaluated at matched persistent bytes.",
+    "No second-backbone result is available.",
+    "Whole-process memory currently has one run per method on one GPU.",
+    "The legacy ImageNet-R split is not content-disjoint.",
+    "The state-matched final artifact requires a clean source-locked rerun before it is primary final evidence."
+  ]
+}

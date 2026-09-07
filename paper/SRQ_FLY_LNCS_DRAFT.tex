@@ -1,0 +1,433 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{microtype}
+
+\begin{document}
+
+\title{SRQ-FLY: Structure-Preserving Compression of Analytic State for
+Exemplar-Free Continual Learning}
+\titlerunning{SRQ-FLY}
+
+% Replace all author, ORCID, affiliation, and email placeholders before use.
+\author{First Author\inst{1}\orcidID{0000-0000-0000-0000} \and
+Second Author\inst{1}\orcidID{0000-0000-0000-0000}}
+\authorrunning{F. Author et al.}
+\institute{Institution Name, City, Country\\
+\email{author1@example.com, author2@example.com}}
+
+\maketitle
+
+\begin{abstract}
+Exemplar-free analytic continual learners replace historical samples with
+sufficient statistics, but their persistent state can remain large. FLY-CL
+expands a frozen 768-dimensional ViT feature into a 10,000-dimensional sparse
+winner-take-all code and maintains a dense floating-point Ridge Gram matrix.
+We introduce Square-Root Quantized FLY (SRQ-FLY), which preserves FLY's
+backbone, projection, code width, target statistic, global classifier, and
+task-ID-free inference while replacing the dense Gram state with a quantized
+upper-triangular factor of the regularized system. The diagonal is stored in
+FP32 and the strict upper triangle uses deterministic groupwise INT8
+quantization. Blocked QR updates the factor after the first task, and two
+triangular solves recover the classifier. Across six paired class-order and
+projection replicates on CIFAR-100, CUB-200-2011, and a disclosed legacy
+ImageNet-R split, SRQ-FLY reduces persistent learner state by 76.7--78.1\%
+while changing average incremental accuracy by only $-0.018$, $-0.083$, and
+$-0.062$ percentage points relative to same-width Exact FLY. At nearly equal
+state, SRQ-FLY outperforms lower-width Exact FLY by 0.132--0.856 points. A
+train-only direct-quantization control indicates that factor-space compression
+preserves numerical structure substantially better than direct INT8 Gram
+quantization with diagonal repair. Whole-process measurement on a Tesla T4
+reduces process-attributed peak memory by 13.9\%, although analytic updates
+remain slower. These results position SRQ-FLY as an accuracy--memory trade-off,
+not an accuracy-improving replacement for Exact FLY.
+
+\keywords{Exemplar-free continual learning \and Analytic learning \and
+State compression \and Quantization \and Square-root factorization}
+\end{abstract}
+
+\section{Introduction}
+
+Class-incremental learning requires one predictor over all classes observed so
+far without task identity at inference. Replay can preserve historical
+knowledge, but retaining images, embeddings, or codes causes memory to grow
+with the stream. Analytic continual learners instead update a global
+classifier from sufficient statistics and can avoid storing past samples under
+fixed-feature assumptions~\cite{zhuang2022acil,zhuang2024foal}.
+
+Eliminating replay does not eliminate state memory. FLY-CL~\cite{zou2026flycl}
+uses a frozen backbone, sparse random projection, and sample-dependent
+winner-take-all (WTA) coding. For a code width of $m=10{,}000$, its dense FP32
+Gram matrix alone contains 100 million entries, or 400 MB. Reducing $m$ saves
+memory but weakens the expanded representation, whereas directly quantizing
+the Gram matrix can destroy positive definiteness and make the Ridge solve
+fail.
+
+SRQ-FLY addresses the state representation rather than the upstream feature
+map. It stores a mixed-precision square root of the regularized Ridge system,
+updates it with blocked QR, and obtains the classifier using triangular solves.
+The design is inspired by factor-space quantization for Shampoo
+preconditioners~\cite{li2025fourbit}, but SRQ-FLY uses INT8 rather than 4-bit
+storage, has no optimizer momentum or inverse fourth root, and does not inherit
+the optimizer convergence theorem.
+
+This paper makes three contributions. First, it introduces a same-width
+compressed FLY learner that retains FLY's prediction semantics. Second, it
+provides explicit state accounting and a structural positive-definiteness
+argument. Third, it evaluates the accuracy--memory trade-off against
+same-width Exact FLY, state-matched lower-width FLY, raw-feature Ridge, and
+direct-quantization controls.
+
+\section{Related Work}
+
+\subsection{Analytic Continual Learning}
+
+ACIL derives recursive analytic class-incremental learning without storing
+historical samples~\cite{zhuang2022acil}. F-OAL develops forward-only online
+analytic learning~\cite{zhuang2024foal}, while GACL studies generalized
+analytic continual learning~\cite{zhuang2024gacl}. REAL, MoAL, and AnaCP focus
+on improving the representation used by analytic classifiers
+~\cite{he2024real,gao2025moal,momeni2025anacp}. SRQ-FLY instead targets the
+persistent quadratic state produced by a fixed high-dimensional
+representation.
+
+\subsection{Random Expansion and Distribution-Based Learning}
+
+RanPAC combines frozen pretrained features with random nonlinear expansion and
+analytic decorrelation~\cite{mcdonnell2023ranpac}. FLY-CL replaces the dense
+random feature map with a fly-inspired sparse projection and WTA code
+~\cite{zou2026flycl}. FeCAM and AdaGauss retain class-distribution statistics
+rather than a global expanded-code Gram~\cite{goswami2023fecam,rypesc2024adagauss}.
+SRQ-FLY neither generates pseudo-features nor stores class exemplars; it
+compresses the global analytic state already used by FLY.
+
+\subsection{Quantized Matrix State}
+
+Li et al.~\cite{li2025fourbit} quantize Cholesky factors of Shampoo
+preconditioners, retain the diagonal in higher precision, and use error
+feedback. This motivates the factor-space design pattern. SRQ-FLY transfers
+that pattern to streaming Ridge, uses deterministic groupwise INT8, and does
+not currently maintain error-feedback state.
+
+\section{Method}
+
+\subsection{Exact FLY State}
+
+Let $x_i\in\mathbb{R}^{d}$ be a frozen-backbone feature and let
+$P\in\mathbb{R}^{m\times d}$ be a fixed sparse projection. FLY produces
+
+\begin{equation}
+z_i=\operatorname{WTA}_{\rho}(Px_i)\in\mathbb{R}^{m}.
+\label{eq:wta}
+\end{equation}
+
+For current-task code matrix $Z_t$ and one-hot targets $Y_t$, Exact FLY updates
+
+\begin{equation}
+G_t=G_{t-1}+Z_t^{\top}Z_t,\qquad
+Q_t=\operatorname{expand}(Q_{t-1})+Z_t^{\top}Y_t,
+\label{eq:exact-update}
+\end{equation}
+
+and solves
+
+\begin{equation}
+(G_t+\lambda I)W_t=Q_t.
+\label{eq:ridge}
+\end{equation}
+
+The dominant persistent tensor is $G_t\in\mathbb{R}^{m\times m}$, whose FP32
+payload grows as $4m^2$ bytes.
+
+\subsection{Square-Root Streaming Update}
+
+SRQ-FLY represents the regularized system as
+
+\begin{equation}
+H_t=G_t+\lambda I=R_t^{\top}R_t,
+\label{eq:square-root}
+\end{equation}
+
+where $R_t$ is upper triangular with positive diagonal. After the first
+Gram--Cholesky update, later tasks decode the previous quantized factor and
+compute the triangular factor of
+
+\begin{equation}
+\begin{bmatrix}\widehat R_{t-1}\\Z_t\end{bmatrix}
+\label{eq:stacked-qr}
+\end{equation}
+
+using blocked QR. Thus, in exact arithmetic for the decoded state,
+
+\begin{equation}
+R_t^{\top}R_t=
+\widehat R_{t-1}^{\top}\widehat R_{t-1}+Z_t^{\top}Z_t.
+\label{eq:qr-identity}
+\end{equation}
+
+This is a deterministic approximate recursion after the first quantization; it
+is not identical to the historical Exact-FLY Gram.
+
+\subsection{Mixed-Precision Factor Storage}
+
+For a group $r$ in the strict upper triangle, the implementation uses
+
+\begin{equation}
+s(r)=\frac{\max_j|r_j|}{127},\qquad
+q_j=\operatorname{clip}_{[-127,127]}
+\left(\operatorname{round}\left(r_j/s(r)\right)\right).
+\label{eq:quantization}
+\end{equation}
+
+Each group stores one FP32 scale and INT8 payload values. The diagonal of
+$R_t$ remains FP32. The classifier is obtained without a matrix inverse by
+solving
+
+\begin{equation}
+\widehat R_t^{\top}V_t=Q_t,\qquad
+\widehat R_t W_t=V_t.
+\label{eq:triangular-solve}
+\end{equation}
+
+\begin{theorem}[Structural positive definiteness]
+If the decoded upper-triangular factor $\widehat R_t$ is nonsingular, then
+$\widehat H_t=\widehat R_t^{\top}\widehat R_t$ is symmetric positive definite.
+\end{theorem}
+
+\begin{proof}
+For every nonzero vector $v$,
+$v^{\top}\widehat H_t v=
+\|\widehat R_t v\|_2^2>0$ because nonsingularity implies
+$\widehat R_t v\neq 0$. Symmetry follows directly from the product form.
+\end{proof}
+
+The theorem is structural: it does not state that $\widehat H_t$ equals the
+Exact-FLY system or that prediction is unchanged under arbitrary quantization
+error.
+
+\section{Experimental Protocol}
+
+\subsection{Datasets and Metrics}
+
+Experiments use CIFAR-100, CUB-200-2011, and a disclosed legacy processed
+ImageNet-R split with a frozen ViT-B/16 and a width-10,000 FLY code. The
+ImageNet-R audit found 19 cross-split duplicate hashes, including 18 with
+conflicting labels; its result is therefore not described as content-disjoint
+held-out evidence.
+
+Let $a_t$ denote average accuracy over all classes observed after task $t$.
+We report
+
+\begin{equation}
+\operatorname{AIA}=\frac{1}{T}\sum_{t=1}^{T}a_t,
+\qquad A_{\mathrm{final}}=a_T.
+\label{eq:metrics}
+\end{equation}
+
+Persistent state counts deployed learner tensors only. Feature and WTA caches
+are experiment infrastructure and are excluded. The update-time ratio is total
+SRQ analytic-update time divided by total Exact-FLY analytic-update time; a
+ratio above one indicates slower SRQ updates. Same-width accuracy values are
+means and sample standard deviations over six class-order and projection
+replicates.
+
+\subsection{Baselines and Controls}
+
+The primary baseline is width-10,000 Exact FLY. State-matched Exact FLY reduces
+its width to the largest value whose persistent tensor bytes do not exceed
+SRQ-FLY's state. Raw Ridge operates directly on 768-dimensional ViT features.
+The mechanism ablation additionally compares an unmodified direct-INT8 Gram,
+a label-free Weyl-certified direct-INT8 Gram repair, and an FP16 square-root
+factor.
+
+\section{Results}
+
+\subsection{Same-Width Accuracy--Memory Trade-off}
+
+Table~\ref{tab:same-width} shows that SRQ-FLY reduces persistent state by
+76.7--78.1\% while remaining close to Exact FLY in both AIA and final accuracy.
+It does not improve same-width accuracy, and its analytic update remains
+1.60--2.09 times slower.
+
+\begin{table}
+\caption{Same-width comparison. Values are mean $\pm$ sample standard
+deviation over six replicates. Accuracy differences are SRQ minus Exact FLY.}
+\label{tab:same-width}
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Dataset & $A_{\mathrm{final}}$ Exact/SRQ & $\Delta A_{\mathrm{final}}$ &
+AIA Exact/SRQ & State Exact/SRQ (MB) & Update ratio \\
+\midrule
+CIFAR-100 & 88.632$\pm$.138 / 88.580$\pm$.106 & $-$.052 &
+92.249$\pm$.447 / 92.231$\pm$.420 & 444.01 / 97.17 & 2.09$\times$ \\
+CUB-200 & 88.297$\pm$.115 / 88.126$\pm$.088 & $-$.170 &
+92.766$\pm$.534 / 92.683$\pm$.534 & 452.01 / 105.17 & 1.60$\times$ \\
+ImageNet-R & 71.948$\pm$.256 / 71.869$\pm$.247 & $-$.079 &
+78.215$\pm$.472 / 78.153$\pm$.481 & 452.01 / 105.17 & 1.86$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{State-Matched Exact FLY}
+
+At nearly equal persistent state, retaining width 10,000 and compressing the
+factor performs better than reducing Exact FLY to approximately 4,400--4,500
+dimensions (Table~\ref{tab:state-matched}). Widths are derived from byte
+accounting before observing accuracy.
+
+\begin{table}
+\caption{State-matched comparison over six replicates. The difference is P2B
+minus state-matched Exact FLY in percentage points.}
+\label{tab:state-matched}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Dataset & FLY width & $A_{\mathrm{final}}$ FLY/SRQ & AIA FLY/SRQ &
+$\Delta$AIA \\
+\midrule
+CIFAR-100 & 4,409 & 87.915$\pm$.112 / 88.580$\pm$.106 &
+91.767$\pm$.396 / 92.231$\pm$.420 & +0.464 \\
+CUB-200 & 4,518 & 87.856$\pm$.137 / 88.126$\pm$.088 &
+92.552$\pm$.566 / 92.683$\pm$.534 & +0.132 \\
+ImageNet-R & 4,518 & 70.675$\pm$.264 / 71.869$\pm$.247 &
+77.297$\pm$.514 / 78.153$\pm$.481 & +0.856 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Why Quantize the Square Root?}
+
+The controls in Table~\ref{tab:direct-control} separate the benefit of fewer
+bits from the benefit of factor-space structure. Exact FLY is the uncompressed
+reference. Naive direct INT8 quantizes the Gram itself. The Weyl repair adds a
+label-free diagonal load sufficient to recover an SPD solve. FP16 square-root
+retains factor structure at a larger state budget. Mixed INT8/FP32 SRQ is the
+proposed representation.
+
+\begin{table}
+\caption{Train-only CIFAR mechanism ablation on one development stream.}
+\label{tab:direct-control}
+\centering
+\small
+\begin{tabular}{lrrrl}
+\toprule
+Method & Validation AIA & $A_{\mathrm{final}}$ & State (bytes) & Outcome \\
+\midrule
+Exact FLY-10000 & 92.257 & 88.140 & 444,006,540 & Complete \\
+Direct INT8 Gram & -- & -- & -- & Not SPD at task 1 \\
+Direct INT8 Gram + Weyl repair & 87.342 & 80.960 & 97,166,244 & Complete \\
+FP16 square-root & 92.260 & 88.130 & 144,036,540 & Complete \\
+SRQ mixed INT8/FP32 & 92.267 & 88.050 & 97,166,228 & Complete \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The repaired direct Gram and SRQ differ by only 16 state bytes, but SRQ gains
+4.925 validation-AIA points. The certified repair's diagonal loading grows
+from 112.95 to 5,148.32 times the base Ridge value across ten tasks, causing
+severe over-regularization. This rules out the two tested direct-INT8 controls;
+it does not prove that every direct quantizer or SPD repair is inferior.
+
+\subsection{Task-Frequency Robustness}
+
+Doubling the number of updates from 10 to 20 tasks changes the observed
+Exact--SRQ aligned-AIA gap from 0.061 to 0.085 points
+(Table~\ref{tab:frequency}). The schedule comparison uses five train-only
+replicates and changes only class grouping.
+
+\begin{table}
+\caption{CIFAR train-only robustness to update frequency.}
+\label{tab:frequency}
+\centering
+\small
+\begin{tabular}{rrrrr}
+\toprule
+Tasks & Exact AIA & SRQ AIA & $\Delta$AIA Exact--SRQ &
+$A_{\mathrm{final}}$ Exact/SRQ \\
+\midrule
+10 & 92.154 & 92.093 & 0.061 & 88.300 / 88.206 \\
+20 & 92.154 & 92.069 & 0.085 & 88.300 / 88.142 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Whole-Process Memory}
+
+Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
+Tesla T4 train-only run, SRQ-FLY reduces process-attributed NVML peak by 13.9\%
+and analytic-stage PyTorch allocation peak by 22.0\%. The reduction is smaller
+than the state reduction because feature extraction and common workspaces are
+not compressed.
+
+\begin{table}
+\caption{Whole-process CIFAR-100/Tesla T4 measurement.}
+\label{tab:memory}
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Metric & Exact FLY & SRQ-FLY & Change \\
+\midrule
+Persistent state (MiB) & 423.44 & 92.66 & $-78.1\%$ \\
+Analytic peak allocated (MiB) & 1,802.76 & 1,405.30 & $-22.0\%$ \\
+Analytic peak reserved (MiB) & 2,422 & 2,062 & $-14.9\%$ \\
+NVML worker peak (MiB) & 2,588 & 2,228 & $-13.9\%$ \\
+Analytic-stage time (s) & 12.01 & 22.46 & $+87.0\%$ \\
+Total measured stage time (s) & 542.50 & 557.25 & $+2.7\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitations and Discussion}
+
+SRQ-FLY is an accuracy--memory trade-off, not an accuracy improvement over
+same-width Exact FLY. Its analytic update is slower because it decodes the
+factor, applies blocked QR, re-encodes the strict upper triangle, and performs
+triangular solves after each task. Its 97--105 MB state also remains much
+larger than raw-feature Ridge. The current implementation is INT8 rather than
+true packed INT4 and has no error feedback.
+
+System memory has been measured only once on CIFAR-100 and a Tesla T4. All
+accuracy experiments use one frozen ViT-B/16. Repeated final evaluations reuse
+the same dataset test split, so replicate variation reflects class order and
+projection seeds rather than new dataset sampling. The ImageNet-R split has a
+known duplicate-content limitation. Feature and WTA caches contain
+sample-level data and must not be included in a deployed checkpoint or counted
+as evidence that the complete experiment is sample-free.
+
+Future work should optimize the factor update, repeat process-isolated memory
+measurement, evaluate packed INT4 with real byte accounting, and test
+error-feedback variants whose residual state is included in the memory budget.
+Additional untouched datasets and backbones are required before making broad
+generalization claims.
+
+\section{Conclusion}
+
+SRQ-FLY compresses the analytic state of FLY without reducing its
+10,000-dimensional representation width. Mixed INT8/FP32 square-root storage
+reduces persistent state by approximately four fifths while causing only small
+same-width AIA changes. State-matched and direct-quantization controls support
+the value of preserving representation width and positive-definite factor
+structure. Whole-process measurement confirms a smaller, though still
+meaningful, runtime-memory benefit. The principal remaining cost is slower
+analytic update, and the present evidence supports a constrained
+accuracy--memory claim rather than superiority on every metric.
+
+\subsubsection{Acknowledgments.}
+Replace this sentence with the actual funding and assistance statement, or
+remove the paragraph if no acknowledgment is required.
+
+\subsubsection{Disclosure of Interests.}
+The authors have no competing interests to declare that are relevant to the
+content of this article.
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+
+\end{document}
