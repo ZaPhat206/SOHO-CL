@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m4-ranpac-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "ranpac": {
+    "upstream_repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "upstream_commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "upstream_ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "path": "phase2_no_petl_random_relu",
+    "expand_dim": 10000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "ridge_selection": {
+    "policy": "single_fixed_train_only_calibration",
+    "candidate_lambdas": [
+      1e-8,
+      1e-7,
+      1e-6,
+      1e-5,
+      1e-4,
+      1e-3,
+      1e-2,
+      1e-1,
+      1.0,
+      10.0,
+      100.0,
+      1000.0,
+      10000.0,
+      100000.0,
+      1000000.0,
+      10000000.0,
+      100000000.0
+    ],
+    "fit_samples_per_class": 20,
+    "validation_samples_per_class": 5,
+    "metric": "mean_squared_error",
+    "tie_break": "smallest_lambda"
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "require_reference_exact_tensor_identity": true,
+    "maximum_fp32_system_relative_error": 0.00005,
+    "maximum_fp32_weight_relative_error": 0.001,
+    "maximum_fp32_logit_relative_error": 0.001,
+    "minimum_fp32_prediction_agreement": 0.999,
+    "minimum_srq_quadratic_state_reduction_fraction": 0.7,
+    "maximum_srq_validation_aia_loss_pp": 0.2,
+    "maximum_solver_relative_residual": 0.00001
+  }
+}

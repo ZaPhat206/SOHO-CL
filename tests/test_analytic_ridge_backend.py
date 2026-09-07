@@ -257,3 +257,35 @@ def test_exact_backend_matches_joint_ridge_reference():
     restored.load_state_dict(backend.state_dict())
     torch.testing.assert_close(restored.weights, backend.weights, rtol=0, atol=0)
     assert restored.persistent_state_bytes() == backend.persistent_state_bytes()
+
+
+def test_exact_checkpoint_accepts_roundoff_skew_but_rejects_asymmetry():
+    backend = ExactGramBackend(
+        dimension=24,
+        ridge_lambda=100.0,
+        statistics_dtype=torch.float64,
+        solver_dtype=torch.float64,
+    )
+    features, labels = _stream()[0]
+    backend.update(features, labels)
+
+    roundoff_state = backend.state_dict()
+    roundoff_state["gram"][0, 1] += torch.finfo(torch.float64).eps
+    restored = ExactGramBackend(
+        dimension=24,
+        ridge_lambda=100.0,
+        statistics_dtype=torch.float64,
+        solver_dtype=torch.float64,
+    )
+    restored.load_state_dict(roundoff_state)
+    assert restored.weights is not None
+
+    asymmetric_state = backend.state_dict()
+    asymmetric_state["gram"][0, 1] += 1.0
+    with pytest.raises(ValueError, match="numerically symmetric"):
+        ExactGramBackend(
+            dimension=24,
+            ridge_lambda=100.0,
+            statistics_dtype=torch.float64,
+            solver_dtype=torch.float64,
+        ).load_state_dict(asymmetric_state)

@@ -93,7 +93,7 @@ Gate: FP64 blocked QR matches dense QR and Exact Gram at numerical tolerance;
 FP32 square-root introduces no material prediction or accuracy change on the
 declared train-only development stream.
 
-### M3 -- FLY train-only regression
+### M3 -- FLY train-only regression (PASS)
 
 Work: compare legacy and generic Exact/P2B learners on the same cached CIFAR
 training stream.
@@ -102,7 +102,11 @@ Gate: representation, target statistics, selected hyperparameters, persistent
 bytes, and predictions satisfy the preregistered regression tolerances. This
 is the earliest milestone that may require a Colab GPU run.
 
-### M4 -- RanPAC adapter and train-only gate
+Recorded artifact: `srq_generalization_m3_fly_regression.zip`, SHA-256
+`ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595`.
+All ten task records pass exact legacy/generic tensor and byte identity.
+
+### M4 -- RanPAC adapter and train-only gate (implementation ready)
 
 Work: reproduce the original analytic RanPAC head, then compare original,
 generic Exact Gram, FP32 square-root, FP16 square-root, and fixed P2B SRQ on
@@ -113,6 +117,10 @@ Exact; fixed SRQ reduces the quadratic persistent state by at least 70%, has
 at most 0.20 percentage-point validation-AIA loss, and does not show a
 numerical failure. Failure keeps the paper scoped to SRQ-FLY and cannot be
 overridden using test accuracy.
+
+The source-locked run instructions and the distinction between the official
+per-task Ridge schedule and the controlled fixed-Ridge comparison are in
+`docs/research/SRQ_GENERALIZATION_M4_RUNBOOK.md`.
 
 ### M5 -- equal-budget alternatives
 

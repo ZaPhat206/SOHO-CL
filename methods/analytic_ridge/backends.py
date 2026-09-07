@@ -264,18 +264,22 @@ class ExactGramBackend(AnalyticRidgeBackend):
             raise ValueError("invalid checkpoint Gram shape")
         if not bool(torch.isfinite(self.gram).all()):
             raise ValueError("checkpoint Gram contains NaN or Inf")
-        if not torch.equal(self.gram, self.gram.T):
-            raise ValueError("checkpoint Gram must be exactly symmetric")
+        skew = torch.linalg.vector_norm(self.gram - self.gram.T)
+        scale = max(float(torch.linalg.vector_norm(self.gram).item()), 1.0)
+        tolerance = 100.0 * torch.finfo(self.gram.dtype).eps * self.dimension
+        if float(skew.item()) / scale > tolerance:
+            raise ValueError("checkpoint Gram is not numerically symmetric")
         if self.total_rows:
             system = self.gram.to(self.solver_dtype).clone()
             system.diagonal().add_(self.ridge_lambda)
-            factor, info = torch.linalg.cholesky_ex(system)
+            symmetric = (system + system.T) * 0.5
+            factor, info = torch.linalg.cholesky_ex(symmetric)
             if int(info.max().item()) != 0:
                 raise ValueError("checkpoint Gram Ridge system is not positive definite")
             work_cross = self.Q.to(self.solver_dtype)
             self.weights = torch.cholesky_solve(work_cross, factor)
             self.diagnostics["solver_relative_residual"] = _relative_residual(
-                system, self.weights, work_cross
+                symmetric, self.weights, work_cross
             )
         else:
             self.weights = None
