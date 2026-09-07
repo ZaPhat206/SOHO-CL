@@ -176,3 +176,24 @@ python -m pytest -q
 
 Result: `285 passed, 20 warnings in 24.88s`. The warnings are the existing
 PyTorch JIT deprecations and sparse CSC/invariant notices; no test failed.
+
+## Generic analytic Ridge M2 equivalence gate
+
+The source-locked M2 audit compares Exact Gram, dense QR, and blocked QR on
+Gaussian, column-scaled, and sparse synthetic streams in FP64 and FP32. It
+uses no dataset or test split. Full details and per-case maxima are recorded in
+`docs/research/SRQ_GENERALIZATION_M2_EQUIVALENCE.md`.
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q tests/test_analytic_ridge_equivalence.py tests/test_analytic_ridge_backend.py
+python -u tools/srq_generalization_m2.py run `
+  --config configs/srq_generalization_m2_equivalence.json `
+  --output tmp/srq_generalization_m2_results.json
+```
+
+Result: `12 passed, 1 warning in 6.45s` and
+`PASS_M2_UNQUANTIZED_EQUIVALENCE`. Prediction agreement was 100% in all six
+case/precision combinations; the maximum FP32 reconstructed-system error was
+`1.95e-7`. The subsequent full repository run completed with
+`490 passed, 20 warnings in 105.22s`.
