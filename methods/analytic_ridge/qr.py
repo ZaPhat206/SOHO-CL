@@ -5,6 +5,25 @@ from __future__ import annotations
 import torch
 
 
+def dense_qr_rank_update(
+    upper: torch.Tensor, update_rows: torch.Tensor
+) -> torch.Tensor:
+    """Reference positive-diagonal QR factor of ``[upper; update_rows]``."""
+    if upper.ndim != 2 or upper.shape[0] != upper.shape[1] or not len(upper):
+        raise ValueError("upper must be a non-empty square matrix")
+    if update_rows.ndim != 2 or update_rows.shape[1] != len(upper):
+        raise ValueError("update rows must align with the factor dimension")
+    if upper.device != update_rows.device or upper.dtype != update_rows.dtype:
+        raise ValueError("factor and update rows must share device and dtype")
+    _, factor = torch.linalg.qr(torch.cat((upper, update_rows), dim=0), mode="r")
+    signs = torch.where(
+        factor.diagonal() < 0,
+        -torch.ones((), device=factor.device, dtype=factor.dtype),
+        torch.ones((), device=factor.device, dtype=factor.dtype),
+    )
+    return signs[:, None] * factor
+
+
 def blocked_qr_rank_update(
     upper: torch.Tensor,
     update_rows: torch.Tensor,

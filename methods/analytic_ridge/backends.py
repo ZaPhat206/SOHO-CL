@@ -8,7 +8,7 @@ import torch
 
 from .accounting import persistent_tensor_bytes
 from .compressed_upper import CompressedUpper
-from .qr import blocked_qr_rank_update
+from .qr import blocked_qr_rank_update, dense_qr_rank_update
 
 
 def _relative_residual(
@@ -279,6 +279,128 @@ class ExactGramBackend(AnalyticRidgeBackend):
             )
         else:
             self.weights = None
+        self.assert_exemplar_free_state()
+
+
+class DenseSquareRootBackend(AnalyticRidgeBackend):
+    """Unquantized square-root reference used to isolate QR rounding error."""
+
+    def __init__(
+        self,
+        *,
+        update_backend: str,
+        update_panel_size: int = 128,
+        update_trailing_chunk_size: int | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        if update_backend not in {"dense_qr", "blocked_qr"}:
+            raise ValueError("update_backend must be dense_qr or blocked_qr")
+        if update_panel_size <= 0:
+            raise ValueError("update panel size must be positive")
+        if update_trailing_chunk_size is not None and update_trailing_chunk_size <= 0:
+            raise ValueError("trailing chunk size must be positive")
+        self.update_backend = update_backend
+        self.update_panel_size = int(update_panel_size)
+        self.update_trailing_chunk_size = update_trailing_chunk_size
+        self.factor: torch.Tensor | None = None
+        self.diagnostics.update(
+            method="dense_square_root", update_backend=update_backend
+        )
+
+    def update(self, features: torch.Tensor, labels: torch.Tensor) -> None:
+        values, target_labels = self._validated_batch(features, labels)
+        class_ids, cross, counts, targets = self._expanded_statistics(target_labels)
+        solve_values = values.to(self.solver_dtype)
+        if self.factor is None:
+            previous = torch.zeros(
+                (self.dimension, self.dimension),
+                device=self.device,
+                dtype=self.solver_dtype,
+            )
+            previous.diagonal().fill_(self.ridge_lambda**0.5)
+        else:
+            previous = self.factor.clone()
+        if self.update_backend == "dense_qr":
+            factor = dense_qr_rank_update(previous, solve_values)
+        else:
+            factor = blocked_qr_rank_update(
+                previous,
+                solve_values,
+                panel_size=self.update_panel_size,
+                trailing_chunk_size=self.update_trailing_chunk_size,
+            )
+        new_cross = cross + values.T @ targets
+        new_counts = counts + targets.sum(0)
+        work_cross = new_cross.to(self.solver_dtype)
+        intermediate = torch.linalg.solve_triangular(
+            factor.T, work_cross, upper=False
+        )
+        weights = torch.linalg.solve_triangular(factor, intermediate, upper=True)
+        residual = _relative_factor_residual(factor, weights, work_cross)
+        self.factor = factor
+        self.class_ids, self.Q, self.counts = class_ids, new_cross, new_counts
+        self.weights = weights
+        self.total_rows += len(values)
+        self.diagnostics.update(
+            solver_relative_residual=residual, total_rows=self.total_rows
+        )
+        self.assert_exemplar_free_state()
+
+    def persistent_tensors(self) -> dict[str, torch.Tensor]:
+        tensors = self._common_persistent_tensors()
+        if self.factor is not None:
+            tensors["factor"] = self.factor
+        return tensors
+
+    def state_dict(self) -> dict[str, object]:
+        state = self._common_state()
+        state.update(
+            method="dense_square_root_analytic_ridge",
+            update_backend=self.update_backend,
+            update_panel_size=self.update_panel_size,
+            update_trailing_chunk_size=self.update_trailing_chunk_size,
+            factor=None if self.factor is None else self.factor.detach().cpu().clone(),
+        )
+        return state
+
+    def load_state_dict(self, state: dict) -> None:
+        if state.get("method") != "dense_square_root_analytic_ridge":
+            raise ValueError("invalid dense square-root checkpoint")
+        expected = {
+            "update_backend": self.update_backend,
+            "update_panel_size": self.update_panel_size,
+            "update_trailing_chunk_size": self.update_trailing_chunk_size,
+        }
+        for field, value in expected.items():
+            if state.get(field) != value:
+                raise ValueError(f"checkpoint configuration mismatch for {field}")
+        self._load_common_values(state, dimension_field="dimension")
+        if state["factor"] is None:
+            if self.total_rows:
+                raise ValueError("non-empty checkpoint is missing factor state")
+            self.factor = None
+            self.weights = None
+        else:
+            self.factor = state["factor"].to(
+                device=self.device, dtype=self.solver_dtype
+            )
+            if self.factor.shape != (self.dimension, self.dimension):
+                raise ValueError("invalid dense factor shape")
+            if not bool(torch.isfinite(self.factor).all()) or bool(
+                (self.factor.diagonal() <= 0).any()
+            ):
+                raise ValueError("invalid dense factor values")
+            work_cross = self.Q.to(self.solver_dtype)
+            intermediate = torch.linalg.solve_triangular(
+                self.factor.T, work_cross, upper=False
+            )
+            self.weights = torch.linalg.solve_triangular(
+                self.factor, intermediate, upper=True
+            )
+            self.diagnostics["solver_relative_residual"] = _relative_factor_residual(
+                self.factor, self.weights, work_cross
+            )
         self.assert_exemplar_free_state()
 
 

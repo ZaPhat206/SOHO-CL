@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m2-unquantized-equivalence-v1",
+  "seed": 2025,
+  "dimension": 64,
+  "tasks": 5,
+  "rows_per_task": 41,
+  "classes_per_task": 3,
+  "ridge_lambda": 100.0,
+  "probe_rows": 257,
+  "blocked_qr": {
+    "panel_size": 13,
+    "trailing_chunk_size": 17
+  },
+  "cases": [
+    "gaussian",
+    "column_scaled",
+    "sparse"
+  ],
+  "dtypes": [
+    "float64",
+    "float32"
+  ],
+  "gates": {
+    "float64": {
+      "maximum_relative_system_error": 1e-10,
+      "maximum_relative_weight_error": 1e-9,
+      "maximum_solver_relative_residual": 1e-10,
+      "minimum_prediction_agreement": 1.0
+    },
+    "float32": {
+      "maximum_relative_system_error": 1e-5,
+      "maximum_relative_weight_error": 1e-4,
+      "maximum_solver_relative_residual": 1e-4,
+      "minimum_prediction_agreement": 0.999
+    }
+  },
+  "uses_test_set": false,
+  "accuracy_based_selection": false
+}
