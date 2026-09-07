@@ -14,6 +14,15 @@ worktree caveat, and warning classes are recorded in
 `docs/research/SRQ_GENERALIZATION_M0_BASELINE_LOCK.md`. M0 authorizes local M1
 refactoring only; it does not authorize a held-out or dirty-worktree run.
 
+## SRQ generalization M1 generic backend extraction
+
+On 2026-09-07, focused generic-backend and legacy regression tests passed
+`59/59`; the complete repository suite passed `487/487`. The extracted
+backend is representation-agnostic, reproduces version-1 P2B compressed state
+for FP16 and INT8, imports legacy checkpoints, and preserves total FLY learner
+bytes through a frontend wrapper. Exact commands and scope are recorded in
+`docs/research/SRQ_GENERALIZATION_M1_BACKEND_EXTRACTION.md`.
+
 ## Priority-5 whole-process memory artifact
 
 The returned artifact `srq_fly_priority5_whole_process_memory.zip` was audited

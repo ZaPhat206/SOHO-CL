@@ -81,7 +81,6 @@ Required tests (once created):
 
 ```text
 python -m pytest -q tests/test_analytic_ridge_backend.py
-python -m pytest -q tests/test_srq_fly_backend_regression.py
 ```
 
 ### M2 -- unquantized equivalence
