@@ -214,3 +214,9 @@ python -m pytest -q tests/test_srq_generalization_m3.py `
 Result: `16 passed, 19 warnings in 10.95s`. The subsequent full repository
 run completed with `494 passed, 20 warnings in 121.72s`. This authorizes the
 source-locked Colab preflight, not M4 and not any held-out evaluation.
+
+The returned M3 artifact was then audited read-only. ZIP SHA-256 is
+`ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595`;
+it contains only the result and byte-identical locked config. All ten records,
+all five gates, source hashes, clean commit identity, train-only contract, and
+state accounting passed. Final decision: `PASS_M3_FLY_REGRESSION`.

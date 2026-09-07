@@ -103,3 +103,22 @@ source-locked evidence by this ledger update.
 - no error-feedback or true packed lower-bit result;
 - the bibliography has a verified primary-source ledger but still needs an
   exhaustive venue-specific literature review.
+
+## Generic backend M3 FLY regression
+
+- status: `PASS_M3_FLY_REGRESSION`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595`;
+- result SHA-256:
+  `bc2851c75362ac4bda8cd0ab022d21c4f952b1310dafbabaa7cf74452b98514c`;
+- source commit: `56d525f453744f13ff287507f6ec4c30aaf81644`, clean checkout;
+- all ten task records have exact legacy/generic tensor and persistent-byte
+  identity for both Exact FLY and P2B;
+- minimum prediction agreement: `100%`;
+- maximum relative logit error: `0`;
+- maximum solver relative residual: `3.132620984020085e-6`;
+- final Exact/P2B state: `444006540 / 97166228` B;
+- P2B state reduction: `78.1160%`.
+
+This result validates backend extraction for FLY. It does not close the open
+non-FLY plug-in evidence item.

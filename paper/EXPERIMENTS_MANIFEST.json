@@ -90,6 +90,20 @@
       "test_tuning_allowed": false,
       "paper_roles": ["whole_process_memory"],
       "caveat": "One isolated run per method on one Tesla T4; not a cross-hardware interval."
+    },
+    {
+      "id": "generic_backend_fly_regression",
+      "artifact": "srq_generalization_m3_fly_regression.zip",
+      "artifact_sha256": "ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595",
+      "result_sha256": "bc2851c75362ac4bda8cd0ab022d21c4f952b1310dafbabaa7cf74452b98514c",
+      "source_commit": "56d525f453744f13ff287507f6ec4c30aaf81644",
+      "config": "configs/srq_generalization_m3_fly_regression.json",
+      "repository_config_sha256": "d7f587c3a88e8bbc2165343b8dfa079e802c1be60dea2c26ea37b4798ae68e3e",
+      "status": "PASS_M3_FLY_REGRESSION",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["generic_backend_fly_regression"]
     }
   ],
   "known_open_evidence": [

@@ -2,8 +2,7 @@
 
 Date: 2026-09-07
 
-Status: `READY_FOR_COLAB_M3`; the real CIFAR train-only gate has not yet been
-executed.
+Status: `PASS_M3_FLY_REGRESSION`.
 
 ## Purpose
 
@@ -68,26 +67,52 @@ python -m pytest -q
 Result: `494 passed, 20 warnings in 121.72s`. Warnings were existing PyTorch
 JIT deprecations and sparse tensor notices; no test failed.
 
-## Colab procedure
+## Audited Colab result
 
 Open and run every cell in:
 
 `notebooks/srq_generalization_m3_fly_regression_colab.ipynb`
 
-Expected terminal status:
+Artifact: `srq_generalization_m3_fly_regression.zip`.
+
+- ZIP bytes: `2479`;
+- ZIP SHA-256:
+  `ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595`;
+- result SHA-256:
+  `bc2851c75362ac4bda8cd0ab022d21c4f952b1310dafbabaa7cf74452b98514c`;
+- source commit: `56d525f453744f13ff287507f6ec4c30aaf81644`;
+- source checkout: clean;
+- test use: false;
+- accuracy-based selection: false.
+
+The archive passed CRC validation, contained exactly `m3_results.json` and
+`config.json`, had no duplicate or unsafe paths, and its config was
+byte-identical to the committed configuration.
+
+All ten task records passed every locked identity check. Historical and
+generic Exact FLY had identical Gram, cross-statistic, counts, classifier,
+class IDs, persistent bytes, logits, and predictions. Historical and generic
+P2B had identical compressed factor diagonal, INT8 payload, scales,
+cross-statistic, counts, classifier, class IDs, persistent bytes, logits, and
+predictions.
+
+Final audit summary:
 
 ```text
-PASS_M3_FLY_REGRESSION
+minimum prediction agreement       1.0
+maximum relative logit error       0.0
+maximum solver relative residual   3.132620984020085e-06
+Exact FLY final state               444006540 B
+P2B final state                     97166228 B
+P2B state reduction                 78.11603675927836%
 ```
 
-Return `srq_generalization_m3_fly_regression.zip`. The ZIP must contain only
-`m3_results.json` and the locked config. M3 is not marked PASS until that ZIP
-is audited against the committed source and all real-stream task gates.
+## Effect of M3
 
-## Effect if M3 passes
-
-A pass will establish that the generic backend is a behavior-preserving
-refactor for FLY on the real train-only development stream. It will authorize
+M3 establishes that the generic backend is a behavior-preserving refactor for
+FLY on the real train-only development stream. It authorizes
 M4, where the same backend is attached to a genuinely different expanded
 feature frontend (RanPAC). It will not by itself justify a plug-in claim,
 because FLY remains the only evaluated frontend until M4 passes.
+
+Gate decision: `PASS_M3_FLY_REGRESSION`.
