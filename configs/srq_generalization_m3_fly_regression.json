@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m3-fly-train-only-regression-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "ridge_lambda": 1000000.0,
+  "representation": {
+    "expand_dim": 10000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "p2b": {
+    "storage_mode": "int8",
+    "block_size": 256,
+    "group_size": 64,
+    "update_backend": "blocked_qr",
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "require_tensor_identity": true,
+    "require_persistent_byte_identity": true,
+    "minimum_prediction_agreement": 1.0,
+    "maximum_relative_logit_error": 0.0,
+    "maximum_solver_relative_residual": 0.00001
+  }
+}

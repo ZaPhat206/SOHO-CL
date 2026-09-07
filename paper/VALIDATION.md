@@ -197,3 +197,20 @@ Result: `12 passed, 1 warning in 6.45s` and
 case/precision combinations; the maximum FP32 reconstructed-system error was
 `1.95e-7`. The subsequent full repository run completed with
 `490 passed, 20 warnings in 105.22s`.
+
+## Generic analytic Ridge M3 local preflight
+
+The real CIFAR train-only regression is prepared but not yet reported as a
+PASS. Its source lock, protocol, expected artifact, and interpretation are in
+`docs/research/SRQ_GENERALIZATION_M3_RUNBOOK.md`.
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q tests/test_srq_generalization_m3.py `
+  tests/test_analytic_ridge_backend.py `
+  tests/test_analytic_ridge_equivalence.py
+```
+
+Result: `16 passed, 19 warnings in 10.95s`. The subsequent full repository
+run completed with `494 passed, 20 warnings in 121.72s`. This authorizes the
+source-locked Colab preflight, not M4 and not any held-out evaluation.
