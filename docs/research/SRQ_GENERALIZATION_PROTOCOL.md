@@ -152,9 +152,21 @@ tested alternatives, but its analytic update was 15.25 and 19.22 times slower
 than those two equal-budget controls. This remains one train-only development
 seed and does not establish a global Pareto frontier.
 
-### M6--M9 -- scaling, error, theory, and systems
+### M6 -- width scaling (implementation ready)
 
-- width sweep: 2k, 4k, 6k, 8k, and 10k dimensions;
+Work: sweep fixed widths 2k, 4k, 6k, 8k, and 10k for Exact Gram, FP16
+square-root, and fixed P2B on the controlled RanPAC train-only stream. Widths
+are reporting points, not accuracy-selected candidates. Projection prefixes,
+splits, and per-width Ridge calibration are shared across the three backends.
+The source-locked procedure and plot contract are in
+`docs/research/SRQ_GENERALIZATION_M6_RUNBOOK.md`.
+
+Gate: expose the empirical accuracy--state--update curves, preserve numerical
+and accuracy-retention bounds at every width, and retain the quadratic state
+terms in the report.
+
+### M7--M9 -- error, theory, and systems
+
 - task-wise factor/system/solution/logit error and prediction agreement;
 - exact square-root identity, structural-SPD statement, factor-to-system and
   Ridge-solution perturbation bounds, and a margin-preservation corollary;

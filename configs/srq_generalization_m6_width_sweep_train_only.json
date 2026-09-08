@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m6-width-sweep-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "widths": [2000, 4000, 6000, 8000, 10000],
+  "ranpac": {
+    "upstream_repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "upstream_commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "upstream_ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 10000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "ridge_selection": {
+    "policy": "per_width_train_only_calibration_shared_across_backends",
+    "candidate_lambdas": [
+      1e-8,
+      1e-7,
+      1e-6,
+      1e-5,
+      1e-4,
+      1e-3,
+      1e-2,
+      1e-1,
+      1.0,
+      10.0,
+      100.0,
+      1000.0,
+      10000.0,
+      100000.0,
+      1000000.0,
+      10000000.0,
+      100000000.0
+    ],
+    "fit_samples_per_class": 20,
+    "validation_samples_per_class": 5,
+    "metric": "mean_squared_error",
+    "tie_break": "smallest_lambda"
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "require_all_widths_complete": true,
+    "require_projection_prefix_nesting": true,
+    "require_strict_state_growth": true,
+    "require_p2b_smaller_than_exact_at_every_width": true,
+    "maximum_fp16_validation_aia_loss_pp_per_width": 0.05,
+    "maximum_p2b_validation_aia_loss_pp_per_width": 0.25,
+    "maximum_solver_relative_residual": 1e-5
+  }
+}
