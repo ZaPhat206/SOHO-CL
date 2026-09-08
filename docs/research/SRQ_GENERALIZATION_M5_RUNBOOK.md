@@ -1,7 +1,7 @@
 # SRQ generalization M5 equal-budget runbook
 
-Status: implementation ready; the real CIFAR-100 train-only GPU gate has not
-yet been run. M5 does not authorize a held-out test evaluation.
+Status: `PASS_M5_EQUAL_BUDGET_TRAIN_ONLY`. The real CIFAR-100 train-only GPU
+gate has completed. M5 does not authorize a held-out test evaluation.
 
 ## Question
 
@@ -95,3 +95,31 @@ reduced-width, signed-hash sketch or raw-feature alternatives on this locked
 train-only stream. It does not prove global Pareto optimality over every Ridge
 sketch, quantizer, width or dataset. A later systems milestone must repeat
 runtime measurements before timing becomes a broad claim.
+
+## Recorded result
+
+Artifact: `srq_generalization_m5_equal_budget_train_only.zip`, SHA-256
+`0f5e23fa4a7d83926638641025fb103895561073cd1f0fa4e1e0d552fd2fa931`.
+The archive contains exactly `m5_results.json` and a byte-identical locked
+config. Result SHA-256 is
+`9d58e9e27270bfb34ff47276dfa1256231ec2e8a2e619f6c6905968c73c7a541`.
+It reports clean source commit `cc7a851f283ab2f6ceeec37bffe301e2ed8c22a5`,
+`uses_test_set=false`, no numerical failure, and all seven gates true.
+
+| Method | Validation AIA | Final validation | Final state (B) | Analytic update (s) |
+|---|---:|---:|---:|---:|
+| Full-width Exact | 92.6222 | 88.50 | 438,720,400 | 4.3156 |
+| FP16 square-root | 92.6215 | 88.53 | 138,750,400 | 8.0715 |
+| P2B INT8/FP32 | 92.4608 | 88.39 | 91,880,088 | 8.3869 |
+| Byte-matched Exact | 91.9770 | 87.36 | 91,877,332 | 0.5498 |
+| CountSketch Exact | 91.8889 | 87.41 | 91,851,524 | 0.4363 |
+| Raw-feature Ridge | 91.1154 | 86.01 | 2,974,096 | 0.0528 |
+
+P2B gains 0.4838 validation-AIA points over byte-matched Exact and 0.5720
+points over CountSketch at nearly equal state. It loses 0.1614 points to
+full-width Exact while using 79.06% fewer total persistent bytes. No tested
+alternative Pareto dominates P2B under the predeclared accuracy, final
+accuracy, state, and update-time definition. The cost is substantial: P2B's
+analytic update is 15.25 times slower than byte-matched Exact and 19.22 times
+slower than CountSketch Exact. This is a controlled one-seed result, not a
+claim of global Pareto optimality.

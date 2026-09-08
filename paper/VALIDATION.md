@@ -246,3 +246,37 @@ The artifact reports clean source commit `47a789b`, ten task records,
 `uses_test_set=false`, null numerical failure, and all eight gates true. Source
 and split identities match the locked protocol. Final decision:
 `PASS_M4_RANPAC_TRAIN_ONLY`.
+
+## Generic analytic Ridge M5 equal-budget gate
+
+The source-locked M5 implementation was checked locally before the GPU run:
+
+```powershell
+$env:PYTHONDWRITEBYTECODE='1'
+python -m pytest -q tests/test_srq_generalization_m5.py `
+  tests/test_countsketch_analytic_frontend.py `
+  tests/test_srq_generalization_m4.py `
+  tests/test_ranpac_analytic_frontend.py `
+  tests/test_analytic_ridge_backend.py `
+  tests/test_analytic_ridge_equivalence.py
+python -m pytest -q
+```
+
+The focused preflight passed, and the repository full suite before the run was
+`516 passed, 20 warnings`. A cross-platform source-lock defect was then found
+before the experiment began: Windows CRLF bytes had been recorded for
+`tools/experiment_runner.py`, while Colab checked out canonical LF bytes. The
+lock was corrected without changing the runner or scientific protocol, and a
+regression test now hashes universal-newline text. The focused post-fix suite
+reported `11 passed, 18 warnings`.
+
+The returned ZIP was audited read-only. SHA-256 is
+`0f5e23fa4a7d83926638641025fb103895561073cd1f0fa4e1e0d552fd2fa931`;
+it contains exactly `m5_results.json` and `config.json`, passes ZIP CRC, and the
+config is byte-identical to the locked repository file. Result SHA-256 is
+`9d58e9e27270bfb34ff47276dfa1256231ec2e8a2e619f6c6905968c73c7a541`.
+
+The artifact reports clean source commit `cc7a851`, ten records per method,
+`uses_test_set=false`, dimensions locked before accuracy, null numerical
+failure, and all seven gates true. The maximum solver relative residual is
+`4.65e-6`. Final decision: `PASS_M5_EQUAL_BUDGET_TRAIN_ONLY`.

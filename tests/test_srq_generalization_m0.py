@@ -30,7 +30,7 @@ def test_manifest_is_machine_readable_and_complete():
     assert len(payload["repository"]["baseline_head_full"]) == 40
 
     evidence = payload["evidence"]
-    assert len(evidence) == 7
+    assert len(evidence) == 8
     assert len({entry["id"] for entry in evidence}) == len(evidence)
     for entry in evidence:
         assert len(entry["artifact_sha256"]) == 64

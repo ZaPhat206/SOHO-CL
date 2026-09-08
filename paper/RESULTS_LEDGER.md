@@ -154,3 +154,38 @@ This closes the initial non-FLY frontend evidence item. It supports "a
 reusable backend demonstrated on two analytic learners," not a universal
 plug-in claim. The result is one development seed and does not constitute a
 published-accuracy reproduction of full RanPAC.
+
+## Generic backend M5 equal-budget train-only gate
+
+- status: `PASS_M5_EQUAL_BUDGET_TRAIN_ONLY`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `0f5e23fa4a7d83926638641025fb103895561073cd1f0fa4e1e0d552fd2fa931`;
+- result SHA-256:
+  `9d58e9e27270bfb34ff47276dfa1256231ec2e8a2e619f6c6905968c73c7a541`;
+- source commit: `cc7a851f283ab2f6ceeec37bffe301e2ed8c22a5`, clean checkout;
+- scope: controlled RanPAC Phase-2 random-ReLU head, one train-only
+  development seed, six methods, no test use;
+- dimensions locked from total persistent bytes before accuracy: P2B width
+  `10000`, byte-matched Exact width `4333`, CountSketch dimension `3809`;
+- selected Ridge coefficients: full/reduced/CountSketch random-ReLU `1e6`,
+  raw-feature Ridge `1e3`;
+- validation AIA, full Exact / FP16 / P2B / byte-matched Exact / CountSketch /
+  raw Ridge: `92.6222 / 92.6215 / 92.4608 / 91.9770 / 91.8889 / 91.1154`;
+- final validation accuracy in the same order:
+  `88.50 / 88.53 / 88.39 / 87.36 / 87.41 / 86.01`;
+- final total persistent bytes in the same order:
+  `438720400 / 138750400 / 91880088 / 91877332 / 91851524 / 2974096`;
+- P2B minus byte-matched Exact: `+0.4838` AIA points and `+1.03` final points;
+- P2B minus CountSketch Exact: `+0.5720` AIA points and `+0.98` final points;
+- P2B minus full-width Exact: `-0.1614` AIA points and `-0.11` final points;
+- analytic update time, P2B / byte-matched Exact / CountSketch:
+  `8.3869 / 0.5498 / 0.4363` seconds;
+- maximum solver relative residual: `4.65e-6`;
+- all seven locked gates passed and no numerical failure occurred.
+
+The tested reduced-width, signed-hash and raw-feature controls do not Pareto
+dominate P2B. This strengthens the representation-preserving compression
+claim at equal state, but only on the observed one-seed frontier. P2B remains
+15.25 times slower than byte-matched Exact and 19.22 times slower than
+CountSketch Exact in analytic update, so M5 does not establish a speed benefit
+or global Pareto optimality.

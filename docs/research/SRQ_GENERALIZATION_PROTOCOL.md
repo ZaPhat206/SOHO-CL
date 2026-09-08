@@ -127,7 +127,7 @@ Recorded artifact: `srq_generalization_m4_ranpac_train_only.zip`, SHA-256
 All eight gates passed on the locked CIFAR train-only stream. This closes the
 initial non-FLY frontend gate but remains one controlled development seed.
 
-### M5 -- equal-budget alternatives
+### M5 -- equal-budget alternatives (PASS)
 
 Work: compare full-width Exact, byte-matched reduced width, FP16 square-root,
 fixed SRQ, raw-feature Ridge, and a fixed signed-hash feature-sketch Ridge.
@@ -141,6 +141,16 @@ it is not mislabeled as a factor-space approximation of the full Gram.
 Gate: SRQ lies on or close to the observed accuracy--persistent-state Pareto
 frontier. If a sketch dominates SRQ in accuracy, state, and update cost, the
 claim must be narrowed before proceeding.
+
+Recorded artifact: `srq_generalization_m5_equal_budget_train_only.zip`,
+SHA-256
+`0f5e23fa4a7d83926638641025fb103895561073cd1f0fa4e1e0d552fd2fa931`.
+All seven gates passed. At approximately 91.9 MB total persistent state, P2B
+exceeded reduced-width Exact and CountSketch Exact by 0.4838 and 0.5720
+validation-AIA points, respectively. P2B was not Pareto dominated by the five
+tested alternatives, but its analytic update was 15.25 and 19.22 times slower
+than those two equal-budget controls. This remains one train-only development
+seed and does not establish a global Pareto frontier.
 
 ### M6--M9 -- scaling, error, theory, and systems
 

@@ -271,6 +271,35 @@ frontend FLY và RanPAC**. Đây vẫn chỉ là một development seed, không 
 và không tái tạo lịch chọn Ridge theo từng task của RanPAC gốc; do đó chưa
 được gọi là universal plug-in hoặc full RanPAC reproduction.
 
+### 2.6. Đối chứng cùng ngân sách trên frontend RanPAC
+
+Artifact train-only `srq_generalization_m5_equal_budget_train_only.zip`,
+SHA-256
+`0f5e23fa4a7d83926638641025fb103895561073cd1f0fa4e1e0d552fd2fa931`,
+kiểm tra liệu P2B có bị thay thế bởi các phương án đơn giản hơn ở cùng hoặc ít
+state hơn hay không. Width Exact `4.333` và chiều CountSketch `3.809` được suy
+ra chỉ từ công thức byte trước khi mã hóa representation hoặc đọc accuracy.
+Mỗi representation riêng biệt chọn Ridge bằng cùng protocol calibration
+train-only; test set không được tạo.
+
+| Phương pháp | Validation AIA | Final validation | State cuối | Update giải tích |
+|---|---:|---:|---:|---:|
+| Exact full-width | 92.6222 | 88.50 | 438.720 MB | 4.3156 s |
+| Square-root FP16 | 92.6215 | 88.53 | 138.750 MB | 8.0715 s |
+| P2B INT8/FP32 | 92.4608 | 88.39 | 91.880 MB | 8.3869 s |
+| Exact cùng byte | 91.9770 | 87.36 | 91.877 MB | 0.5498 s |
+| CountSketch + Exact | 91.8889 | 87.41 | 91.852 MB | 0.4363 s |
+| Raw-feature Ridge | 91.1154 | 86.01 | 2.974 MB | 0.0528 s |
+
+Ở gần như cùng state, P2B hơn Exact giảm-width `0.4838` pp AIA và hơn
+CountSketch `0.5720` pp; chênh final lần lượt là `+1.03` và `+0.98` pp. P2B
+không bị bất kỳ phương án đã thử nào Pareto-dominate theo bốn trục AIA, final,
+state và update time. Tuy nhiên, update của P2B chậm hơn Exact cùng byte
+`15.25` lần và CountSketch `19.22` lần. Vì vậy M5 củng cố luận điểm
+accuracy--memory, đồng thời làm rõ rằng tốc độ update vẫn là nhược điểm lớn.
+Đây chỉ là một development seed và một CountSketch cố định; không được diễn
+giải thành Pareto tối ưu toàn cục trên mọi sketch, rank, width hoặc dataset.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -316,25 +345,31 @@ và không tái tạo lịch chọn Ridge theo từng task của RanPAC gốc; d
 - Bằng chứng RanPAC mới có một development seed train-only, chỉ kiểm tra
   random-ReLU analytic head; chưa bao gồm PETL hoặc lịch chọn Ridge theo từng
   task của implementation RanPAC gốc.
+- Đối chứng cùng byte mới loại được reduced-width Exact, raw Ridge và một
+  CountSketch có signed hash cố định trên một stream. Nó chưa bao phủ learned
+  sketch, low-rank, Nyström, Frequent Directions hoặc dataset khác. P2B còn
+  chậm hơn hai đối chứng cùng byte từ 15.25 đến 19.22 lần ở analytic update.
 
 ## 4. Việc cần làm tiếp theo
 
 1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
-2. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
+2. **Chạy width sweep đã khóa.** Đo các width 2k, 4k, 6k, 8k và 10k cho Exact,
+   FP16 và P2B để vẽ đường accuracy--state--time, không chọn width bằng test.
+3. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
    nhiều replicate hoặc GPU khác nếu muốn tuyên bố mức giảm peak tổng quát;
    luôn tách NVML process, NVML device, PyTorch allocated và reserved.
-3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
+4. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
-4. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
+5. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
    không được tuyên bố giảm byte. Cần pack hai giá trị mỗi byte, kiểm tra kernel,
    tốc độ giải mã và accuracy-memory Pareto.
-5. **Củng cố lý thuyết.** Bổ sung bound tích lũy lỗi factor qua task, bound
+6. **Củng cố lý thuyết.** Bổ sung bound tích lũy lỗi factor qua task, bound
    perturbation nghiệm/logit và điều kiện margin bảo toàn prediction. Không tái
    sử dụng định lý hội tụ Shampoo ngoài phạm vi của nó.
-6. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
+7. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
    thay ImageNet-R legacy bằng split sạch hoặc thêm một dataset chưa mở test.
    Báo Exact FLY là baseline chính, raw Ridge là lower-memory baseline và SOHO
    replay ở bảng riêng với toàn bộ sample-level state bytes.
@@ -355,3 +390,9 @@ analytic head random-ReLU của RanPAC, P2B giảm 79.06% tổng persistent stat
 mất 0.1614 pp validation AIA. Vì vậy có thể nâng định vị lên “backend
 additive-Ridge tái sử dụng được, đã kiểm tra trên hai frontend,” nhưng chưa thể
 gọi là universal plug-in.
+
+M5 bổ sung đối chứng khó hơn: tại cùng khoảng 91.9 MB, P2B giữ full width và
+hơn reduced-width Exact/CountSketch `0.4838/0.5720` pp AIA. Điều này củng cố
+việc nén state thay vì thu hẹp representation. Đổi lại, chênh lệch update time
+15--19 lần cho thấy paper chưa thể tuyên bố hiệu quả tính toán tổng thể; bước
+tiếp theo phải đo đường scaling và tìm nút thắt update một cách minh bạch.

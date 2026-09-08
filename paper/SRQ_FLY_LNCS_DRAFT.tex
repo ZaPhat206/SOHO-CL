@@ -44,9 +44,12 @@ quantization with diagonal repair. Whole-process measurement on a Tesla T4
 reduces process-attributed peak memory by 13.9\%, although analytic updates
 remain slower. A controlled train-only transfer to the random-ReLU analytic
 head of RanPAC passes all preregistered gates: P2B reduces its total persistent
-state by 79.1\% with a 0.161-point validation-AIA loss. These results position
-SRQ as a reusable additive-Ridge backend demonstrated on two frontends, not an
-accuracy-improving replacement for Exact learning or a universal plug-in.
+state by 79.1\% with a 0.161-point validation-AIA loss. At the same state
+budget, P2B exceeds reduced-width Exact and CountSketch controls by 0.484 and
+0.572 validation-AIA points, respectively, but updates substantially more
+slowly. These results position SRQ as a reusable additive-Ridge backend
+demonstrated on two frontends, not an accuracy-improving replacement for Exact
+learning or a universal plug-in.
 
 \keywords{Exemplar-free continual learning \and Analytic learning \and
 State compression \and Quantization \and Square-root factorization}
@@ -257,7 +260,11 @@ its width to the largest value whose persistent tensor bytes do not exceed
 SRQ-FLY's state. Raw Ridge operates directly on 768-dimensional ViT features.
 The mechanism ablation additionally compares an unmodified direct-INT8 Gram,
 a label-free Weyl-certified direct-INT8 Gram repair, and an FP16 square-root
-factor.
+factor. On the RanPAC frontend, the equal-budget control derives a reduced
+Exact width and a signed CountSketch dimension solely from total persistent
+tensor bytes before encoding features or observing accuracy. Each distinct
+representation selects its Ridge coefficient on the same disjoint train-only
+calibration partition.
 
 \subsection{Controlled RanPAC Transfer}
 
@@ -422,6 +429,42 @@ predeclared gates pass. This supports reuse across FLY/WTA and
 RanPAC/random-ReLU frontends, while the single development seed and controlled
 head prevent a claim of full RanPAC reproduction.
 
+\subsection{Equal-Budget Alternatives}
+
+Table~\ref{tab:equal-budget} tests whether simpler alternatives displace P2B
+on the controlled RanPAC stream. The largest Exact width and CountSketch
+dimension not exceeding P2B's final total state are 4,333 and 3,809,
+respectively; their budget underfill is below 0.04\%. These dimensions are
+locked from tensor shapes and dtypes before accuracy is evaluated.
+
+\begin{table}
+\caption{Train-only equal-budget control on one CIFAR development stream.
+State uses decimal MB. Times are total analytic update time over ten tasks.}
+\label{tab:equal-budget}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Method & Validation AIA & $A_{\mathrm{final}}$ & State (MB) & Update (s) \\
+\midrule
+Full-width Exact & 92.6222 & 88.50 & 438.720 & 4.3156 \\
+FP16 square-root & 92.6215 & 88.53 & 138.750 & 8.0715 \\
+P2B INT8/FP32 & 92.4608 & 88.39 & 91.880 & 8.3869 \\
+Byte-matched Exact & 91.9770 & 87.36 & 91.877 & 0.5498 \\
+CountSketch Exact & 91.8889 & 87.41 & 91.852 & 0.4363 \\
+Raw-feature Ridge & 91.1154 & 86.01 & 2.974 & 0.0528 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+P2B gains 0.484 AIA points over byte-matched Exact and 0.572 points over
+CountSketch while losing 0.161 points to full-width Exact. No tested method
+simultaneously has no worse AIA, final accuracy, state, and update time with
+one strict improvement, so P2B is not dominated on this observed frontier.
+This is not a global Pareto claim: the comparison is one seed and covers only
+the preregistered alternatives. Moreover, P2B updates 15.25 times more slowly
+than byte-matched Exact and 19.22 times more slowly than CountSketch.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
@@ -474,7 +517,11 @@ generalization claims. The RanPAC transfer currently uses one train-only
 development seed, omits PETL, and replaces the original per-task Ridge
 schedule with one fixed train-only-selected coefficient so that every backend
 solves the same additive system. It establishes frontend portability, not a
-reproduction of published RanPAC accuracy.
+reproduction of published RanPAC accuracy. The one-seed equal-budget control
+rules out reduced-width Exact, one fixed signed CountSketch, and raw Ridge as
+dominators on that stream, but does not cover learned sketches, low-rank or
+Nystr\"om approximations, other widths, or other datasets. It also exposes a
+large update-time disadvantage relative to the equal-budget controls.
 
 \section{Conclusion}
 
@@ -488,8 +535,11 @@ meaningful, runtime-memory benefit. The principal remaining cost is slower
 analytic update. A controlled RanPAC transfer further demonstrates that the
 backend is not tied to FLY's sparse WTA code. The present evidence therefore
 supports a reusable-backend claim for the explicit additive-Ridge family on
-two tested frontends, rather than superiority on every metric or universal
-plug-in compatibility.
+two tested frontends. An equal-budget experiment further supports preserving
+the full representation width over the tested reduced-width and signed-sketch
+alternatives, while exposing much slower analytic updates. The evidence does
+not support superiority on every metric, global Pareto optimality, or
+universal plug-in compatibility.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or
