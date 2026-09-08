@@ -130,8 +130,13 @@ initial non-FLY frontend gate but remains one controlled development seed.
 ### M5 -- equal-budget alternatives
 
 Work: compare full-width Exact, byte-matched reduced width, FP16 square-root,
-fixed SRQ, raw-feature Ridge, and a low-rank/streaming Ridge sketch. Ranks and
-widths are derived from byte budgets before accuracy is read.
+fixed SRQ, raw-feature Ridge, and a fixed signed-hash feature-sketch Ridge.
+Sketch dimensions and frontend widths are derived from total persistent byte
+budgets before accuracy is read. The source-locked procedure is specified in
+`docs/research/SRQ_GENERALIZATION_M5_RUNBOOK.md`.
+The previously preregistered low-rank/streaming Ridge sketch slot is therefore
+instantiated by an explicit CountSketch feature map followed by Exact Ridge;
+it is not mislabeled as a factor-space approximation of the full Gram.
 
 Gate: SRQ lies on or close to the observed accuracy--persistent-state Pareto
 frontier. If a sketch dominates SRQ in accuracy, state, and update cost, the
@@ -150,12 +155,15 @@ claim must be narrowed before proceeding.
 Gate: claims and plots expose the remaining quadratic scaling and slower
 update rather than hiding them.
 
-### M10 -- optional second external analytic learner
+### M10 -- optional GACL generalized-stream adapter
 
-ACIL is attempted only after RanPAC passes. Its original exact/joint
-equivalence is distinguished from the controlled approximation introduced by
-quantization. F-OAL requires a separate square-root RLS derivation and is not
-part of the initial plug-in claim.
+GACL is attempted only after the equal-budget gate. Its inverse-RLS recurrence
+must first be shown equivalent to the additive primal Ridge system on streams
+containing both exposed and unexposed classes. Its original exact/joint weight
+invariance is distinguished from the controlled approximation introduced by
+quantization. Because the official setting updates by mini-batch, compression
+frequency and anytime-evaluation semantics require a separate locked adapter;
+they cannot silently reuse the task-level FLY schedule.
 
 ### M11 -- optional adaptive precision
 
@@ -175,7 +183,8 @@ test-time retry, and no post-test method selection.
 - FLY evidence only: `SRQ-FLY`.
 - FLY plus a passing RanPAC integration: a reusable backend demonstrated on
   two analytic learners.
-- FLY, RanPAC, and a passing independent ACIL adapter: a generic backend for
-  the explicitly defined additive-Ridge family.
+- FLY, RanPAC, and a passing independent GACL adapter: a generic backend for
+  the explicitly defined fixed-feature additive-Ridge family, demonstrated in
+  both class-disjoint and generalized streams.
 
 The term `universal plug-in` is prohibited.
