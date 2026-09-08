@@ -299,3 +299,26 @@ is `0.255845` validation-AIA points at width 20k versus the locked `0.25`
 limit. The maximum FP16 loss is `0.0100` points and maximum solver residual is
 `5.83e-6`. Final decision: `FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY`; retain the result
 and investigate it in M7 without relaxing the gate or inspecting test data.
+
+## Generic analytic Ridge M7 task-wise error diagnostic
+
+The returned ZIP was audited read-only. SHA-256 is
+`df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36`;
+it passes ZIP CRC and contains exactly `config.json`, `m7_results.json`,
+`error_trajectory.csv`, and `m7_error_trajectory.svg`. The SVG parses as valid
+XML, the CSV has 60 method-width-task rows whose scalar values match the JSON,
+and all recorded task accuracies exactly reproduce M6 at widths 10k and 20k.
+The embedded config is byte-identical to the repository config. Result
+SHA-256 is
+`1799ad863ab389f67b13ffdb59df55b7dc436d217e5e54c45ad28e6d4eaa0bf8`.
+
+The artifact reports clean source commit `dd92292`, `uses_test_set=false`, and
+all five gates true. Maximum Exact probe-identity error is `1.98e-6`; maximum
+solver relative residual is `5.83e-6`. At the final task, P2B system-action,
+weight, and logit errors are `0.00859 / 0.0272 / 0.3178` at width 10k and
+`0.00902 / 0.0488 / 0.6352` at width 20k. Prediction agreement is
+`98.46% / 97.24%`, and the sufficient margin-certificate fraction is
+`84.19% / 75.43%`. Final decision:
+`PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY` as a diagnostic integrity result. It
+does not alter M6's formal failure and does not establish a condition number
+or a causal effect.

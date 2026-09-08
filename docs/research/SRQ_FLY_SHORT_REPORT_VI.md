@@ -333,6 +333,74 @@ Do đó 15.000 là một “knee” quan sát được trên stream này, không
 ưu đã được phép chọn. Cần M7 đo trực tiếp quỹ đạo sai số theo task trước khi
 đưa ra giải thích cơ chế hoặc thay đổi method.
 
+### 2.8. Quỹ đạo sai số theo task và cơ chế khuếch đại
+
+Artifact train-only `srq_generalization_m7_error_trajectory_train_only.zip`,
+SHA-256
+`df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36`,
+chẩn đoán lại hai width 10.000 và 20.000 đã khóa trong M6. Thí nghiệm dùng
+đúng stream RanPAC train-only, không chọn lại width hoặc precision, và không
+thay đổi gate M6. Sau mỗi task, nó đo sai số lượng tử hóa factor cục bộ, sai số
+tác động của hệ trên 16 vector Rademacher cố định, sai số trọng số, sai số
+logit, độ đồng thuận dự đoán và chứng nhận margin.
+
+| Chẩn đoán ở task cuối | Width 10.000 | Width 20.000 | Tỷ lệ 20k/10k |
+|---|---:|---:|---:|
+| Sai số factor cục bộ | 0,006043 | 0,006140 | 1,016 lần |
+| Sai số system-action | 0,008589 | 0,009021 | 1,050 lần |
+| Sai số trọng số (W) | 0,027216 | 0,048829 | 1,794 lần |
+| Sai số logit | 0,317845 | 0,635150 | 1,998 lần |
+| Tỷ lệ prediction thay đổi | 1,54% | 2,76% | 1,792 lần |
+| Tỷ lệ được chứng nhận bởi margin | 84,19% | 75,43% | -- |
+| Chênh lệch final Exact--P2B | 0,22 pp | 0,40 pp | -- |
+| Chênh lệch AIA Exact--P2B | 0,0877 pp | 0,2558 pp | -- |
+
+Sai số trọng số và logit của P2B tăng ở cả chín lần chuyển task tại cả hai
+width. Trong khi đó, FP16 có sai số system-action cuối chỉ khoảng `2,7e-4`,
+prediction agreement ít nhất 99,93% và chênh lệch final tối đa 0,02 pp. Vì
+vậy, bằng chứng phù hợp với cơ chế: lượng tử hóa INT8 lặp lại tạo sai lệch hệ
+hiệu dụng tích lũy, sau đó phép giải và ánh xạ quyết định khuếch đại sai lệch
+mạnh hơn ở width 20.000.
+
+Kết luận phải giữ đúng giới hạn. System-action chỉ là phép dò ngẫu nhiên, không
+phải chuẩn phổ của toàn ma trận; thí nghiệm chỉ có một seed và không đo trị
+riêng hay condition number. Do đó M7 không chứng minh quan hệ nhân quả, không
+chứng minh hệ bị ill-conditioned, và không biến M6 từ FAIL thành PASS.
+
+### 2.9. Bound tích lũy dùng để giải thích M7
+
+Gọi \(\bar R_t\) là factor sau QR nhưng trước lượng tử hóa,
+\(\widehat R_t=\bar R_t+E_t\), và
+\(\Delta_t=\widehat R_t^\top\widehat R_t-A_t\) là sai lệch so với hệ Exact.
+Từ đồng nhất thức QR, sai lệch thỏa chính xác
+
+\[
+\Delta_t=\Delta_{t-1}
++\bar R_t^\top E_t+E_t^\top\bar R_t+E_t^\top E_t.
+\]
+
+Do đó,
+
+\[
+\|\Delta_t\|_2\le
+\sum_{k=1}^{t}
+\left(2\|\bar R_k\|_2\|E_k\|_2+\|E_k\|_2^2\right).
+\]
+
+Đây là bound xấu nhất nên không bắt buộc sai số thực tế tăng đơn điệu; nó bỏ
+qua khả năng các nhiễu triệt tiêu nhau. Nếu
+\(\epsilon_t=\|A_t^{-1}\Delta_t\|_2<1\), sai số nghiệm Ridge bị chặn bởi
+
+\[
+\frac{\|\widehat W_t-W_t\|_F}{\|W_t\|_F}
+\le\frac{\epsilon_t}{1-\epsilon_t}.
+\]
+
+Cuối cùng, prediction top-1 chắc chắn không đổi nếu sai số logit thỏa
+\(2\|\widehat\ell-\ell\|_\infty<\gamma(x)\), với \(\gamma(x)\) là margin của
+Exact. Đây là điều kiện đủ, không phải điều kiện cần. Các kết quả này là bound
+perturbation của hệ Ridge; chúng không phải định lý hội tụ của Shampoo.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -388,22 +456,16 @@ Do đó 15.000 là một “knee” quan sát được trên stream này, không
 1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
-2. **Chạy M7 chẩn đoán sai số theo task.** Giữ nguyên width 10k và 20k từ M6,
-   đo sai số factor cục bộ, system-action, nghiệm, logit, prediction agreement
-   và margin. M7 không nới gate M6 và không chọn lại width bằng accuracy.
-3. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
+2. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
    nhiều replicate hoặc GPU khác nếu muốn tuyên bố mức giảm peak tổng quát;
    luôn tách NVML process, NVML device, PyTorch allocated và reserved.
-4. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
+3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
-5. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
+4. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
    không được tuyên bố giảm byte. Cần pack hai giá trị mỗi byte, kiểm tra kernel,
    tốc độ giải mã và accuracy-memory Pareto.
-6. **Củng cố lý thuyết.** Bổ sung bound tích lũy lỗi factor qua task, bound
-   perturbation nghiệm/logit và điều kiện margin bảo toàn prediction. Không tái
-   sử dụng định lý hội tụ Shampoo ngoài phạm vi của nó.
-7. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
+5. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
    thay ImageNet-R legacy bằng split sạch hoặc thêm một dataset chưa mở test.
    Báo Exact FLY là baseline chính, raw Ridge là lower-memory baseline và SOHO
    replay ở bảng riêng với toàn bộ sample-level state bytes.

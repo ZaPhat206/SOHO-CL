@@ -149,6 +149,21 @@
       "test_tuning_allowed": false,
       "paper_roles": ["width_scaling_diagnostic"],
       "caveat": "Formal preregistered gate failure: at width 20000, P2B loses 0.255845 validation-AIA points to Exact, exceeding the locked 0.25-point limit by 0.005845 points. The gate was not relaxed after observing the result."
+    },
+    {
+      "id": "generic_backend_error_trajectory_train_only",
+      "artifact": "srq_generalization_m7_error_trajectory_train_only.zip",
+      "artifact_sha256": "df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36",
+      "result_sha256": "1799ad863ab389f67b13ffdb59df55b7dc436d217e5e54c45ad28e6d4eaa0bf8",
+      "source_commit": "dd92292b2a86da18e7d5de670f9ed092c47163bd",
+      "config": "configs/srq_generalization_m7_error_trajectory_train_only.json",
+      "repository_config_sha256": "e8507b40e30af34677b36b34a8b9da18f2e49402f46e4604844813cd26ed38e4",
+      "status": "PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["taskwise_error_mechanism"],
+      "caveat": "One controlled development seed. System drift is estimated with 16 fixed nested Rademacher probe vectors; observed correlations are descriptive and do not establish causality or identify the system condition number."
     }
   ],
   "known_open_evidence": [
@@ -156,7 +171,7 @@
     "The equal-budget comparison covers one fixed signed CountSketch but no learned, low-rank, Nyström, or frequent-directions alternative.",
     "No second-backbone result is available.",
     "Whole-process memory currently has one run per method on one GPU.",
-    "The M6 fixed-INT8 width sweep formally fails its 0.25-point accuracy-retention gate at width 20000; task-wise mechanism diagnosis is pending.",
+    "The M6 fixed-INT8 width sweep formally fails its 0.25-point accuracy-retention gate at width 20000; M7 localizes downstream amplification but does not establish causality or measure the spectral condition number.",
     "The legacy ImageNet-R split is not content-disjoint.",
     "The state-matched final artifact requires a clean source-locked rerun before it is primary final evidence."
   ]

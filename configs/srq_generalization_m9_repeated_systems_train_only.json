@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m9-repeated-systems-train-only-v1",
+  "source_priority5_config": "configs/srq_fly_priority5_cifar100_whole_process_memory.json",
+  "source_priority5_config_sha256": "ba02e0e742fdaf17e364d6ef182d8e32f8220ac5140253ec2155572054db75da",
+  "repetitions": 4,
+  "method_orders": [
+    ["exact_fly_10000", "srq_fly_p2b_10000"],
+    ["srq_fly_p2b_10000", "exact_fly_10000"],
+    ["exact_fly_10000", "srq_fly_p2b_10000"],
+    ["srq_fly_p2b_10000", "exact_fly_10000"]
+  ],
+  "checkpoint_measurement": "temporary torch.save of learner.state_dict; file size recorded then file deleted",
+  "aggregation": "mean, sample standard deviation, minimum, and maximum across paired repetitions",
+  "gates": {
+    "minimum_repetitions": 3,
+    "require_every_priority5_gate": true,
+    "require_checkpoint_bytes": true,
+    "require_balanced_first_method": true
+  }
+}

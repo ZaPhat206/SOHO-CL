@@ -219,3 +219,34 @@ appropriate interpretation is a useful formal failure that identifies
 width-dependent INT8 approximation as the next mechanism to diagnose. The
 single-seed curve neither proves monotone accumulated error nor authorizes
 selecting 15k post hoc as a replacement method.
+
+## Generic analytic Ridge M7 task-wise error diagnostic
+
+- formal status: `PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36`;
+- result SHA-256:
+  `1799ad863ab389f67b13ffdb59df55b7dc436d217e5e54c45ad28e6d4eaa0bf8`;
+- source commit: `dd92292b2a86da18e7d5de670f9ed092c47163bd`, clean checkout;
+- scope: the locked M6 RanPAC development stream at widths 10k and 20k,
+  three backends, ten tasks, and 16 fixed nested Rademacher probes;
+- width-10k final P2B local-factor/system-action/weight/logit errors:
+  `0.006043 / 0.008589 / 0.027216 / 0.317845`;
+- width-20k final P2B local-factor/system-action/weight/logit errors:
+  `0.006140 / 0.009021 / 0.048829 / 0.635150`;
+- final P2B prediction agreement, 10k / 20k: `98.46% / 97.24%`;
+- final sufficient margin-certificate rate, 10k / 20k: `84.19% / 75.43%`;
+- system-action-error/accuracy-gap Pearson correlation, 10k / 20k:
+  `0.686 / 0.865`;
+- maximum Exact probe-identity error: `1.98e-6`;
+- maximum solver relative residual: `5.83e-6`;
+- all five gates pass, and all 60 task-level accuracy values exactly match M6.
+
+P2B weight and logit errors rise on all nine task transitions at both widths,
+and the final 20k/10k ratios are `1.79x` for weight error and `2.00x` for
+logit error even though the local factor-error ratio is only `1.016x`. FP16
+remains close to Exact. These observations are consistent with cumulative
+INT8 effective-system drift followed by stronger downstream amplification at
+20k. They do not prove causality or ill-conditioning: M7 uses one seed and a
+randomized system-action estimate rather than a spectral norm or condition
+number. M6 therefore remains a formal failure.

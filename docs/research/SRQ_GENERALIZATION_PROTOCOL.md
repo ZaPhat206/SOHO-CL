@@ -177,25 +177,57 @@ residual is `5.83e-6`, which localizes the observed degradation to INT8 state
 approximation rather than failure of the square-root update or linear solve.
 M7 is therefore a diagnostic follow-up, not a retroactive M6 rescue.
 
-### M7--M9 -- error, theory, and systems
+### M7 -- task-wise error trajectory (PASS)
 
-- task-wise factor/system/solution/logit error and prediction agreement;
-- exact square-root identity, structural-SPD statement, factor-to-system and
-  Ridge-solution perturbation bounds, and a margin-preservation corollary;
-- at least three isolated systems repetitions separating persistent bytes,
-  checkpoint bytes, PyTorch allocated/reserved peaks, process NVML peak, and
-  per-stage time.
+Work: measure task-wise factor/system/solution/logit error, prediction
+agreement, and margin diagnostics at widths 10,000 and 20,000. These are
+predeclared diagnostic points, not candidates for selecting a replacement
+width or precision from validation accuracy.
+
+Recorded artifact: `srq_generalization_m7_error_trajectory_train_only.zip`,
+SHA-256
+`df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36`.
+All integrity and numerical gates passed. At task 10, the P2B system-action,
+weight, and logit relative errors are `0.00859 / 0.0272 / 0.3178` at width
+10,000 and `0.00902 / 0.0488 / 0.6351` at width 20,000. Prediction agreement
+falls from `98.46%` to `97.24%`, while the sufficient margin-certificate rate
+falls from `84.19%` to `75.43%`. FP16 remains close to Exact. The result is
+consistent with stronger downstream amplification of INT8 perturbation at
+larger width, but the one-seed probe correlations are not a causal or
+condition-number estimate.
+
+### M8 -- perturbation theory (COMPLETE)
+
+Work: state the exact square-root identity, structural-SPD result, cumulative
+factor-to-system error recurrence, Ridge-solution perturbation bound, and a
+margin-preservation corollary. Every assumption must be explicit, and no
+optimizer-convergence theorem may be transferred from Shampoo.
+
+Recorded derivation: `docs/research/SRQ_GENERALIZATION_M8_THEORY.md`. The
+manuscript now contains the exact recurrence
+`Delta_t = Delta_{t-1} + D_t`, its spectral-norm accumulation bound, the
+conditional Ridge-solution bound under `||A_t^{-1} Delta_t||_2 < 1`, and the
+sufficient top-1 margin certificate. The text explicitly distinguishes these
+theoretical quantities from M7's randomized diagnostics.
+
+Gate: each claimed bound follows from the stated recurrence, distinguishes
+local quantization error from cumulative effective-system error, and matches
+the quantities measured in M7.
+
+### M9 -- repeated systems evidence
+
+Work: run at least three isolated systems repetitions separating persistent
+bytes, checkpoint bytes, PyTorch allocated/reserved peaks, process NVML peak,
+and per-stage time.
+
+Implementation: four paired repetitions are locked in
+`configs/srq_generalization_m9_repeated_systems_train_only.json`, with balanced
+Exact/SRQ execution order and eight fresh whole-process workers. The notebook
+is `notebooks/srq_generalization_m9_repeated_systems_colab.ipynb`; the full
+measurement has not yet been executed.
 
 Gate: claims and plots expose the remaining quadratic scaling and slower
 update rather than hiding them.
-
-M7 must retain widths 10,000 and 20,000 as predeclared diagnostic points and
-must not select a replacement width or precision from validation accuracy. It
-measures task-wise quantization error, randomized reconstructed-system action
-error, solution and logit drift, prediction agreement, and classification
-margins against Exact and FP16 references. Its purpose is to test whether the
-widening M6 gap is consistent with accumulated INT8 perturbation while the
-solver remains stable.
 
 ### M10 -- optional GACL generalized-stream adapter
 

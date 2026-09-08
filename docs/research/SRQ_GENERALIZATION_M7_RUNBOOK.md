@@ -1,8 +1,8 @@
 # SRQ generalization M7 task-wise error runbook
 
-Status: implementation ready; the real CIFAR-100 train-only diagnostic has
-not yet been run. M7 does not authorize test evaluation, precision tuning, or
-post-hoc width selection.
+Status: `PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY`; the CIFAR-100 train-only
+diagnostic is complete. M7 does not authorize test evaluation, precision
+tuning, or post-hoc width selection.
 
 ## Why M7 exists
 
@@ -89,3 +89,40 @@ Exact and solvers stay stable, the result is consistent with cumulative INT8
 perturbation. It is not by itself a causal proof. If the diagnostics do not
 track the accuracy gap, the paper must say that M6 reveals a width-dependent
 accuracy limit whose mechanism remains unresolved.
+
+## Recorded result
+
+Artifact SHA-256:
+`df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36`.
+Result JSON SHA-256:
+`1799ad863ab389f67b13ffdb59df55b7dc436d217e5e54c45ad28e6d4eaa0bf8`.
+The ZIP passes CRC, contains exactly the four expected files, embeds the
+byte-identical config, reports clean source commit `dd92292`, and has
+`uses_test_set=false`. Its 60 CSV rows match all JSON scalar values, the SVG
+parses successfully, and all task accuracies are exactly identical to the M6
+records at widths 10k and 20k.
+
+| Final task diagnostic | Width 10k | Width 20k | 20k / 10k |
+|---|---:|---:|---:|
+| Local factor error | 0.006043 | 0.006140 | 1.016x |
+| System-action error | 0.008589 | 0.009021 | 1.050x |
+| Weight error | 0.027216 | 0.048829 | 1.794x |
+| Logit error | 0.317845 | 0.635150 | 1.998x |
+| Prediction-change fraction | 1.54% | 2.76% | 1.792x |
+| Margin-certified fraction | 84.19% | 75.43% | -- |
+| Exact--P2B final accuracy | 0.22 pp | 0.40 pp | -- |
+| Exact--P2B AIA | 0.0877 pp | 0.2558 pp | -- |
+
+P2B weight and logit errors increase on all nine transitions at both widths.
+The system-action error increases on eight of nine transitions. In contrast,
+FP16 final system-action error stays near `2.7e-4`, final prediction agreement
+is at least `99.93%`, and its final accuracy gap is at most `0.02` pp. The
+Pearson correlations between P2B system-action error and per-task accuracy gap
+are 0.686 at 10k and 0.865 at 20k.
+
+This supports the interpretation that repeated INT8 state approximation is
+associated with cumulative effective-system drift and stronger downstream
+amplification at width 20k. It does not prove causality: task index is a common
+driver, the system error is a 16-vector randomized action estimate rather than
+the full matrix norm, and the experiment does not estimate eigenvalues or a
+condition number.

@@ -23,33 +23,28 @@ Second Author\inst{1}\orcidID{0000-0000-0000-0000}}
 
 \begin{abstract}
 Exemplar-free analytic continual learners replace historical samples with
-sufficient statistics, but their persistent state can remain large. FLY-CL
-expands a frozen 768-dimensional ViT feature into a 10,000-dimensional sparse
-winner-take-all code and maintains a dense floating-point Ridge Gram matrix.
-We introduce Square-Root Quantized FLY (SRQ-FLY), which preserves FLY's
-backbone, projection, code width, target statistic, global classifier, and
-task-ID-free inference while replacing the dense Gram state with a quantized
-upper-triangular factor of the regularized system. The diagonal is stored in
-FP32 and the strict upper triangle uses deterministic groupwise INT8
-quantization. Blocked QR updates the factor after the first task, and two
-triangular solves recover the classifier. Across six paired class-order and
-projection replicates on CIFAR-100, CUB-200-2011, and a disclosed legacy
-ImageNet-R split, SRQ-FLY reduces persistent learner state by 76.7--78.1\%
-while changing average incremental accuracy by only $-0.018$, $-0.083$, and
-$-0.062$ percentage points relative to same-width Exact FLY. At nearly equal
-state, SRQ-FLY outperforms lower-width Exact FLY by 0.132--0.856 points. A
-train-only direct-quantization control indicates that factor-space compression
-preserves numerical structure substantially better than direct INT8 Gram
-quantization with diagonal repair. Whole-process measurement on a Tesla T4
-reduces process-attributed peak memory by 13.9\%, although analytic updates
-remain slower. A controlled train-only transfer to the random-ReLU analytic
-head of RanPAC passes all preregistered gates: P2B reduces its total persistent
-state by 79.1\% with a 0.161-point validation-AIA loss. At the same state
-budget, P2B exceeds reduced-width Exact and CountSketch controls by 0.484 and
-0.572 validation-AIA points, respectively, but updates substantially more
-slowly. These results position SRQ as a reusable additive-Ridge backend
-demonstrated on two frontends, not an accuracy-improving replacement for Exact
-learning or a universal plug-in.
+sufficient statistics, but high-dimensional analytic state can still dominate
+memory. FLY-CL maps frozen ViT features to 10,000-dimensional sparse
+winner-take-all codes and retains a dense FP32 Ridge Gram matrix. We propose
+Square-Root Quantized Ridge (SRQ), instantiated as SRQ-FLY: a reusable backend
+that stores the regularized system as an upper-triangular factor, keeps its
+diagonal in FP32, quantizes its strict upper triangle groupwise to INT8,
+updates it by blocked QR, and recovers classifier weights by triangular
+solves. Across six paired replicates on CIFAR-100, CUB-200-2011, and a
+disclosed legacy ImageNet-R split, SRQ-FLY reduces persistent learner state by
+76.7--78.1\% while changing AIA by $-0.018$, $-0.083$, and $-0.062$
+percentage points relative to same-width Exact FLY. At nearly equal state, it
+exceeds lower-width Exact FLY by 0.132--0.856 AIA points. Direct-quantization
+controls support factor-space compression over INT8 Gram quantization with
+SPD repair. A train-only transfer to RanPAC's random-ReLU head reduces state
+by 79.1\%; at equal state it outperforms reduced-width Exact and CountSketch
+by 0.484 and 0.572 AIA points. A seven-width diagnostic reveals a formal
+0.25-point retention-gate failure at width 20,000, while task-wise errors are
+consistent with cumulative INT8 system drift and downstream amplification.
+Whole-process peak memory falls 13.9\% on one Tesla T4, but updates remain
+slower. SRQ is therefore an accuracy--memory trade-off for additive-Ridge
+heads, not a universal plug-in or an accuracy-improving replacement for Exact
+learning.
 
 \keywords{Exemplar-free continual learning \and Analytic learning \and
 State compression \and Quantization \and Square-root factorization}
@@ -83,7 +78,8 @@ the optimizer convergence theorem.
 This paper makes three contributions. First, it introduces a compressed
 additive-Ridge backend whose primary instantiation retains FLY's width and
 prediction semantics. Second, it provides explicit state accounting and a
-structural positive-definiteness argument. Third, it evaluates the
+structural positive-definiteness argument together with cumulative system,
+solution, logit, and margin perturbation bounds. Third, it evaluates the
 accuracy--memory trade-off against same-width Exact FLY, state-matched
 lower-width FLY, raw-feature Ridge, and direct-quantization controls, then
 tests backend transfer on a distinct RanPAC random-ReLU frontend.
@@ -214,6 +210,65 @@ $\widehat R_t v\neq 0$. Symmetry follows directly from the product form.
 The theorem is structural: it does not state that $\widehat H_t$ equals the
 Exact-FLY system or that prediction is unchanged under arbitrary quantization
 error.
+
+\subsection{Cumulative Perturbation and Prediction Stability}
+
+Let $A_t=A_{t-1}+Z_t^\top Z_t$, with $A_0=\lambda I$, denote the Exact
+Ridge system. Let $\bar R_t$ be the unquantized triangular output of the QR
+update from $[\widehat R_{t-1};Z_t]$, and write the decoded stored factor as
+$\widehat R_t=\bar R_t+E_t$. Define
+$\widehat A_t=\widehat R_t^\top\widehat R_t$ and
+$\Delta_t=\widehat A_t-A_t$.
+
+\begin{proposition}[Cumulative system perturbation]
+The effective-system error obeys the exact recurrence
+\begin{equation}
+\Delta_t=\Delta_{t-1}+D_t,\qquad
+D_t=\bar R_t^\top E_t+E_t^\top\bar R_t+E_t^\top E_t,
+\label{eq:error-recurrence}
+\end{equation}
+and hence
+\begin{equation}
+\|\Delta_t\|_2\le
+\sum_{k=1}^{t}\left(
+2\|\bar R_k\|_2\|E_k\|_2+\|E_k\|_2^2
+\right).
+\label{eq:cumulative-bound}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Expanding $(\bar R_t+E_t)^\top(\bar R_t+E_t)$ and using
+$\bar R_t^\top\bar R_t=\widehat A_{t-1}+Z_t^\top Z_t$ gives
+Eq.~\ref{eq:error-recurrence}. Summing the recurrence and applying
+submultiplicativity and the triangle inequality gives
+Eq.~\ref{eq:cumulative-bound}.
+\end{proof}
+
+The bound is worst-case and may be loose because it ignores cancellation; it
+does not imply that realized errors must grow monotonically. It does,
+however, distinguish the local factor error $E_t$ from the accumulated system
+error $\Delta_t$.
+
+Let $Q_t$ be the shared target statistic, $W_t=A_t^{-1}Q_t$, and
+$\widehat W_t=(A_t+\Delta_t)^{-1}Q_t$. If
+$\epsilon_t=\|A_t^{-1}\Delta_t\|_2<1$, standard inverse perturbation gives
+\begin{equation}
+\frac{\|\widehat W_t-W_t\|_F}{\|W_t\|_F}
+\le \frac{\epsilon_t}{1-\epsilon_t}.
+\label{eq:ridge-perturbation}
+\end{equation}
+For a feature row $\phi(x)^\top$, the corresponding logits satisfy
+$\|\widehat\ell-\ell\|_2\le
+\|\phi(x)\|_2\|\widehat W_t-W_t\|_2$. If the Exact top-1 margin is
+$\gamma(x)$, then
+\begin{equation}
+2\|\widehat\ell-\ell\|_\infty<\gamma(x)
+\label{eq:margin-certificate}
+\end{equation}
+is sufficient to preserve the Exact top-1 prediction. It is not necessary:
+samples outside the certificate may still agree. These are conditional linear
+system bounds, not an optimizer-convergence result inherited from Shampoo.
 
 \subsection{Backend Scope}
 
@@ -510,6 +565,49 @@ the widening large-width gap. Because this is a single development seed, it
 motivates a task-wise error diagnostic rather than proving monotone error
 accumulation or authorizing post-hoc selection of width 15,000.
 
+\subsection{Task-Wise Error Trajectory}
+
+To diagnose the M6 failure without changing its gate, we replay the locked
+10k and 20k streams and measure local factor error, a 16-vector randomized
+action of the cumulative system error, classifier and logit error, prediction
+agreement, and the margin certificate in Eq.~\ref{eq:margin-certificate} after
+each task. Table~\ref{tab:error-trajectory} reports the final-task values.
+
+\begin{table}
+\caption{Final-task P2B error trajectory on the train-only RanPAC stream.
+System error is a randomized relative action estimate, not a matrix norm.}
+\label{tab:error-trajectory}
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrr}
+\toprule
+Width & Local factor & System action & Weight & Logit & Prediction agree. &
+Margin certified \\
+\midrule
+10,000 & 0.006043 & 0.008589 & 0.027216 & 0.317845 & 98.46\% & 84.19\% \\
+20,000 & 0.006140 & 0.009021 & 0.048829 & 0.635150 & 97.24\% & 75.43\% \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Weight and logit errors increase on all nine task transitions at both widths.
+From 10k to 20k, final local factor error rises only 1.016 times, whereas
+weight and logit errors rise 1.79 and 2.00 times. FP16 remains close to Exact:
+its final system-action error is approximately $2.7\times10^{-4}$, prediction
+agreement is at least 99.93\%, and its final accuracy gap is at most 0.02
+points. P2B system-action error and per-task accuracy gap have descriptive
+Pearson correlations of 0.686 and 0.865 at 10k and 20k.
+
+The result is consistent with the recurrence in
+Eq.~\ref{eq:error-recurrence}: repeated INT8 encoding creates cumulative
+effective-system drift, whose downstream effect is stronger at 20k. It is not
+a causal proof or evidence of ill-conditioning. The experiment uses one seed,
+and its randomized action diagnostic does not estimate
+$\|A_t^{-1}\Delta_t\|_2$, eigenvalues, or a condition number. M6 therefore
+remains a formal failure.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
@@ -570,7 +668,10 @@ large update-time disadvantage relative to the equal-budget controls.
 The width sweep further exposes a formal accuracy-retention failure at width
 20,000: the P2B gap exceeds the locked limit by 0.005845 AIA points. Although
 FP16 and solver diagnostics remain stable, the present evidence does not show
-that fixed INT8 precision scales without increasing approximation loss.
+that fixed INT8 precision scales without increasing approximation loss. The
+task-wise diagnostic is consistent with cumulative effective-system drift and
+stronger downstream amplification at 20k, but its one-seed randomized probes
+do not establish causality or ill-conditioning.
 
 \section{Conclusion}
 
@@ -590,7 +691,10 @@ alternatives, while exposing much slower analytic updates. The evidence does
 not support superiority on every metric, global Pareto optimality, or
 universal plug-in compatibility. A seven-width diagnostic also shows that the
 memory advantage grows with width but fixed INT8 narrowly fails the locked
-accuracy-retention gate at width 20,000.
+accuracy-retention gate at width 20,000. A task-wise follow-up connects this
+failure to growing system, weight, and logit discrepancies, in agreement with
+the derived cumulative perturbation recurrence, while leaving causal and
+conditioning claims open.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or
