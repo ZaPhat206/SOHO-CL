@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+import re
 
 import pytest
 import torch
@@ -219,6 +221,14 @@ def test_m5_notebook_is_source_locked_train_only_and_compiles():
     assert "--require-clean-git" in code
     assert "m5_results.json" in code
     assert "files.download(archive)" in code
+    locked = dict(re.findall(r"'([^']+)':'([0-9a-f]{64})'", code))
+    assert "tools/experiment_runner.py" in locked
+    for relative_path, expected in locked.items():
+        # Colab checks out canonical LF text.  read_text() applies universal
+        # newline translation, so this catches Windows-only CRLF source locks.
+        canonical = (ROOT / relative_path).read_text(encoding="utf-8")
+        actual = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        assert actual == expected, relative_path
     for cell in notebook["cells"]:
         if cell["cell_type"] == "code":
             compile("".join(cell["source"]), str(NOTEBOOK), "exec")
