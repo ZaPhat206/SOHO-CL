@@ -300,6 +300,39 @@ accuracy--memory, đồng thời làm rõ rằng tốc độ update vẫn là nh
 Đây chỉ là một development seed và một CountSketch cố định; không được diễn
 giải thành Pareto tối ưu toàn cục trên mọi sketch, rank, width hoặc dataset.
 
+### 2.7. Khả năng mở rộng theo chiều rộng representation
+
+Artifact train-only `srq_generalization_m6_width_sweep_train_only.zip`,
+SHA-256
+`b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e`,
+quét bảy width đã khóa trước từ 2.000 đến 20.000 trên frontend random-ReLU của
+RanPAC. Exact, square-root FP16 và P2B dùng cùng projection prefix, dữ liệu,
+Ridge và lịch đánh giá tại mỗi width; test set không được sử dụng.
+
+| Width | AIA Exact / FP16 / P2B | Final Exact / FP16 / P2B | State Exact / P2B | Exact--P2B AIA |
+|---:|---:|---:|---:|---:|
+| 2.000 | 91,1474 / 91,1477 / 91,1536 | 86,34 / 86,34 / 86,40 | 22,64 / 9,42 MiB | -0,0062 pp |
+| 4.000 | 91,9818 / 91,9718 / 91,9750 | 87,67 / 87,67 / 87,57 | 75,81 / 22,89 MiB | 0,0068 pp |
+| 6.000 | 92,1427 / 92,1460 / 92,1335 | 87,94 / 87,94 / 87,90 | 159,49 / 40,42 MiB | 0,0093 pp |
+| 8.000 | 92,3000 / 92,3049 / 92,2378 | 88,09 / 88,11 / 87,98 | 273,68 / 61,99 MiB | 0,0622 pp |
+| 10.000 | 92,4428 / 92,4435 / 92,3551 | 88,45 / 88,43 / 88,23 | 418,40 / 87,62 MiB | 0,0877 pp |
+| 15.000 | 92,6220 / 92,6210 / 92,4261 | 88,72 / 88,69 / 88,51 | 913,70 / 169,43 MiB | 0,1960 pp |
+| 20.000 | 92,6429 / 92,6439 / 92,3870 | 88,92 / 88,92 / 88,52 | 1.599,73 / 276,58 MiB | **0,2558 pp** |
+
+Trạng thái P2B giảm từ 58,4% ở width 2.000 đến 82,7% ở width 20.000. Tuy
+nhiên, M6 có trạng thái chính thức `FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY`: loss AIA
+của P2B tại 20.000 là 0,255845 pp, vượt gate đã khóa 0,25 pp đúng 0,005845 pp.
+Không được nới gate sau khi đã nhìn kết quả. Square-root FP16 chỉ lệch tối đa
+0,0100 pp và solver residual lớn nhất vẫn là `5,83e-6`, nên đây không phải lỗi
+QR, mất SPD hoặc solver không hội tụ. Dữ liệu phù hợp hơn với giả thuyết sai số
+lượng tử hóa INT8 tăng theo width và số lần cập nhật.
+
+Ở 20.000, Exact chỉ tăng 0,0208 pp AIA so với 15.000, trong khi P2B giảm 0,0390
+pp, state P2B tăng thêm khoảng 107 MiB và update tăng từ 19,67 lên 34,90 giây.
+Do đó 15.000 là một “knee” quan sát được trên stream này, không phải width tối
+ưu đã được phép chọn. Cần M7 đo trực tiếp quỹ đạo sai số theo task trước khi
+đưa ra giải thích cơ chế hoặc thay đổi method.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -355,8 +388,9 @@ giải thành Pareto tối ưu toàn cục trên mọi sketch, rank, width hoặ
 1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
-2. **Chạy width sweep đã khóa.** Đo các width 2k, 4k, 6k, 8k và 10k cho Exact,
-   FP16 và P2B để vẽ đường accuracy--state--time, không chọn width bằng test.
+2. **Chạy M7 chẩn đoán sai số theo task.** Giữ nguyên width 10k và 20k từ M6,
+   đo sai số factor cục bộ, system-action, nghiệm, logit, prediction agreement
+   và margin. M7 không nới gate M6 và không chọn lại width bằng accuracy.
 3. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
    nhiều replicate hoặc GPU khác nếu muốn tuyên bố mức giảm peak tổng quát;
    luôn tách NVML process, NVML device, PyTorch allocated và reserved.

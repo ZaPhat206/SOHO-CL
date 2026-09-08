@@ -465,6 +465,51 @@ This is not a global Pareto claim: the comparison is one seed and covers only
 the preregistered alternatives. Moreover, P2B updates 15.25 times more slowly
 than byte-matched Exact and 19.22 times more slowly than CountSketch.
 
+\subsection{Scaling with Representation Width}
+
+We next sweep seven widths fixed before execution on the same train-only
+RanPAC stream. Projection matrices are nested prefixes of one width-20,000
+draw, and the Ridge coefficient selected at each width is shared by all three
+backends. Widths are reporting points rather than candidates selected by
+validation accuracy.
+
+\begin{table}
+\caption{Train-only width scaling on one CIFAR development stream. State is
+total persistent MiB. The gap is Exact minus P2B validation AIA.}
+\label{tab:width-scaling}
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrr}
+\toprule
+Width & Exact AIA & FP16 AIA & P2B AIA & Final Exact/P2B &
+State Exact/P2B & Gap (pp) \\
+\midrule
+2,000  & 91.1474 & 91.1477 & 91.1536 & 86.34 / 86.40 & 22.64 / 9.42 & $-$0.0062 \\
+4,000  & 91.9818 & 91.9718 & 91.9750 & 87.67 / 87.57 & 75.81 / 22.89 & 0.0068 \\
+6,000  & 92.1427 & 92.1460 & 92.1335 & 87.94 / 87.90 & 159.49 / 40.42 & 0.0093 \\
+8,000  & 92.3000 & 92.3049 & 92.2378 & 88.09 / 87.98 & 273.68 / 61.99 & 0.0622 \\
+10,000 & 92.4428 & 92.4435 & 92.3551 & 88.45 / 88.23 & 418.40 / 87.62 & 0.0877 \\
+15,000 & 92.6220 & 92.6210 & 92.4261 & 88.72 / 88.51 & 913.70 / 169.43 & 0.1960 \\
+20,000 & 92.6429 & 92.6439 & 92.3870 & 88.92 / 88.52 & 1599.73 / 276.58 & \textbf{0.2558} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+P2B's state reduction increases from 58.4\% at width 2,000 to 82.7\% at
+20,000, as quadratic factor storage increasingly dominates linear frontend
+and classifier terms. However, the preregistered M6 gate formally fails:
+the width-20,000 P2B loss is 0.255845 AIA points, exceeding the locked
+0.25-point limit by 0.005845 points. We retain this failure rather than
+relaxing the threshold. FP16 remains within 0.0100 points of Exact at every
+width and the maximum solver residual is $5.83\times10^{-6}$. This combination
+indicates that square-root updating and linear solution remain numerically
+stable, while INT8 state approximation becomes the leading explanation for
+the widening large-width gap. Because this is a single development seed, it
+motivates a task-wise error diagnostic rather than proving monotone error
+accumulation or authorizing post-hoc selection of width 15,000.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
@@ -522,6 +567,10 @@ rules out reduced-width Exact, one fixed signed CountSketch, and raw Ridge as
 dominators on that stream, but does not cover learned sketches, low-rank or
 Nystr\"om approximations, other widths, or other datasets. It also exposes a
 large update-time disadvantage relative to the equal-budget controls.
+The width sweep further exposes a formal accuracy-retention failure at width
+20,000: the P2B gap exceeds the locked limit by 0.005845 AIA points. Although
+FP16 and solver diagnostics remain stable, the present evidence does not show
+that fixed INT8 precision scales without increasing approximation loss.
 
 \section{Conclusion}
 
@@ -539,7 +588,9 @@ two tested frontends. An equal-budget experiment further supports preserving
 the full representation width over the tested reduced-width and signed-sketch
 alternatives, while exposing much slower analytic updates. The evidence does
 not support superiority on every metric, global Pareto optimality, or
-universal plug-in compatibility.
+universal plug-in compatibility. A seven-width diagnostic also shows that the
+memory advantage grows with width but fixed INT8 narrowly fails the locked
+accuracy-retention gate at width 20,000.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or

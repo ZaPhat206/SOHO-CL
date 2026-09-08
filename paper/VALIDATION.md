@@ -280,3 +280,22 @@ The artifact reports clean source commit `cc7a851`, ten records per method,
 `uses_test_set=false`, dimensions locked before accuracy, null numerical
 failure, and all seven gates true. The maximum solver relative residual is
 `4.65e-6`. Final decision: `PASS_M5_EQUAL_BUDGET_TRAIN_ONLY`.
+
+## Generic analytic Ridge M6 width-scaling gate
+
+The returned ZIP was audited read-only. SHA-256 is
+`b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e`;
+it passes ZIP CRC and contains exactly `config.json`, `m6_results.json`,
+`width_sweep.csv`, `width_sweep_accuracy_state.svg`, and
+`width_sweep_update_time.svg`. Both SVG files parse as valid XML. The config is
+byte-identical to the locked repository file, the CSV has 21 method-width
+rows matching the JSON values, and result SHA-256 is
+`648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb`.
+
+The artifact reports clean source commit `d96714e`, all seven widths complete,
+`uses_test_set=false`, nested projection prefixes, and no numerical failure.
+Six gates pass. The sole failure is `p2b_accuracy_retention`: the maximum loss
+is `0.255845` validation-AIA points at width 20k versus the locked `0.25`
+limit. The maximum FP16 loss is `0.0100` points and maximum solver residual is
+`5.83e-6`. Final decision: `FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY`; retain the result
+and investigate it in M7 without relaxing the gate or inspecting test data.

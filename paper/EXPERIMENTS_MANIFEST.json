@@ -134,6 +134,21 @@
       "test_tuning_allowed": false,
       "paper_roles": ["equal_budget_pareto_control"],
       "caveat": "One controlled development seed; the observed frontier covers only the five preregistered alternatives and P2B remains much slower than the equal-budget Exact and CountSketch controls."
+    },
+    {
+      "id": "generic_backend_width_sweep_train_only",
+      "artifact": "srq_generalization_m6_width_sweep_train_only.zip",
+      "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+      "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+      "source_commit": "d96714efaf95ac236e490b778c2dde5d6ea1f9b1",
+      "config": "configs/srq_generalization_m6_width_sweep_train_only.json",
+      "repository_config_sha256": "73e90b728c6b60138ba595c2c52edab4ce8a3e282ba0c19a01f0dcd768819370",
+      "status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["width_scaling_diagnostic"],
+      "caveat": "Formal preregistered gate failure: at width 20000, P2B loses 0.255845 validation-AIA points to Exact, exceeding the locked 0.25-point limit by 0.005845 points. The gate was not relaxed after observing the result."
     }
   ],
   "known_open_evidence": [
@@ -141,6 +156,7 @@
     "The equal-budget comparison covers one fixed signed CountSketch but no learned, low-rank, Nyström, or frequent-directions alternative.",
     "No second-backbone result is available.",
     "Whole-process memory currently has one run per method on one GPU.",
+    "The M6 fixed-INT8 width sweep formally fails its 0.25-point accuracy-retention gate at width 20000; task-wise mechanism diagnosis is pending.",
     "The legacy ImageNet-R split is not content-disjoint.",
     "The state-matched final artifact requires a clean source-locked rerun before it is primary final evidence."
   ]

@@ -152,7 +152,7 @@ tested alternatives, but its analytic update was 15.25 and 19.22 times slower
 than those two equal-budget controls. This remains one train-only development
 seed and does not establish a global Pareto frontier.
 
-### M6 -- width scaling (implementation ready)
+### M6 -- width scaling (formal FAIL; diagnostic complete)
 
 Work: sweep fixed widths 2k, 4k, 6k, 8k, 10k, 15k, and 20k for Exact Gram, FP16
 square-root, and fixed P2B on the controlled RanPAC train-only stream. Widths
@@ -165,6 +165,18 @@ Gate: expose the empirical accuracy--state--update curves, preserve numerical
 and accuracy-retention bounds at every width, and retain the quadratic state
 terms in the report.
 
+Recorded artifact: `srq_generalization_m6_width_sweep_train_only.zip`,
+SHA-256
+`b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e`.
+The artifact is complete, train-only, source-clean, and numerically stable,
+but its formal status is `FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY`. At width 20,000,
+P2B loses `0.255845` validation-AIA points to Exact, exceeding the locked
+`0.25`-point bound by `0.005845` points. The threshold is not changed after
+observing the result. FP16 loses at most `0.0100` points and the maximum solver
+residual is `5.83e-6`, which localizes the observed degradation to INT8 state
+approximation rather than failure of the square-root update or linear solve.
+M7 is therefore a diagnostic follow-up, not a retroactive M6 rescue.
+
 ### M7--M9 -- error, theory, and systems
 
 - task-wise factor/system/solution/logit error and prediction agreement;
@@ -176,6 +188,14 @@ terms in the report.
 
 Gate: claims and plots expose the remaining quadratic scaling and slower
 update rather than hiding them.
+
+M7 must retain widths 10,000 and 20,000 as predeclared diagnostic points and
+must not select a replacement width or precision from validation accuracy. It
+measures task-wise quantization error, randomized reconstructed-system action
+error, solution and logit drift, prediction agreement, and classification
+margins against Exact and FP16 references. Its purpose is to test whether the
+widening M6 gap is consistent with accumulated INT8 perturbation while the
+solver remains stable.
 
 ### M10 -- optional GACL generalized-stream adapter
 

@@ -189,3 +189,33 @@ claim at equal state, but only on the observed one-seed frontier. P2B remains
 15.25 times slower than byte-matched Exact and 19.22 times slower than
 CountSketch Exact in analytic update, so M5 does not establish a speed benefit
 or global Pareto optimality.
+
+## Generic analytic Ridge M6 width-scaling diagnostic
+
+- formal status: `FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e`;
+- result SHA-256:
+  `648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb`;
+- source commit: `d96714efaf95ac236e490b778c2dde5d6ea1f9b1`, clean checkout;
+- scope: controlled RanPAC Phase-2 random-ReLU head, widths 2k, 4k, 6k,
+  8k, 10k, 15k, and 20k, one train-only development seed;
+- maximum FP16 Exact-relative AIA loss: `0.0100` percentage points;
+- maximum P2B Exact-relative AIA loss: `0.255845` points at width 20k;
+- locked P2B loss limit: `0.25` points, exceeded by `0.005845` points;
+- P2B state reduction grows from `58.41%` at width 2k to `82.71%` at 20k;
+- width-20k AIA, Exact / FP16 / P2B:
+  `92.6429 / 92.6439 / 92.3870`;
+- width-20k final validation accuracy, Exact / FP16 / P2B:
+  `88.92 / 88.92 / 88.52`;
+- width-20k total state, Exact / FP16 / P2B:
+  `1599.73 / 455.38 / 276.58 MiB`;
+- maximum solver relative residual: `5.83e-6`;
+- six gates pass and only `p2b_accuracy_retention` fails.
+
+The preregistered threshold is not relaxed. FP16 remains essentially exact
+and every solve remains stable, while the P2B gap grows at large widths. The
+appropriate interpretation is a useful formal failure that identifies
+width-dependent INT8 approximation as the next mechanism to diagnose. The
+single-seed curve neither proves monotone accumulated error nor authorizes
+selecting 15k post hoc as a replacement method.
