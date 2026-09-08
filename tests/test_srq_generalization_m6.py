@@ -23,7 +23,7 @@ def test_m6_config_locks_train_only_nonselective_width_sweep():
     config = m6._read_config(CONFIG)
     assert config["uses_test_set"] is False
     assert config["accuracy_based_selection"] is False
-    assert config["widths"] == [2000, 4000, 6000, 8000, 10000]
+    assert config["widths"] == [2000, 4000, 6000, 8000, 10000, 15000, 20000]
     assert config["ridge_selection"]["policy"] == (
         "per_width_train_only_calibration_shared_across_backends"
     )
@@ -40,6 +40,7 @@ def test_m6_rejects_test_use_accuracy_selection_and_bad_widths(tmp_path):
             m6._read_config(path)
     broken = json.loads(CONFIG.read_text(encoding="utf-8"))
     broken["widths"] = [2000, 1000, 2000]
+    broken["ranpac"]["maximum_expand_dimension"] = 2000
     path = tmp_path / "widths.json"
     path.write_text(json.dumps(broken), encoding="utf-8")
     with pytest.raises(ValueError, match="widths"):
@@ -89,6 +90,44 @@ def test_m6_summary_exposes_scaling_and_locked_gates():
     assert all(summary["gates"].values())
     for slope in summary["total_state_log_log_slope"].values():
         assert slope == pytest.approx(2.0)
+
+
+def test_m6_merges_sequential_method_records_without_changing_semantics():
+    names = ("exact", "fp16_square_root", "p2b_int8")
+    groups = {}
+    for offset, name in enumerate(names):
+        groups[name] = {
+            "records": [
+                {
+                    "task": task,
+                    "accuracy_percent": {name: 90.0 + offset + task},
+                    "state": {
+                        name: {
+                            "total_persistent_bytes": 100 + offset + task,
+                            "solver_relative_residual": 1e-6,
+                        }
+                    },
+                }
+                for task in (1, 2)
+            ],
+            "analytic_update_seconds": {name: 1.0 + offset},
+            "encoding_seconds": 0.1 + offset,
+        }
+    state_lock = {
+        "width": 10,
+        "projection_bytes": 40,
+        "quadratic_or_factor_bytes": {name: 50 + i for i, name in enumerate(names)},
+    }
+    summary = m6._width_summary(
+        groups, {"selected_ridge_lambda": 100.0}, state_lock
+    )
+    assert summary["records"][1]["accuracy_percent"] == {
+        "exact": 92.0,
+        "fp16_square_root": 93.0,
+        "p2b_int8": 94.0,
+    }
+    assert summary["analytic_update_seconds"]["p2b_int8"] == 3.0
+    assert summary["representation_encoding_seconds"]["exact"] == 0.1
 
 
 def test_m6_notebook_is_source_locked_train_only_and_compiles():

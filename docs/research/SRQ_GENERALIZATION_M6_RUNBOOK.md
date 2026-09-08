@@ -9,7 +9,7 @@ selection.
 M6 measures how accuracy, persistent state, and analytic-update time scale as
 the RanPAC random-ReLU expansion width grows. It does not search for an
 accuracy-optimal width. The locked widths are `2,000`, `4,000`, `6,000`,
-`8,000`, and `10,000`, declared before the run.
+`8,000`, `10,000`, `15,000`, and `20,000`, declared before the run.
 
 At every width, three backends receive exactly the same projected features:
 
@@ -17,7 +17,7 @@ At every width, three backends receive exactly the same projected features:
 2. FP16 square-root;
 3. frozen P2B mixed INT8/FP32.
 
-All projections are prefixes of one standard-normal 768-by-10,000 projection
+All projections are prefixes of one standard-normal 768-by-20,000 projection
 generated with seed 2025. The class order, task split, outer validation split,
 and calibration indices are identical across widths. Each width selects one
 Ridge coefficient on the disjoint train-only calibration partition, then
@@ -38,7 +38,7 @@ columns expose the remaining asymptotic quadratic dependence directly.
 
 ## Gates
 
-- all five predeclared widths complete;
+- all seven predeclared widths complete;
 - projection prefixes remain nested;
 - total state grows strictly with width for every backend;
 - P2B state is smaller than Exact state at every width;
@@ -64,3 +64,9 @@ The Colab notebook exports a ZIP containing:
 Both figures are vector graphics generated directly from the locked JSON. M6
 remains one controlled train-only development seed and does not prove scaling
 on other datasets, backbones, hardware, or analytic frontends.
+
+To reduce GPU peak at widths 15k and 20k, Exact, FP16, and P2B execute
+sequentially at each width. They still use the same projection prefix, Ridge
+coefficient, training partition, and validation partition. Analytic-update
+time excludes repeated representation encoding. Sequential execution changes
+only scheduling, not the fitted systems.

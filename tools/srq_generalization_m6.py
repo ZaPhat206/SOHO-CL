@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import hashlib
 import json
 import math
@@ -273,9 +274,26 @@ def _backend_group(config: dict, width: int, ridge: float, device: torch.device)
     }
 
 
-def _width_summary(group: dict, ridge_result: dict, state_lock: dict) -> dict:
-    records = group["records"]
-    names = tuple(records[0]["accuracy_percent"])
+def _width_summary(groups: dict[str, dict], ridge_result: dict, state_lock: dict) -> dict:
+    names = ("exact", "fp16_square_root", "p2b_int8")
+    tasks = len(next(iter(groups.values()))["records"])
+    if any(len(group["records"]) != tasks for group in groups.values()):
+        raise AssertionError("method task-record counts differ")
+    records = []
+    for task_index in range(tasks):
+        records.append(
+            {
+                "task": task_index + 1,
+                "accuracy_percent": {
+                    name: groups[name]["records"][task_index]["accuracy_percent"][name]
+                    for name in names
+                },
+                "state": {
+                    name: groups[name]["records"][task_index]["state"][name]
+                    for name in names
+                },
+            }
+        )
     aia = {
         name: sum(record["accuracy_percent"][name] for record in records)
         / len(records)
@@ -294,14 +312,19 @@ def _width_summary(group: dict, ridge_result: dict, state_lock: dict) -> dict:
     )
     return {
         "width": state_lock["width"],
+        "records": records,
         "selected_ridge_lambda": ridge_result["selected_ridge_lambda"],
         "validation_aia_percent": aia,
         "final_validation_accuracy_percent": final_accuracy,
         "final_total_persistent_bytes": final_state,
         "quadratic_or_factor_bytes": state_lock["quadratic_or_factor_bytes"],
         "projection_bytes": state_lock["projection_bytes"],
-        "analytic_update_seconds": group["analytic_update_seconds"],
-        "representation_encoding_seconds": group["encoding_seconds"],
+        "analytic_update_seconds": {
+            name: groups[name]["analytic_update_seconds"][name] for name in names
+        },
+        "representation_encoding_seconds": {
+            name: groups[name]["encoding_seconds"] for name in names
+        },
         "fp16_validation_aia_loss_pp": aia["exact"] - aia["fp16_square_root"],
         "p2b_validation_aia_loss_pp": aia["exact"] - aia["p2b_int8"],
         "p2b_total_state_reduction_fraction": 1.0
@@ -409,7 +432,7 @@ def _write_csv(path: Path, width_results: list[dict]) -> None:
                         ],
                         "representation_encoding_seconds": item[
                             "representation_encoding_seconds"
-                        ],
+                        ][method],
                     }
                 )
 
@@ -503,21 +526,30 @@ def run(args) -> dict:
             lock = _state_lock(config, width)
             print(f"WIDTH START {width} RIDGE {ridge}", flush=True)
             backends = _backend_group(config, width, ridge, device)
-            group = m5._run_group(
-                encoder=encoder,
-                backends=backends,
-                extra_tensors={"projection": projection},
-                expected_total_bytes=lock["total_persistent_bytes"],
-                features=train["features"],
-                labels=train["labels"],
-                training_parts=training_parts,
-                validation_parts=validation_parts,
-                encode_batch_size=encode_batch_size,
-                evaluation_batch_size=evaluation_batch_size,
-                device=device,
-            )
-            item = _width_summary(group, ridge_result, lock)
-            item["records"] = group["records"]
+            method_groups = {}
+            for name in ("exact", "fp16_square_root", "p2b_int8"):
+                print(f"METHOD START width={width} method={name}", flush=True)
+                backend = backends.pop(name)
+                method_groups[name] = m5._run_group(
+                    encoder=encoder,
+                    backends={name: backend},
+                    extra_tensors={"projection": projection},
+                    expected_total_bytes={
+                        name: lock["total_persistent_bytes"][name]
+                    },
+                    features=train["features"],
+                    labels=train["labels"],
+                    training_parts=training_parts,
+                    validation_parts=validation_parts,
+                    encode_batch_size=encode_batch_size,
+                    evaluation_batch_size=evaluation_batch_size,
+                    device=device,
+                )
+                del backend
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            item = _width_summary(method_groups, ridge_result, lock)
             width_results.append(item)
             print(
                 f"WIDTH DONE {width} exact={item['validation_aia_percent']['exact']:.4f} "
@@ -525,7 +557,8 @@ def run(args) -> dict:
                 f"p2b={item['validation_aia_percent']['p2b_int8']:.4f}",
                 flush=True,
             )
-            del backends, group, projection
+            del backends, method_groups, projection
+            gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         summary = _summarize(width_results, config)

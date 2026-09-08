@@ -154,7 +154,7 @@ seed and does not establish a global Pareto frontier.
 
 ### M6 -- width scaling (implementation ready)
 
-Work: sweep fixed widths 2k, 4k, 6k, 8k, and 10k for Exact Gram, FP16
+Work: sweep fixed widths 2k, 4k, 6k, 8k, 10k, 15k, and 20k for Exact Gram, FP16
 square-root, and fixed P2B on the controlled RanPAC train-only stream. Widths
 are reporting points, not accuracy-selected candidates. Projection prefixes,
 splits, and per-width Ridge calibration are shared across the three backends.
