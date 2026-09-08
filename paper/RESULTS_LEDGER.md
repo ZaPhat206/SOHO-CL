@@ -120,5 +120,37 @@ source-locked evidence by this ledger update.
 - final Exact/P2B state: `444006540 / 97166228` B;
 - P2B state reduction: `78.1160%`.
 
-This result validates backend extraction for FLY. It does not close the open
-non-FLY plug-in evidence item.
+At M3 alone, this result validated backend extraction for FLY but did not yet
+close the non-FLY frontend evidence item. M4 below supplies that next gate.
+
+## Generic backend M4 RanPAC train-only gate
+
+- status: `PASS_M4_RANPAC_TRAIN_ONLY`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `228da0828c7f6964bcc8f7da92258efa20b00eef0fc83679246ce0ae2a0c8f52`;
+- result SHA-256:
+  `1afb59eeb6047c1dcdde2da14da27c0c8763b1b06bf43baa8f9b38019e39cfcc`;
+- source commit: `47a789b6656e88d2ae5a3211f34eea485636e10a`, clean checkout;
+- scope: controlled RanPAC Phase-2 standard-normal random projection and ReLU
+  analytic head; no PETL and no reproduction of the original per-task Ridge
+  schedule;
+- fixed Ridge selected from train-only MSE calibration: `lambda=1e6`;
+- validation AIA, Exact / FP32 square-root / FP16 square-root / P2B:
+  `92.6222 / 92.6222 / 92.6215 / 92.4608`;
+- final validation accuracy: `88.50 / 88.50 / 88.53 / 88.39`;
+- Exact-minus-P2B validation-AIA gap: `0.1614` percentage points;
+- final total state, Exact / FP16 / P2B:
+  `438720400 / 138750400 / 91880088` B;
+- final quadratic state, Exact / FP16 / P2B:
+  `400000000 / 100030000 / 53159688` B;
+- P2B reduction: `86.7101%` of quadratic state and `79.0573%` of total state;
+- dense FP32 square-root minimum prediction agreement: `100%`;
+- maximum FP32 system/weight/logit relative errors:
+  `2.10e-6 / 1.24e-5 / 9.43e-5`;
+- maximum solver relative residual: `4.65e-6`;
+- all eight locked gates passed and no numerical failure occurred.
+
+This closes the initial non-FLY frontend evidence item. It supports "a
+reusable backend demonstrated on two analytic learners," not a universal
+plug-in claim. The result is one development seed and does not constitute a
+published-accuracy reproduction of full RanPAC.

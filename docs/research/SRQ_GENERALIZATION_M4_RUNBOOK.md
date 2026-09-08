@@ -1,7 +1,7 @@
 # SRQ generalization M4 RanPAC train-only runbook
 
-Status: implementation complete; real CIFAR-100 GPU gate pending. This
-milestone does not read or materialize the held-out test split.
+Status: `PASS_M4_RANPAC_TRAIN_ONLY`. The real CIFAR-100 GPU gate passed without
+reading or materializing the held-out test split.
 
 ## What M4 establishes
 
@@ -88,3 +88,31 @@ A FAIL is also informative: the paper remains scoped to SRQ-FLY. The failure
 record identifies whether the obstacle is semantics, FP32 square-root
 equivalence, quantization accuracy, state reduction, or numerical stability.
 No held-out test run is authorized by M4 itself.
+
+## Recorded result
+
+Artifact SHA-256:
+`228da0828c7f6964bcc8f7da92258efa20b00eef0fc83679246ce0ae2a0c8f52`.
+The result JSON SHA-256 is
+`1afb59eeb6047c1dcdde2da14da27c0c8763b1b06bf43baa8f9b38019e39cfcc`.
+The archive contains exactly `m4_results.json` and the byte-identical locked
+`config.json`. Provenance records clean source commit
+`47a789b6656e88d2ae5a3211f34eea485636e10a`.
+
+The train-only calibration selected `lambda=1e6` from the complete locked
+grid. Exact and dense FP32 square-root both reached validation AIA `92.6222`
+and final validation accuracy `88.50`. FP16 square-root reached AIA `92.6215`
+and final `88.53`. P2B reached AIA `92.4608` and final `88.39`, corresponding
+to an Exact-minus-P2B AIA gap of `0.1614` percentage points.
+
+The final Exact/P2B total persistent states are `438720400 / 91880088` bytes,
+a total-state reduction of `79.0573%`. The corresponding quadratic states are
+`400000000 / 53159688` bytes, a reduction of `86.7101%`. The dense FP32
+square-root preserves 100% prediction agreement with Exact; its maximum
+system, weight, and logit relative errors are `2.10e-6`, `1.24e-5`, and
+`9.43e-5`. The maximum solver residual over every path and task is `4.65e-6`.
+All eight preregistered gates passed and `numerical_failure` is null.
+
+This result changes the defensible scope: SRQ is now a reusable additive-Ridge
+backend demonstrated behind both FLY/WTA and RanPAC/random-ReLU frontends. It
+does not justify the phrases "universal plug-in" or "full RanPAC reproduction."

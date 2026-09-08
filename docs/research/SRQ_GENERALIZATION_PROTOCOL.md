@@ -106,7 +106,7 @@ Recorded artifact: `srq_generalization_m3_fly_regression.zip`, SHA-256
 `ec376875ff0e29e2d7a46d1fcb9fcccc523ea47fbe6a8f2dd83ec3a98930a595`.
 All ten task records pass exact legacy/generic tensor and byte identity.
 
-### M4 -- RanPAC adapter and train-only gate (implementation ready)
+### M4 -- RanPAC adapter and train-only gate (PASS)
 
 Work: reproduce the original analytic RanPAC head, then compare original,
 generic Exact Gram, FP32 square-root, FP16 square-root, and fixed P2B SRQ on
@@ -121,6 +121,11 @@ overridden using test accuracy.
 The source-locked run instructions and the distinction between the official
 per-task Ridge schedule and the controlled fixed-Ridge comparison are in
 `docs/research/SRQ_GENERALIZATION_M4_RUNBOOK.md`.
+
+Recorded artifact: `srq_generalization_m4_ranpac_train_only.zip`, SHA-256
+`228da0828c7f6964bcc8f7da92258efa20b00eef0fc83679246ce0ae2a0c8f52`.
+All eight gates passed on the locked CIFAR train-only stream. This closes the
+initial non-FLY frontend gate but remains one controlled development seed.
 
 ### M5 -- equal-budget alternatives
 

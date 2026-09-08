@@ -220,3 +220,29 @@ The returned M3 artifact was then audited read-only. ZIP SHA-256 is
 it contains only the result and byte-identical locked config. All ten records,
 all five gates, source hashes, clean commit identity, train-only contract, and
 state accounting passed. Final decision: `PASS_M3_FLY_REGRESSION`.
+
+## Generic analytic Ridge M4 RanPAC gate
+
+The source-locked M4 implementation was checked locally before the GPU run:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m pytest -q tests/test_srq_generalization_m4.py `
+  tests/test_ranpac_analytic_frontend.py `
+  tests/test_analytic_ridge_backend.py `
+  tests/test_analytic_ridge_equivalence.py
+python -m pytest -q
+```
+
+Results: `23 passed, 19 warnings` for the focused suite and `505 passed, 20
+warnings` for the full repository suite. The returned artifact was then read
+and decompressed without extracting sample data. ZIP SHA-256 is
+`228da0828c7f6964bcc8f7da92258efa20b00eef0fc83679246ce0ae2a0c8f52`;
+it contains exactly `m4_results.json` and `config.json`. The config is
+byte-identical to the locked repository file. Result SHA-256 is
+`1afb59eeb6047c1dcdde2da14da27c0c8763b1b06bf43baa8f9b38019e39cfcc`.
+
+The artifact reports clean source commit `47a789b`, ten task records,
+`uses_test_set=false`, null numerical failure, and all eight gates true. Source
+and split identities match the locked protocol. Final decision:
+`PASS_M4_RANPAC_TRAIN_ONLY`.

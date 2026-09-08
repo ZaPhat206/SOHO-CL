@@ -242,6 +242,35 @@ solver residual `1.61e-6`, nhưng relative logit drift vẫn là 0.167. Tất c�
 đều pass với trạng thái `PASS_PRIORITY5_MEMORY`. Đây là bằng chứng train-only
 trên một CIFAR/T4 run, không phải accuracy result hay bảo đảm cho mọi GPU.
 
+### 2.5. Mở rộng backend sang analytic head của RanPAC
+
+Artifact train-only `srq_generalization_m4_ranpac_train_only.zip`, SHA-256
+`228da0828c7f6964bcc8f7da92258efa20b00eef0fc83679246ce0ae2a0c8f52`,
+kiểm tra backend trên một frontend khác hẳn FLY: phép chiếu Gaussian dày từ
+768 lên 10.000 chiều rồi ReLU theo analytic head Phase-2 của RanPAC. Thí
+nghiệm không dùng WTA, không dùng projection thưa của FLY và không mở test
+set. Ridge `lambda=10^6` được chọn một lần bằng MSE trên calibration subset
+nằm hoàn toàn trong phần train, sau đó khóa cho mọi backend.
+
+| Backend | Validation AIA | Final validation | Quadratic state | Total state |
+|---|---:|---:|---:|---:|
+| Exact Gram | 92.6222 | 88.50 | 400.00 MB | 438.72 MB |
+| FP32 square-root | 92.6222 | 88.50 | 400.00 MB | 438.72 MB |
+| FP16 square-root | 92.6215 | 88.53 | 100.03 MB | 138.75 MB |
+| P2B INT8/FP32 | 92.4608 | 88.39 | 53.16 MB | 91.88 MB |
+
+Reference viết trực tiếp và generic Exact khớp tensor ở cả mười task. FP32
+square-root giữ 100% prediction agreement với Exact. P2B giảm 86.71% trạng
+thái bậc hai và 79.06% tổng persistent state, đổi lại validation AIA thấp hơn
+Exact 0.1614 điểm phần trăm. Solver residual lớn nhất là `4.65e-6`; cả tám gate
+đều pass và không có numerical failure.
+
+Kết quả này xác nhận SRQ không phụ thuộc riêng vào WTA của FLY. Cách diễn giải
+đúng là **backend additive-Ridge tái sử dụng được, đã được chứng minh trên hai
+frontend FLY và RanPAC**. Đây vẫn chỉ là một development seed, không có PETL
+và không tái tạo lịch chọn Ridge theo từng task của RanPAC gốc; do đó chưa
+được gọi là universal plug-in hoặc full RanPAC reproduction.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -284,6 +313,9 @@ trên một CIFAR/T4 run, không phải accuracy result hay bảo đảm cho m�
   `{task_id: DataLoader}` thành danh sách theo task ID. Adapter không đổi mẫu,
   model hoặc hyperparameter, nhưng không nằm trong source identity ban đầu;
   vì vậy ZIP hiện là recovery evidence, chưa phải artifact source-locked cuối.
+- Bằng chứng RanPAC mới có một development seed train-only, chỉ kiểm tra
+  random-ReLU analytic head; chưa bao gồm PETL hoặc lịch chọn Ridge theo từng
+  task của implementation RanPAC gốc.
 
 ## 4. Việc cần làm tiếp theo
 
@@ -317,3 +349,9 @@ NVML worker peak giảm 13.9% trên CIFAR/T4. Tuy nhiên, nó chưa phải phư�
 tăng accuracy so với FLY cùng width và update vẫn chậm hơn 1.60-2.09 lần. Định
 vị trung thực nhất hiện tại là “structure-preserving compression that preserves
 representation width”, không phải “better FLY in every metric”.
+
+M4 bổ sung bằng chứng quan trọng rằng cơ chế không bị khóa vào FLY: trên
+analytic head random-ReLU của RanPAC, P2B giảm 79.06% tổng persistent state và
+mất 0.1614 pp validation AIA. Vì vậy có thể nâng định vị lên “backend
+additive-Ridge tái sử dụng được, đã kiểm tra trên hai frontend,” nhưng chưa thể
+gọi là universal plug-in.

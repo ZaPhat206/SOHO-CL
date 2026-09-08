@@ -42,8 +42,11 @@ train-only direct-quantization control indicates that factor-space compression
 preserves numerical structure substantially better than direct INT8 Gram
 quantization with diagonal repair. Whole-process measurement on a Tesla T4
 reduces process-attributed peak memory by 13.9\%, although analytic updates
-remain slower. These results position SRQ-FLY as an accuracy--memory trade-off,
-not an accuracy-improving replacement for Exact FLY.
+remain slower. A controlled train-only transfer to the random-ReLU analytic
+head of RanPAC passes all preregistered gates: P2B reduces its total persistent
+state by 79.1\% with a 0.161-point validation-AIA loss. These results position
+SRQ as a reusable additive-Ridge backend demonstrated on two frontends, not an
+accuracy-improving replacement for Exact learning or a universal plug-in.
 
 \keywords{Exemplar-free continual learning \and Analytic learning \and
 State compression \and Quantization \and Square-root factorization}
@@ -74,12 +77,13 @@ preconditioners~\cite{li2025fourbit}, but SRQ-FLY uses INT8 rather than 4-bit
 storage, has no optimizer momentum or inverse fourth root, and does not inherit
 the optimizer convergence theorem.
 
-This paper makes three contributions. First, it introduces a same-width
-compressed FLY learner that retains FLY's prediction semantics. Second, it
-provides explicit state accounting and a structural positive-definiteness
-argument. Third, it evaluates the accuracy--memory trade-off against
-same-width Exact FLY, state-matched lower-width FLY, raw-feature Ridge, and
-direct-quantization controls.
+This paper makes three contributions. First, it introduces a compressed
+additive-Ridge backend whose primary instantiation retains FLY's width and
+prediction semantics. Second, it provides explicit state accounting and a
+structural positive-definiteness argument. Third, it evaluates the
+accuracy--memory trade-off against same-width Exact FLY, state-matched
+lower-width FLY, raw-feature Ridge, and direct-quantization controls, then
+tests backend transfer on a distinct RanPAC random-ReLU frontend.
 
 \section{Related Work}
 
@@ -208,6 +212,18 @@ The theorem is structural: it does not state that $\widehat H_t$ equals the
 Exact-FLY system or that prediction is unchanged under arbitrary quantization
 error.
 
+\subsection{Backend Scope}
+
+The same state update applies to any fixed explicit feature map
+$\Phi:\mathbb{R}^{d}\rightarrow\mathbb{R}^{m}$ whose Ridge statistics are
+additive. Replacing $Z_t$ in Eqs.~\ref{eq:exact-update}--\ref{eq:qr-identity}
+by $\Phi(X_t)$ leaves the backend unchanged. This interface excludes methods
+that revise historical features, require covariance downdates or negative
+sample weights, or update an inverse-RLS state without a separate equivalent
+factor formulation. We therefore evaluate portability on RanPAC's
+$\Phi(F)=\operatorname{ReLU}(FW_{\mathrm{rand}})$ map rather than claiming
+universal compatibility.
+
 \section{Experimental Protocol}
 
 \subsection{Datasets and Metrics}
@@ -242,6 +258,18 @@ SRQ-FLY's state. Raw Ridge operates directly on 768-dimensional ViT features.
 The mechanism ablation additionally compares an unmodified direct-INT8 Gram,
 a label-free Weyl-certified direct-INT8 Gram repair, and an FP16 square-root
 factor.
+
+\subsection{Controlled RanPAC Transfer}
+
+The non-FLY gate uses the Phase-2 random-ReLU analytic head of
+RanPAC~\cite{mcdonnell2023ranpac}: a fixed standard-normal projection from 768
+to 10,000 dimensions followed by ReLU. A nested training partition selects
+one Ridge coefficient by mean-squared error before outer validation. That
+coefficient, projection, expanded features, class order, and task grouping are
+then shared by the direct Gram reference, generic Exact Gram, dense FP32
+square-root, FP16 square-root, and P2B. This controlled experiment does not
+reproduce RanPAC's PETL stage or its original per-task Ridge-selection
+schedule; it isolates the analytic-backend question.
 
 \section{Results}
 
@@ -357,6 +385,43 @@ $A_{\mathrm{final}}$ Exact/SRQ \\
 \end{tabular}
 \end{table}
 
+\subsection{Transfer to a RanPAC Analytic Head}
+
+Table~\ref{tab:ranpac-transfer} reports the source-locked non-FLY gate on one
+CIFAR-100 train-only development stream. Train-only calibration selected
+$\lambda=10^6$. The independent direct equations and generic Exact backend
+were tensor-identical after every task. Dense FP32 square-root preserved 100\%
+prediction agreement; its maximum system, weight, and logit relative errors
+were $2.10\times10^{-6}$, $1.24\times10^{-5}$, and
+$9.43\times10^{-5}$.
+
+\begin{table}
+\caption{Controlled RanPAC Phase-2 transfer on one train-only CIFAR stream.
+State values use decimal MB and include the dense random projection; quadratic
+state isolates the Gram or stored factor.}
+\label{tab:ranpac-transfer}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Backend & Validation AIA & $A_{\mathrm{final}}$ & Quadratic state (MB) &
+Total state (MB) \\
+\midrule
+Exact Gram & 92.6222 & 88.50 & 400.00 & 438.72 \\
+FP32 square-root & 92.6222 & 88.50 & 400.00 & 438.72 \\
+FP16 square-root & 92.6215 & 88.53 & 100.03 & 138.75 \\
+P2B INT8/FP32 & 92.4608 & 88.39 & 53.16 & 91.88 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+P2B reduces the quadratic state by 86.7\% and total persistent state by
+79.1\% relative to Exact, with a 0.161-point validation-AIA loss. The maximum
+solver residual across all paths and tasks is $4.65\times10^{-6}$. All eight
+predeclared gates pass. This supports reuse across FLY/WTA and
+RanPAC/random-ReLU frontends, while the single development seed and controlled
+head prevent a claim of full RanPAC reproduction.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
@@ -405,7 +470,11 @@ Future work should optimize the factor update, repeat process-isolated memory
 measurement, evaluate packed INT4 with real byte accounting, and test
 error-feedback variants whose residual state is included in the memory budget.
 Additional untouched datasets and backbones are required before making broad
-generalization claims.
+generalization claims. The RanPAC transfer currently uses one train-only
+development seed, omits PETL, and replaces the original per-task Ridge
+schedule with one fixed train-only-selected coefficient so that every backend
+solves the same additive system. It establishes frontend portability, not a
+reproduction of published RanPAC accuracy.
 
 \section{Conclusion}
 
@@ -416,8 +485,11 @@ same-width AIA changes. State-matched and direct-quantization controls support
 the value of preserving representation width and positive-definite factor
 structure. Whole-process measurement confirms a smaller, though still
 meaningful, runtime-memory benefit. The principal remaining cost is slower
-analytic update, and the present evidence supports a constrained
-accuracy--memory claim rather than superiority on every metric.
+analytic update. A controlled RanPAC transfer further demonstrates that the
+backend is not tied to FLY's sparse WTA code. The present evidence therefore
+supports a reusable-backend claim for the explicit additive-Ridge family on
+two tested frontends, rather than superiority on every metric or universal
+plug-in compatibility.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or
