@@ -92,12 +92,13 @@ source-locked evidence by this ledger update.
 
 ## Open paper evidence
 
-- no independent non-FLY analytic frontend has passed a plug-in gate;
-- no low-rank or streaming-sketch baseline has been evaluated at matched
-  persistent bytes;
+- frontend portability has only been demonstrated on one train-only RanPAC
+  random-ReLU stream without PETL;
+- equal-budget evidence includes one fixed signed CountSketch but no learned,
+  low-rank, Nystr\"om, or Frequent-Directions alternative;
 - no second-backbone result;
-- whole-process memory has one isolated run per method on one Tesla T4 rather
-  than a repeated or cross-hardware interval;
+- whole-process memory has four paired repetitions on one Tesla T4 but no
+  cross-hardware interval;
 - the legacy ImageNet-R processed split failed the content-disjointness audit
   with 19 cross-split duplicate hashes;
 - no error-feedback or true packed lower-bit result;
@@ -250,3 +251,39 @@ INT8 effective-system drift followed by stronger downstream amplification at
 20k. They do not prove causality or ill-conditioning: M7 uses one seed and a
 randomized system-action estimate rather than a spectral norm or condition
 number. M6 therefore remains a formal failure.
+
+## M9 repeated whole-process systems audit
+
+- formal status: `PASS_M9_REPEATED_SYSTEMS_TRAIN_ONLY`, CIFAR train-only;
+- evidence ZIP SHA-256:
+  `71e84eeddc24066d250d93328b87561ccad0f0b9cac09a619f66c128b3f7167f`;
+- result SHA-256:
+  `43725ef3d1c9c9faff903117848a812ce6e7b917451c81bfb205a04c2812cf8f`;
+- source commit: `22787d1f3b9621ccd5c7cbe9df212738aaa396ab`, clean checkout;
+- scope: four paired repetitions, eight fresh workers, balanced method order,
+  one Tesla T4 and one software stack;
+- all nine M9 gates and every nested Priority-5 gate pass;
+- maximum solver relative residual: `2.85e-6`;
+- fixed-probe prediction agreement: `99.609%` in every pair;
+- persistent state, Exact / P2B: `423.44 / 92.66 MiB`, a `78.12%` reduction;
+- serialized checkpoint, Exact / P2B: `446.33 / 89.29 MiB`, a `79.99%`
+  reduction;
+- analytic PyTorch allocated peak, Exact / P2B:
+  `1802.76 / 1405.30 MiB`, a `22.05%` reduction;
+- analytic PyTorch reserved peak, Exact / P2B: `2422 / 2062 MiB`, a `14.86%`
+  reduction;
+- analytic process-NVML peak, Exact / P2B: `2586 / 2228 MiB`, a `13.84%`
+  reduction;
+- whole-process worker-NVML peak, Exact / P2B: `2588 / 2228 MiB`, a `13.91%`
+  reduction;
+- analytic-stage seconds, Exact / P2B:
+  `12.72+/-0.20 / 23.07+/-0.17`, paired ratio `1.8138+/-0.0182`;
+- total measured-stage seconds, Exact / P2B:
+  `621.69+/-6.22 / 629.60+/-0.91`, paired ratio `1.0128+/-0.0110`.
+
+Memory and byte metrics land on identical plateaus in all four runs; this is
+consistent with deterministic tensor shapes and allocator behavior in the
+isolated workload, not a zero-uncertainty claim. The repeated result confirms
+the earlier memory reduction and narrows the end-to-end slowdown estimate to
+about 1.3% for this feature-extraction-dominated pipeline. It does not
+generalize the ratios beyond the measured GPU/software stack.

@@ -214,7 +214,7 @@ Gate: each claimed bound follows from the stated recurrence, distinguishes
 local quantization error from cumulative effective-system error, and matches
 the quantities measured in M7.
 
-### M9 -- repeated systems evidence
+### M9 -- repeated systems evidence (PASS)
 
 Work: run at least three isolated systems repetitions separating persistent
 bytes, checkpoint bytes, PyTorch allocated/reserved peaks, process NVML peak,
@@ -223,8 +223,17 @@ and per-stage time.
 Implementation: four paired repetitions are locked in
 `configs/srq_generalization_m9_repeated_systems_train_only.json`, with balanced
 Exact/SRQ execution order and eight fresh whole-process workers. The notebook
-is `notebooks/srq_generalization_m9_repeated_systems_colab.ipynb`; the full
-measurement has not yet been executed.
+is `notebooks/srq_generalization_m9_repeated_systems_colab.ipynb`.
+
+Recorded artifact: `srq_generalization_m9_repeated_systems_train_only.zip`,
+SHA-256
+`71e84eeddc24066d250d93328b87561ccad0f0b9cac09a619f66c128b3f7167f`.
+All nine gates pass. Across four paired runs, SRQ uses 21.88% of Exact's
+persistent state, 20.01% of its serialized-checkpoint bytes, 77.95% of its
+analytic PyTorch allocated peak, and 86.09% of its process-attributed NVML
+whole-process peak. Its analytic stage is 1.814 times slower, whereas the sum
+of measured pipeline stages is 1.013 times slower. These results remain scoped
+to one Tesla T4 and one software stack.
 
 Gate: claims and plots expose the remaining quadratic scaling and slower
 update rather than hiding them.

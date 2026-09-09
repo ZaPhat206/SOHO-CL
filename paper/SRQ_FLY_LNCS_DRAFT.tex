@@ -41,8 +41,8 @@ by 79.1\%; at equal state it outperforms reduced-width Exact and CountSketch
 by 0.484 and 0.572 AIA points. A seven-width diagnostic reveals a formal
 0.25-point retention-gate failure at width 20,000, while task-wise errors are
 consistent with cumulative INT8 system drift and downstream amplification.
-Whole-process peak memory falls 13.9\% on one Tesla T4, but updates remain
-slower. SRQ is therefore an accuracy--memory trade-off for additive-Ridge
+Across four paired runs on one Tesla T4, whole-process peak memory falls
+13.9\%, but updates remain slower. SRQ is therefore an accuracy--memory trade-off for additive-Ridge
 heads, not a universal plug-in or an accuracy-improving replacement for Exact
 learning.
 
@@ -610,30 +610,46 @@ remains a formal failure.
 
 \subsection{Whole-Process Memory}
 
-Table~\ref{tab:memory} separates deployed state from runtime peaks. On one
-Tesla T4 train-only run, SRQ-FLY reduces process-attributed NVML peak by 13.9\%
-and analytic-stage PyTorch allocation peak by 22.0\%. The reduction is smaller
+Table~\ref{tab:memory} separates deployed state, serialized checkpoint size,
+and runtime peaks over four paired train-only repetitions on one Tesla T4.
+SRQ-FLY reduces process-attributed whole-process NVML peak by 13.9\% and
+analytic-stage PyTorch allocation peak by 22.0\%. The reduction is smaller
 than the state reduction because feature extraction and common workspaces are
 not compressed.
 
 \begin{table}
-\caption{Whole-process CIFAR-100/Tesla T4 measurement.}
+\caption{Repeated whole-process CIFAR-100/Tesla T4 measurement. Times are
+mean $\pm$ sample standard deviation over four paired repetitions. Memory
+plateaus are identical across repetitions.}
 \label{tab:memory}
 \centering
 \small
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrr}
 \toprule
 Metric & Exact FLY & SRQ-FLY & Change \\
 \midrule
 Persistent state (MiB) & 423.44 & 92.66 & $-78.1\%$ \\
+Serialized checkpoint (MiB) & 446.33 & 89.29 & $-80.0\%$ \\
 Analytic peak allocated (MiB) & 1,802.76 & 1,405.30 & $-22.0\%$ \\
 Analytic peak reserved (MiB) & 2,422 & 2,062 & $-14.9\%$ \\
-NVML worker peak (MiB) & 2,588 & 2,228 & $-13.9\%$ \\
-Analytic-stage time (s) & 12.01 & 22.46 & $+87.0\%$ \\
-Total measured stage time (s) & 542.50 & 557.25 & $+2.7\%$ \\
+NVML analytic worker peak (MiB) & 2,586 & 2,228 & $-13.8\%$ \\
+NVML whole-process worker peak (MiB) & 2,588 & 2,228 & $-13.9\%$ \\
+Analytic-stage time (s) & $12.72\pm0.20$ & $23.07\pm0.17$ & $+81.4\%$ \\
+Total measured-stage time (s) & $621.69\pm6.22$ & $629.60\pm0.91$ & $+1.3\%$ \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
+
+All nine integrity gates pass, and the maximum solver residual is
+$2.85\times10^{-6}$. Byte counts and peak-memory values have zero observed
+variance because tensor shapes, allocator behavior, and the isolated peak are
+deterministic in this workload; this does not imply zero uncertainty on other
+hardware. The paired analytic-time ratio is $1.8138\pm0.0182$, whereas the
+total measured-stage ratio is $1.0128\pm0.0110$. Feature extraction takes
+approximately 600 seconds per worker and therefore masks most of the slower
+analytic update in the pipeline total.
 
 \section{Limitations and Discussion}
 
@@ -644,8 +660,9 @@ triangular solves after each task. Its 97--105 MB state also remains much
 larger than raw-feature Ridge. The current implementation is INT8 rather than
 true packed INT4 and has no error feedback.
 
-System memory has been measured only once on CIFAR-100 and a Tesla T4. All
-accuracy experiments use one frozen ViT-B/16. Repeated final evaluations reuse
+System memory has been measured in four paired repetitions, but only on
+CIFAR-100, one Tesla T4, and one software stack. All accuracy experiments use
+one frozen ViT-B/16. Repeated final evaluations reuse
 the same dataset test split, so replicate variation reflects class order and
 projection seeds rather than new dataset sampling. The ImageNet-R split has a
 known duplicate-content limitation. Feature and WTA caches contain
@@ -653,7 +670,7 @@ sample-level data and must not be included in a deployed checkpoint or counted
 as evidence that the complete experiment is sample-free.
 
 Future work should optimize the factor update, repeat process-isolated memory
-measurement, evaluate packed INT4 with real byte accounting, and test
+measurement on other GPU architectures, evaluate packed INT4 with real byte accounting, and test
 error-feedback variants whose residual state is included in the memory budget.
 Additional untouched datasets and backbones are required before making broad
 generalization claims. The RanPAC transfer currently uses one train-only
@@ -680,7 +697,7 @@ SRQ-FLY compresses the analytic state of FLY without reducing its
 reduces persistent state by approximately four fifths while causing only small
 same-width AIA changes. State-matched and direct-quantization controls support
 the value of preserving representation width and positive-definite factor
-structure. Whole-process measurement confirms a smaller, though still
+structure. Repeated whole-process measurement confirms a smaller, though still
 meaningful, runtime-memory benefit. The principal remaining cost is slower
 analytic update. A controlled RanPAC transfer further demonstrates that the
 backend is not tied to FLY's sparse WTA code. The present evidence therefore

@@ -322,3 +322,30 @@ weight, and logit errors are `0.00859 / 0.0272 / 0.3178` at width 10k and
 `PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY` as a diagnostic integrity result. It
 does not alter M6's formal failure and does not establish a condition number
 or a causal effect.
+
+## M9 repeated whole-process systems artifact
+
+The returned ZIP was audited read-only. SHA-256 is
+`71e84eeddc24066d250d93328b87561ccad0f0b9cac09a619f66c128b3f7167f`;
+it passes ZIP CRC and contains the locked config, runbook, manifest, eight
+worker records, eight final stage markers, aggregate JSON, two CSV files, and
+two SVG figures. Result SHA-256 is
+`43725ef3d1c9c9faff903117848a812ce6e7b917451c81bfb205a04c2812cf8f`,
+matching the manifest. The embedded config SHA-256 is
+`8d49d927e9adf532f1c2536fef1a2ab6b24f04febdd3da10c1ed736c648a0787`.
+
+The artifact reports source commit `22787d1`, `uses_test_set=false`, four
+paired repetitions in the locked balanced order, eight complete workers, and
+all nine gates true. Every nested Priority-5 gate passes. The eight rows in
+`m9_repetitions.csv` and 24 rows in `m9_summary.csv` match the JSON scalar
+values; both SVGs parse as valid XML. The maximum solver residual is
+`2.85e-6`, and the minimum NVML worker sample count is 29,729.
+
+SRQ/Exact ratios are `0.21884` for persistent state, `0.20005` for serialized
+checkpoint size, `0.77953` for analytic PyTorch allocated peak, `0.85136` for
+analytic reserved peak, `0.86156` for analytic process-NVML peak, and
+`0.86090` for whole-process worker-NVML peak. The paired analytic-time ratio
+is `1.8138+/-0.0182`; the total measured-stage ratio is
+`1.0128+/-0.0110`. Final decision:
+`PASS_M9_REPEATED_SYSTEMS_TRAIN_ONLY`, scoped to one Tesla T4 and one software
+stack.

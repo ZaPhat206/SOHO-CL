@@ -242,6 +242,10 @@ solver residual `1.61e-6`, nhưng relative logit drift vẫn là 0.167. Tất c�
 đều pass với trạng thái `PASS_PRIORITY5_MEMORY`. Đây là bằng chứng train-only
 trên một CIFAR/T4 run, không phải accuracy result hay bảo đảm cho mọi GPU.
 
+Kết quả một lần chạy này được giữ như bằng chứng lịch sử. Bảng M9 ở Mục 2.10
+là số liệu systems chính dùng trong paper vì đã lặp bốn lần và bổ sung kích
+thước checkpoint.
+
 ### 2.5. Mở rộng backend sang analytic head của RanPAC
 
 Artifact train-only `srq_generalization_m4_ranpac_train_only.zip`, SHA-256
@@ -401,6 +405,39 @@ Cuối cùng, prediction top-1 chắc chắn không đổi nếu sai số logit 
 Exact. Đây là điều kiện đủ, không phải điều kiện cần. Các kết quả này là bound
 perturbation của hệ Ridge; chúng không phải định lý hội tụ của Shampoo.
 
+### 2.10. Xác nhận bộ nhớ toàn tiến trình qua bốn lần lặp
+
+Artifact `srq_generalization_m9_repeated_systems_train_only.zip`, SHA-256
+`71e84eeddc24066d250d93328b87561ccad0f0b9cac09a619f66c128b3f7167f`,
+lặp lại phép đo hệ thống bằng bốn cặp Exact/SRQ trên một Tesla T4. Tám worker
+đều là tiến trình mới; thứ tự chạy được cân bằng Exact/SRQ, SRQ/Exact,
+Exact/SRQ, SRQ/Exact. Mỗi worker tự load ViT, trích xuất đủ 50.000 feature
+train, chạy mười update, probe và ghi checkpoint tạm bằng `torch.save`. Không
+có test set hoặc feature cache dùng lại.
+
+| Đại lượng, mean $\pm$ sample SD qua 4 lần lặp | Exact FLY | SRQ P2B | Thay đổi |
+|---|---:|---:|---:|
+| Persistent state (MiB) | 423,44 $\pm$ 0 | 92,66 $\pm$ 0 | giảm 78,1% |
+| Checkpoint tuần tự hóa (MiB) | 446,33 $\pm$ 0 | 89,29 $\pm$ 0 | giảm 80,0% |
+| PyTorch analytic peak allocated (MiB) | 1.802,76 $\pm$ 0 | 1.405,30 $\pm$ 0 | giảm 22,0% |
+| PyTorch analytic peak reserved (MiB) | 2.422 $\pm$ 0 | 2.062 $\pm$ 0 | giảm 14,9% |
+| NVML analytic worker peak (MiB) | 2.586 $\pm$ 0 | 2.228 $\pm$ 0 | giảm 13,8% |
+| NVML whole-process worker peak (MiB) | 2.588 $\pm$ 0 | 2.228 $\pm$ 0 | giảm 13,9% |
+| Thời gian analytic stage (s) | 12,72 $\pm$ 0,20 | 23,07 $\pm$ 0,17 | chậm 1,814 lần |
+| Tổng thời gian các stage đã đo (s) | 621,69 $\pm$ 6,22 | 629,60 $\pm$ 0,91 | chậm 1,013 lần |
+
+Tất cả chín gate M9 và mọi gate Priority 5 bên trong đều pass; solver residual
+lớn nhất là `2,85e-6`. State, checkpoint và peak memory rơi đúng cùng một mức
+ở cả bốn lần lặp vì kích thước tensor và đường cấp phát trong workload tách
+biệt này là xác định. SD bằng 0 ở đây không có nghĩa các GPU hoặc deployment
+khác cũng cho đúng cùng con số.
+
+Kết quả củng cố hai kết luận. Thứ nhất, giảm state khoảng 78% chuyển thành giảm
+peak toàn tiến trình nhỏ hơn, khoảng 14%, vì backbone và feature extraction
+không được nén. Thứ hai, analytic update thực sự chậm hơn khoảng 81%; tổng các
+stage chỉ chậm hơn khoảng 1,3% vì riêng feature extraction đã chiếm khoảng 600
+giây mỗi worker.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -427,8 +464,8 @@ perturbation của hệ Ridge; chúng không phải định lý hội tụ của
 - State 97-105 MB vẫn lớn hơn raw Ridge nhiều lần; đây là memory-accuracy
   trade-off, không phải phương pháp nhỏ nhất.
 - Code là int8, chưa phải 4-bit như bài ICCV, và chưa dùng error feedback.
-- Whole-process memory hiện mới được đo một lần trên CIFAR-100/T4; chưa có lặp
-  lại để lập khoảng tin cậy và chưa chứng minh mức giảm tương tự trên GPU khác.
+- Whole-process memory đã được đo bốn lần trên CIFAR-100/T4, nhưng chưa chứng
+  minh mức giảm tương tự trên kiến trúc GPU hoặc software stack khác.
 - Frozen feature/WTA caches trên disk chứa dữ liệu theo sample và có thể rất
   lớn. Chúng là hạ tầng thí nghiệm, không phải learner state, và không được đóng
   gói vào checkpoint khi tuyên bố exemplar-free.
@@ -456,9 +493,8 @@ perturbation của hệ Ridge; chúng không phải định lý hội tụ của
 1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
    width, lambda, seed hoặc test-time decision.
-2. **Lặp systems measurement nếu claim rộng hơn.** Chạy lại Priority 5 trên
-   nhiều replicate hoặc GPU khác nếu muốn tuyên bố mức giảm peak tổng quát;
-   luôn tách NVML process, NVML device, PyTorch allocated và reserved.
+2. **Mở rộng systems measurement sang GPU khác nếu claim rộng hơn.** Luôn tách
+   NVML process, NVML device, PyTorch allocated và reserved.
 3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
@@ -475,8 +511,8 @@ perturbation của hệ Ridge; chúng không phải định lý hội tụ của
 SRQ-FLY hiện là một hướng **khả thi và có tín hiệu paper rõ về
 memory-accuracy trade-off**: giảm khoảng bốn phần năm persistent state của
 Exact FLY trong khi chỉ mất 0.02-0.08 pp AIA, đồng thời hơn FLY giảm-width tại
-cùng state budget từ 0.132 đến 0.856 pp AIA. Whole-process audit còn xác nhận
-NVML worker peak giảm 13.9% trên CIFAR/T4. Tuy nhiên, nó chưa phải phương pháp
+cùng state budget từ 0.132 đến 0.856 pp AIA. Whole-process audit qua bốn lần
+lặp còn xác nhận NVML worker peak giảm 13.9% trên CIFAR/T4. Tuy nhiên, nó chưa phải phương pháp
 tăng accuracy so với FLY cùng width và update vẫn chậm hơn 1.60-2.09 lần. Định
 vị trung thực nhất hiện tại là “structure-preserving compression that preserves
 representation width”, không phải “better FLY in every metric”.
