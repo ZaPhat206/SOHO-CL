@@ -240,7 +240,7 @@ update rather than hiding them.
 
 ### M10 -- optional GACL generalized-stream adapter
 
-Status: implementation ready; real train-only run pending. GACL is attempted
+Status: PASS on the locked train-only controlled run. GACL is attempted
 only after the equal-budget gate. Its inverse-RLS recurrence is tested against
 the additive primal Ridge and joint solutions on streams containing both
 exposed and unexposed classes. Its original exact/joint weight invariance is
@@ -256,6 +256,23 @@ augmentation, and a train-only development subset, so it is explicitly not an
 official end-to-end GACL reproduction. Full definitions and gates are in
 `docs/research/SRQ_GENERALIZATION_M10_RUNBOOK.md`; the notebook is
 `notebooks/srq_generalization_m10_gacl_colab.ipynb`.
+
+Recorded artifact: `srq_generalization_m10_gacl_train_only.zip`, SHA-256
+`8002ac80be9845186b8d9a753d0cf786f0e581b401c927dbf7a0dc95b713208c`.
+All ten gates pass. Inverse-RLS and unquantized FP32 square-root have identical
+task-boundary accuracy and at least 99.999994% prediction agreement; their
+maximum relative weight and logit errors are $3.05\times10^{-5}$ and
+$1.00\times10^{-5}$. P2B reduces total state by 72.64% relative to FP32
+square-root while losing 0.139 validation-AIA points and 0.200 final-accuracy
+points. P2B takes 1.75 times the FP32 square-root update time and 3.79 times
+the inverse-RLS reference time over the 35 matched mini-batch updates.
+
+The archived result predates a reporting-only fix: compressed factor tensors
+named `factor.*` were omitted from `quadratic_persistent_bytes`, so that
+derived field is zero for FP16 and P2B. Total and backend state, the reduction
+gate, accuracy, timing, and numerical diagnostics are unaffected. The correct
+factor payloads derived from the archived backend totals are 25,015,000 bytes
+for FP16 and 13,298,596 bytes for P2B.
 
 ### M11 -- optional adaptive precision
 

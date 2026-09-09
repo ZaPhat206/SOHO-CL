@@ -360,7 +360,11 @@ def _quadratic_bytes(backend) -> int:
     names = (
         ["factor"]
         if "factor" in tensors
-        else [name for name in tensors if name.startswith("factor_")]
+        else [
+            name
+            for name in tensors
+            if name.startswith("factor_") or name.startswith("factor.")
+        ]
     )
     return persistent_tensor_bytes({name: tensors[name] for name in names})
 

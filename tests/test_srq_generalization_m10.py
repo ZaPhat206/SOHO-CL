@@ -150,6 +150,42 @@ def test_m10_small_generalized_stream_passes_equivalence_and_integrity():
     assert result["summary"]["maximum_inverse_primal_weight_relative_error"] < 2e-4
 
 
+def test_m10_quadratic_bytes_counts_dense_and_compressed_factor_storage():
+    dense = m10.DenseSquareRootBackend(
+        dimension=12,
+        ridge_lambda=3.0,
+        update_backend="blocked_qr",
+        device=torch.device("cpu"),
+    )
+    compressed = m10.SquareRootBackend(
+        dimension=12,
+        ridge_lambda=3.0,
+        storage_mode="int8",
+        block_size=4,
+        group_size=3,
+        update_panel_size=5,
+        quantization_batch_blocks=2,
+        device=torch.device("cpu"),
+    )
+    generator = torch.Generator().manual_seed(91)
+    codes = torch.randn(18, 12, generator=generator)
+    labels = torch.arange(3).repeat(6)
+    dense.update(codes, labels)
+    compressed.update(codes, labels)
+
+    assert m10._quadratic_bytes(dense) == 12 * 12 * 4
+    compressed_tensors = compressed.persistent_tensors()
+    expected = m10.persistent_tensor_bytes(
+        {
+            name: tensor
+            for name, tensor in compressed_tensors.items()
+            if name.startswith("factor.")
+        }
+    )
+    assert expected > 0
+    assert m10._quadratic_bytes(compressed) == expected
+
+
 def test_m10_notebook_is_source_locked_train_only_and_compiles():
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     code = "\n".join(

@@ -38,9 +38,9 @@ exceeds lower-width Exact FLY by 0.132--0.856 AIA points. Direct-quantization
 controls support factor-space compression over INT8 Gram quantization with
 SPD repair. A train-only transfer to RanPAC's random-ReLU head reduces state
 by 79.1\%; at equal state it outperforms reduced-width Exact and CountSketch
-by 0.484 and 0.572 AIA points. A seven-width diagnostic reveals a formal
-0.25-point retention-gate failure at width 20,000, while task-wise errors are
-consistent with cumulative INT8 system drift and downstream amplification.
+by 0.484 and 0.572 AIA points. On a controlled GACL-style generalized stream,
+P2B reduces state by 72.6\% with a 0.139-point AIA loss. At width 20,000,
+fixed INT8 narrowly fails a predeclared 0.25-point retention gate.
 Across four paired runs on one Tesla T4, whole-process peak memory falls
 13.9\%, but updates remain slower. SRQ is therefore an accuracy--memory trade-off for additive-Ridge
 heads, not a universal plug-in or an accuracy-improving replacement for Exact
@@ -82,7 +82,8 @@ structural positive-definiteness argument together with cumulative system,
 solution, logit, and margin perturbation bounds. Third, it evaluates the
 accuracy--memory trade-off against same-width Exact FLY, state-matched
 lower-width FLY, raw-feature Ridge, and direct-quantization controls, then
-tests backend transfer on a distinct RanPAC random-ReLU frontend.
+tests backend transfer on a distinct RanPAC random-ReLU frontend and on a
+controlled GACL-style generalized stream with class reappearance.
 
 \section{Related Work}
 
@@ -333,6 +334,20 @@ square-root, FP16 square-root, and P2B. This controlled experiment does not
 reproduce RanPAC's PETL stage or its original per-task Ridge-selection
 schedule; it isolates the analytic-backend question.
 
+\subsection{Controlled GACL-Style Generalized Stream}
+
+To test a different update regime, we adapt the inverse-RLS equations of
+GACL~\cite{zhuang2024gacl} to the equivalent primal additive-Ridge system. The
+locked control uses a width-5,000 bias-free random linear--ReLU map,
+$\gamma=100$, and a five-task fixed Si-Blurry stream with $N=50$ and $M=10$.
+Old and newly exposed classes can coexist in a mini-batch, and all four
+backends update after the same 35 mini-batches: the GACL inverse-RLS reference,
+FP32 square-root, FP16 square-root, and P2B. The experiment uses one seed, 2,000
+fit and 500 validation samples drawn only from CIFAR-100 training data,
+cached ViT-B/16 features, and \texttt{online\_iter}=1. It therefore tests the
+equation adapter and compression schedule, not the published end-to-end GACL
+system with DeiT-small, augmentation, and \texttt{online\_iter}=3.
+
 \section{Results}
 
 \subsection{Same-Width Accuracy--Memory Trade-off}
@@ -483,6 +498,44 @@ solver residual across all paths and tasks is $4.65\times10^{-6}$. All eight
 predeclared gates pass. This supports reuse across FLY/WTA and
 RanPAC/random-ReLU frontends, while the single development seed and controlled
 head prevent a claim of full RanPAC reproduction.
+
+\subsection{Controlled Transfer to GACL-Style Updates}
+
+Table~\ref{tab:gacl-transfer} evaluates whether SRQ remains usable when the
+analytic state is updated after every mini-batch and classes can reappear.
+Before quantization, inverse-RLS and FP32 square-root produce identical
+task-boundary accuracy. Their maximum relative weight and logit errors are
+$3.05\times10^{-5}$ and $1.00\times10^{-5}$, and their minimum prediction
+agreement is 99.999994\%. This validates the primal adapter independently of
+the compression result.
+
+\begin{table}
+\caption{Controlled GACL-style train-only stream on one CIFAR-100 development
+seed. State uses decimal MB and includes projection, analytic backend,
+classifier, target statistic, and class counts.}
+\label{tab:gacl-transfer}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Backend & Validation AIA & $A_{\mathrm{final}}$ & State (MB) & Update (s) \\
+\midrule
+GACL inverse-RLS FP32 & 84.8257 & 85.60 & 117.360 & 0.779 \\
+FP32 square-root & 84.8257 & 85.60 & 119.360 & 1.688 \\
+FP16 square-root & 84.8257 & 85.60 & 44.375 & 2.646 \\
+P2B INT8/FP32 & 84.6869 & 85.40 & 32.659 & 2.956 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Relative to FP32 square-root, P2B reduces total state by 72.64\% while losing
+0.139 validation-AIA points and 0.200 final-accuracy points. It is 1.75 times
+slower than FP32 square-root and 3.79 times slower than inverse-RLS on this
+short controlled run. P2B's relative logit error grows from 0.0455 after task
+1 to 0.2075 after task 5, although its final prediction agreement remains
+97.20\%. Thus, the result supports compatibility with the tested generalized
+stream, while exposing cumulative approximation drift and a substantial
+update-time cost. All ten preregistered gates pass; no test split is used.
 
 \subsection{Equal-Budget Alternatives}
 
@@ -689,6 +742,14 @@ that fixed INT8 precision scales without increasing approximation loss. The
 task-wise diagnostic is consistent with cumulative effective-system drift and
 stronger downstream amplification at 20k, but its one-seed randomized probes
 do not establish causality or ill-conditioning.
+The GACL-style experiment is likewise a controlled equation-level adapter,
+not an official reproduction: it uses one seed, a small train-only subset,
+cached ViT-B/16 features, no image augmentation, and
+\texttt{online\_iter}=1. Although it includes class reappearance and matched
+mini-batch-frequency compression, it cannot establish compatibility with
+GACL's changing representation, published accuracy, or every generalized
+stream. Its growing P2B logit drift and 3.79-times update cost relative to the
+inverse-RLS reference are explicit limitations.
 
 \section{Conclusion}
 
@@ -699,10 +760,12 @@ same-width AIA changes. State-matched and direct-quantization controls support
 the value of preserving representation width and positive-definite factor
 structure. Repeated whole-process measurement confirms a smaller, though still
 meaningful, runtime-memory benefit. The principal remaining cost is slower
-analytic update. A controlled RanPAC transfer further demonstrates that the
-backend is not tied to FLY's sparse WTA code. The present evidence therefore
-supports a reusable-backend claim for the explicit additive-Ridge family on
-two tested frontends. An equal-budget experiment further supports preserving
+analytic update. A controlled RanPAC transfer demonstrates that the backend
+is not tied to FLY's sparse WTA code, while a controlled GACL-style stream
+demonstrates the same primal backend under class reappearance and
+mini-batch-frequency updates. The present evidence therefore supports a
+reusable-backend claim for the explicitly tested fixed-feature additive-Ridge
+settings, not an arbitrary learner. An equal-budget experiment supports preserving
 the full representation width over the tested reduced-width and signed-sketch
 alternatives, while exposing much slower analytic updates. The evidence does
 not support superiority on every metric, global Pareto optimality, or

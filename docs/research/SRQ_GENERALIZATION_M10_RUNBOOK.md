@@ -1,8 +1,7 @@
 # SRQ generalization M10: controlled GACL adapter
 
-Status: implementation ready; the real CIFAR-100 train-only run has not yet
-been executed. M10 does not authorize test-feature extraction or a held-out
-test evaluation.
+Status: PASS on the locked CIFAR-100 train-only controlled run. M10 does not
+authorize test-feature extraction or a held-out test evaluation.
 
 ## Question
 
@@ -125,3 +124,35 @@ does not establish reproduction of GACL's published accuracy, compatibility
 with a changing backbone, or a universal plug-in claim. A later official
 DeiT/checkpoint reproduction would still be required for the strongest GACL
 claim.
+
+## Recorded result
+
+Artifact: `srq_generalization_m10_gacl_train_only.zip`; SHA-256
+`8002ac80be9845186b8d9a753d0cf786f0e581b401c927dbf7a0dc95b713208c`.
+The artifact records commit
+`a2cdc3485bc7fb24fde90b5f7a47694473468258`, a clean checkout, no test-set
+use, the locked upstream GACL identity, and
+`PASS_M10_GACL_CONTROLLED_TRAIN_ONLY`. All ten declared gates pass.
+
+| Path | Validation AIA | Final validation | Total state | Update time |
+|---|---:|---:|---:|---:|
+| GACL inverse-RLS FP32 | 84.8257 | 85.60 | 117,360,000 B | 0.779 s |
+| FP32 square-root | 84.8257 | 85.60 | 119,360,400 B | 1.688 s |
+| FP16 square-root | 84.8257 | 85.60 | 44,375,400 B | 2.646 s |
+| P2B INT8/FP32 | 84.6869 | 85.40 | 32,658,996 B | 2.956 s |
+
+The maximum inverse-RLS/FP32-square-root relative weight and logit errors are
+`3.054e-5` and `1.002e-5`; minimum prediction agreement is `0.99999994`.
+P2B reduces total state by 72.64% relative to FP32 square-root, with a 0.139
+point validation-AIA loss. Its relative logit error rises from 0.0455 after
+task 1 to 0.2075 after task 5, so the result supports compatibility but also
+exposes cumulative approximation drift under mini-batch-frequency
+compression.
+
+The archived JSON has one reporting-only defect: `quadratic_persistent_bytes`
+is zero for compressed backends because the collector recognized `factor_.*`
+but not the actual `factor.*` tensor names. The authoritative total/backend
+state fields and all formal gates are correct. Subtracting target statistic,
+weights, and count metadata from the archived backend totals gives the true
+factor payloads: 25,015,000 bytes for FP16 and 13,298,596 bytes for P2B. The
+collector and regression test were corrected after artifact review.
