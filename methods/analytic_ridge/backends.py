@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import torch
 
 from .accounting import persistent_tensor_bytes
+from .adaptive_upper import AdaptiveCompressedUpper
 from .compressed_upper import CompressedUpper
 from .qr import blocked_qr_rank_update, dense_qr_rank_update
 
@@ -422,11 +423,14 @@ class SquareRootBackend(AnalyticRidgeBackend):
         first_update_backend: str = "gram_cholesky",
         quantization_backend: str = "streaming",
         quantization_batch_blocks: int = 64,
+        adaptive_budget_fraction: float | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if storage_mode not in {"float16", "int8"}:
-            raise ValueError("storage_mode must be float16 or int8")
+        if storage_mode not in {"float16", "int8", "adaptive_int8_fp16"}:
+            raise ValueError(
+                "storage_mode must be float16, int8, or adaptive_int8_fp16"
+            )
         if min(block_size, group_size, update_panel_size, quantization_batch_blocks) <= 0:
             raise ValueError("storage and update sizes must be positive")
         if update_trailing_chunk_size is not None and update_trailing_chunk_size <= 0:
@@ -435,6 +439,17 @@ class SquareRootBackend(AnalyticRidgeBackend):
             raise ValueError("invalid first update backend")
         if quantization_backend not in {"eager", "streaming"}:
             raise ValueError("invalid quantization backend")
+        if storage_mode == "adaptive_int8_fp16":
+            if (
+                adaptive_budget_fraction is None
+                or not 0.0 <= float(adaptive_budget_fraction) <= 1.0
+                or quantization_backend != "streaming"
+            ):
+                raise ValueError(
+                    "adaptive storage requires a fraction in [0, 1] and streaming"
+                )
+        elif adaptive_budget_fraction is not None:
+            raise ValueError("adaptive_budget_fraction is only for adaptive storage")
         self.storage_mode = storage_mode
         self.block_size = int(block_size)
         self.group_size = int(group_size)
@@ -443,7 +458,8 @@ class SquareRootBackend(AnalyticRidgeBackend):
         self.first_update_backend = first_update_backend
         self.quantization_backend = quantization_backend
         self.quantization_batch_blocks = int(quantization_batch_blocks)
-        self.factor: CompressedUpper | None = None
+        self.adaptive_budget_fraction = adaptive_budget_fraction
+        self.factor: CompressedUpper | AdaptiveCompressedUpper | None = None
         self.diagnostics.update(
             method="square_root",
             storage=storage_mode,
@@ -485,7 +501,18 @@ class SquareRootBackend(AnalyticRidgeBackend):
                 raise RuntimeError("square-root first update failed Cholesky")
             exact_upper = lower.T
 
-        if self.quantization_backend == "streaming":
+        adaptive_diagnostics = None
+        if self.storage_mode == "adaptive_int8_fp16":
+            compressed, relative_factor_error, adaptive_diagnostics = (
+                AdaptiveCompressedUpper.from_upper_inplace(
+                    exact_upper,
+                    block_size=self.block_size,
+                    group_size=self.group_size,
+                    budget_fraction=float(self.adaptive_budget_fraction),
+                )
+            )
+            reconstructed = exact_upper
+        elif self.quantization_backend == "streaming":
             compressed, relative_factor_error = (
                 CompressedUpper.from_upper_inplace_streaming(
                     exact_upper,
@@ -530,6 +557,8 @@ class SquareRootBackend(AnalyticRidgeBackend):
             relative_local_factor_error=relative_factor_error,
             total_rows=self.total_rows,
         )
+        if adaptive_diagnostics is not None:
+            self.diagnostics.update(adaptive_diagnostics)
         self.assert_exemplar_free_state()
 
     def persistent_tensors(self) -> dict[str, torch.Tensor]:
@@ -550,6 +579,7 @@ class SquareRootBackend(AnalyticRidgeBackend):
             first_update_backend=self.first_update_backend,
             quantization_backend=self.quantization_backend,
             quantization_batch_blocks=self.quantization_batch_blocks,
+            adaptive_budget_fraction=self.adaptive_budget_fraction,
             factor=None if self.factor is None else self.factor.state_dict(),
         )
         return state
@@ -592,12 +622,19 @@ class SquareRootBackend(AnalyticRidgeBackend):
                 != self.quantization_batch_blocks
             ):
                 raise ValueError("checkpoint quantization batch size mismatch")
+            if state.get("adaptive_budget_fraction") != self.adaptive_budget_fraction:
+                raise ValueError("checkpoint adaptive budget mismatch")
         self._load_common_values(state, dimension_field=dimension_field)
-        self.factor = (
-            None
-            if state["factor"] is None
-            else CompressedUpper.load_state_dict(state["factor"], device=self.device)
-        )
+        if state["factor"] is None:
+            self.factor = None
+        elif self.storage_mode == "adaptive_int8_fp16":
+            self.factor = AdaptiveCompressedUpper.load_state_dict(
+                state["factor"], device=self.device
+            )
+        else:
+            self.factor = CompressedUpper.load_state_dict(
+                state["factor"], device=self.device
+            )
         if self.factor is None:
             if self.total_rows:
                 raise ValueError("non-empty checkpoint is missing factor state")

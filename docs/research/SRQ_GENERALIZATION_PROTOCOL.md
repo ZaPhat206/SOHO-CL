@@ -276,10 +276,23 @@ for FP16 and 13,298,596 bytes for P2B.
 
 ### M11 -- optional adaptive precision
 
-Budget-aware FP16/INT8 block allocation is attempted only if fixed INT8 shows
-frontend-dependent error and FP16 recovers it. Precision masks and all scale
-metadata count toward persistent state. Packed INT4 and error feedback remain
-later alternatives, not prerequisites.
+Status: implementation ready; real train-only run pending. M6 supplies the
+trigger: fixed INT8 narrowly fails the width-20,000 retention gate while FP16
+passes. M11 evaluates one preregistered label-free rule at widths 10,000 and
+20,000. It promotes strict-upper blocks to FP16 by the largest reduction in
+factor reconstruction MSE per added byte, using a fixed 25% allowance between
+all-INT8 and all-FP16 strict-upper payloads. Its uint8 precision mask and all
+scale metadata count toward persistent state. The M6 artifact locks the data,
+partitions, projection prefixes, Ridge values, and Exact/P2B/FP16 references.
+Full definitions are in
+`docs/research/SRQ_GENERALIZATION_M11_RUNBOOK.md`; the notebook is
+`notebooks/srq_generalization_m11_adaptive_precision_colab.ipynb`.
+
+M11 is a development-only response to a disclosed failure, not a replacement
+for M6. A PASS would support the specific 10k/20k adaptive rule only; it would
+not establish an optimal allocation or resolve the separate GACL
+mini-batch-frequency drift. Packed INT4 and error feedback remain later
+alternatives, not prerequisites.
 
 ### M12 -- final locked evaluation
 
