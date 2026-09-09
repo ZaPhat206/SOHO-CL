@@ -240,13 +240,22 @@ update rather than hiding them.
 
 ### M10 -- optional GACL generalized-stream adapter
 
-GACL is attempted only after the equal-budget gate. Its inverse-RLS recurrence
-must first be shown equivalent to the additive primal Ridge system on streams
-containing both exposed and unexposed classes. Its original exact/joint weight
-invariance is distinguished from the controlled approximation introduced by
-quantization. Because the official setting updates by mini-batch, compression
-frequency and anytime-evaluation semantics require a separate locked adapter;
-they cannot silently reuse the task-level FLY schedule.
+Status: implementation ready; real train-only run pending. GACL is attempted
+only after the equal-budget gate. Its inverse-RLS recurrence is tested against
+the additive primal Ridge and joint solutions on streams containing both
+exposed and unexposed classes. Its original exact/joint weight invariance is
+distinguished from the controlled approximation introduced by quantization.
+Because the official setting updates by mini-batch, all M10 backends compress
+or update after every matched mini-batch rather than reusing FLY's task-level
+schedule.
+
+The locked control uses the official random-linear--ReLU structure, width
+5,000, gamma 100, five-task fixed Si-Blurry `N=50, M=10` construction and
+batch size 64. It uses cached ViT-B/16 features, `online_iter=1`, no image
+augmentation, and a train-only development subset, so it is explicitly not an
+official end-to-end GACL reproduction. Full definitions and gates are in
+`docs/research/SRQ_GENERALIZATION_M10_RUNBOOK.md`; the notebook is
+`notebooks/srq_generalization_m10_gacl_colab.ipynb`.
 
 ### M11 -- optional adaptive precision
 

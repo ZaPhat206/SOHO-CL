@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m10-gacl-controlled-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "development_subset": {
+    "fit_samples_per_class": 20,
+    "validation_samples_per_class": 5,
+    "selection_seed_offset": 1010
+  },
+  "stream": {
+    "semantics": "controlled_fixed_si_blurry_port",
+    "num_tasks": 5,
+    "disjoint_class_ratio_percent": 50,
+    "blurry_sample_ratio_percent": 10,
+    "varying_nm": false,
+    "mini_batch_size": 64,
+    "online_iter": 1,
+    "evaluation": "task_boundary_seen_class_train_validation"
+  },
+  "gacl": {
+    "upstream_repository": "https://github.com/CHEN-YIZHU/GACL",
+    "upstream_commit": "fc21369792dd95a131692ae13190c763e0ed819c",
+    "upstream_gacl_py_sha256": "9013fd5e2e59fc3bf37ea9c4b32a7367f05a0d5d83e642d9b0b6fb3ae4d62314",
+    "upstream_sampler_sha256": "6a16c476bdda9d9dfc5bf006a6699725466a0ab729e8f4a46b5ecd1a0b03a7fb",
+    "upstream_model_sha256": "a3ae8e342d7fe9f232461d2724d215077f7eb1802ca897c90b614168213a6ff2",
+    "upstream_script_sha256": "a332c38045c384e2989c07883a2d63a80b1adb4956bbb2334f4c1e036410a21f",
+    "scope": "cached_vit_b_features_not_official_deit_checkpoint",
+    "expansion_dim": 5000,
+    "projection_initializer": "pytorch_linear_default_kaiming_uniform",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "gamma": 100.0,
+    "encode_batch_size": 256
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "maximum_inverse_primal_weight_relative_error": 0.001,
+    "maximum_inverse_primal_logit_relative_error": 0.001,
+    "minimum_inverse_primal_prediction_agreement": 0.995,
+    "minimum_p2b_total_state_reduction_fraction": 0.7,
+    "maximum_p2b_validation_aia_loss_pp": 0.5,
+    "maximum_solver_relative_residual": 0.00002
+  }
+}
