@@ -175,7 +175,11 @@ def test_m10_notebook_is_source_locked_train_only_and_compiles():
         "utils/train_utils.py",
     )
     for relative_path in locked_paths:
-        digest = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+        # Source locks are portable across Windows and Linux checkouts. Git's
+        # canonical content uses LF, whereas a Windows working tree may expose
+        # CRLF or mixed endings without changing the committed source.
+        canonical = (ROOT / relative_path).read_bytes().replace(b"\r\n", b"\n")
+        digest = hashlib.sha256(canonical).hexdigest()
         assert f"'{relative_path}':'{digest}'" in code
     for cell in notebook["cells"]:
         if cell["cell_type"] == "code":
