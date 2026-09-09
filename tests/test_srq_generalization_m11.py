@@ -130,6 +130,9 @@ def test_m11_notebook_is_source_locked_train_only_and_compiles():
     assert "test.pt').exists()" in code
     assert "--source-m6-artifact" in code
     assert "--require-clean-git" in code
+    assert "source_path=Path('/content')/EXPECTED_M6_NAME" in code
+    assert "shutil.move(str(uploaded_path),str(source_path))" in code
+    assert "Artifact upload contaminated the repository." in code
     assert "m11_results.json" in code
     assert "PASS_M11_ADAPTIVE_PRECISION_TRAIN_ONLY" in code
     locked_paths = (
