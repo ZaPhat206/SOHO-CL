@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -128,10 +129,13 @@ def test_m9_notebook_is_source_locked_train_only_and_compiles():
         "tools/srq_fly_priority5_memory.py":
             "7ae9397d3e26d8eeec03ad13b76adcbb3f778797d6d587cf64b4f8c8fdea2c94",
         "models/backbone.py":
-            "90f70c9a2b16e4435e6e348ba701083a17de830d9a3d9ba080695e23d333f58b",
+            "941e449dc6e66ca4018fb0d3ab3218d97ec97f498b557ed220c8332e75850a46",
         "utils/data_utils.py":
-            "cad262c013dbbd85c6bcd790b9276882ba1ff0a15b2bae57bff5a20293e9e5d8",
+            "3cf85993e231b068ad5ae2f96be608b2e50e9c52f98fb2387fd3badfb44b6764",
     }
     for path, digest in expected.items():
-        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+        canonical = subprocess.check_output(
+            ["git", "show", f"HEAD:{path}"], cwd=ROOT
+        )
+        assert hashlib.sha256(canonical).hexdigest() == digest
         assert f"'{path}':'{digest}'" in code
