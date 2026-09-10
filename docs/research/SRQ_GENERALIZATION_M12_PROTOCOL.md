@@ -34,6 +34,18 @@ locked train-only width-20,000 gate. Its test accuracy must not be inspected.
 No alternative width, Ridge value, precision allowance, method, seed, or retry
 may be selected after M12 begins.
 
+## Protocol-recovery disclosure
+
+An initial M12 execution materialized test metrics but terminated before a
+final artifact was written. The failure came from an invalid state-byte gate:
+it required the value-sensitive adaptive mask under every locked projection
+seed to reproduce the exact intermediate bytes of the single M11 development
+seed. The recovery changes only this non-accuracy integrity check to the
+M11-locked all-INT8 floor and 25% factor-budget ceiling. No method, width,
+Ridge value, seed, precision policy, or accuracy decision changed after the
+test output was observed. This engineering recovery is not an additional
+method-selection retry and must remain disclosed with the final result.
+
 ## Authorization boundary
 
 The `authorize` command must run from a clean committed checkout while only

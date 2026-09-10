@@ -26,6 +26,8 @@ def test_m12_config_freezes_test_confirmation_without_accuracy_gate():
     assert config["uses_test_set"] is True
     assert config["test_tuning_allowed"] is False
     assert config["accuracy_based_selection"] is False
+    assert "state-byte gate" in config["protocol_recovery_disclosure"]
+    assert "no method" in config["protocol_recovery_disclosure"].lower()
     assert config["seed"] == 2025
     assert config["widths"] == [10000, 20000]
     assert config["methods"] == list(m12.METHODS)

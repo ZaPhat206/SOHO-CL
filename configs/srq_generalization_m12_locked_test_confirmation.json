@@ -9,6 +9,7 @@
   "accuracy_based_selection": false,
   "seed": 2025,
   "test_use_disclosure": "The CIFAR-100 official test split was consumed by earlier FLY studies. M12 is a source-locked confirmation of train-only-selected RanPAC backends, not a fresh first-use held-out benchmark.",
+  "protocol_recovery_disclosure": "An initial M12 execution materialized test metrics but terminated before producing a final artifact because the state-byte gate incorrectly required a value-sensitive adaptive mask to reproduce the exact intermediate bytes of one M11 seed. The recovery changes only that non-accuracy integrity check to the M11-locked byte interval; no method, width, Ridge value, seed, precision policy, or accuracy decision was changed after observing test output.",
   "num_classes": 100,
   "num_tasks": 10,
   "expected_train_samples": 50000,

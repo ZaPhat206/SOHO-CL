@@ -39,6 +39,7 @@ TOP_KEYS = {
     "schema_version", "study_id", "dataset", "model_name",
     "checkpoint_sha256", "uses_test_set", "test_tuning_allowed",
     "accuracy_based_selection", "seed", "test_use_disclosure", "num_classes",
+    "protocol_recovery_disclosure",
     "num_tasks", "expected_train_samples", "expected_test_samples",
     "replicates", "widths", "methods", "excluded_development_method",
     "selected_ridge_by_width", "source_m6", "source_m11", "source_m11b",
@@ -107,6 +108,9 @@ def _read_config(path: str | Path) -> dict:
         and config["num_tasks"] == 10
         and config["expected_train_samples"] == 50000
         and config["expected_test_samples"] == 10000
+        and isinstance(config["protocol_recovery_disclosure"], str)
+        and "state-byte gate" in config["protocol_recovery_disclosure"]
+        and "no method" in config["protocol_recovery_disclosure"].lower()
         and config["widths"] == [10000, 20000]
         and tuple(config["methods"]) == METHODS
         and config["selected_ridge_by_width"]
@@ -858,6 +862,7 @@ def run(args) -> dict:
         "uses_test_set": True, "test_tuning_allowed": False,
         "accuracy_based_selection": False,
         "test_use_disclosure": config["test_use_disclosure"],
+        "protocol_recovery_disclosure": config["protocol_recovery_disclosure"],
         "scope": {
             "frontend": "controlled RanPAC Phase-2 random-ReLU analytic head",
             "official_ranpac_reproduction": False,
