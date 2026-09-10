@@ -257,6 +257,7 @@ def test_m12_notebook_enforces_authorize_before_test_and_exports_locked_result()
         if cell["cell_type"] == "code"
     )
     assert code.index("'authorize'") < code.index("'extract-test'") < code.index("'run'")
+    assert "REPO_COMMIT='23942f1e4565c7e08cb276553d6afb7bf1d60bbe'" in code
     assert "srq_generalization_m12_locked_test_confirmation.zip" in code
     assert "scale_refined_int8" not in code
     assert "m12_results.json" in code
@@ -279,7 +280,7 @@ def test_m12_kaggle_notebook_uses_pinned_read_only_inputs_and_working_outputs():
     )
     assert "google.colab" not in code
     assert "files.upload" not in code
-    assert "REPO_COMMIT='778aae9da6d8d3935dd63fcdee32156690fb0cac'" in code
+    assert "REPO_COMMIT='23942f1e4565c7e08cb276553d6afb7bf1d60bbe'" in code
     assert "INPUT_ROOT=Path('/kaggle/input')" in code
     assert "OUTPUT_DIR='/kaggle/working/srq_m12_locked_output'" in code
     assert "unique_preserved_archive" in code
