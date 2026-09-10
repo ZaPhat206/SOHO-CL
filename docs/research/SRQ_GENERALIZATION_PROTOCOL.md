@@ -351,7 +351,9 @@ bytes must match the locked development artifacts after every task. Completion
 has no accuracy gate, no test-time retry, and no post-test method selection.
 The complete frozen contract is in
 `docs/research/SRQ_GENERALIZATION_M12_PROTOCOL.md`; the executable notebook is
-`notebooks/srq_generalization_m12_locked_test_colab.ipynb`.
+available for both environments as
+`notebooks/srq_generalization_m12_locked_test_colab.ipynb` and
+`notebooks/srq_generalization_m12_locked_test_kaggle.ipynb`.
 
 ## Naming gate
 

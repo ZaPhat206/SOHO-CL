@@ -18,6 +18,7 @@ from tools import srq_generalization_m12 as m12
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/srq_generalization_m12_locked_test_confirmation.json"
 NOTEBOOK = ROOT / "notebooks/srq_generalization_m12_locked_test_colab.ipynb"
+KAGGLE_NOTEBOOK = ROOT / "notebooks/srq_generalization_m12_locked_test_kaggle.ipynb"
 
 
 def test_m12_config_freezes_test_confirmation_without_accuracy_gate():
@@ -200,9 +201,28 @@ def test_m12_notebook_enforces_authorize_before_test_and_exports_locked_result()
         assert f"'{relative}':'{digest}'" in code
 
 
+def test_m12_kaggle_notebook_uses_pinned_read_only_inputs_and_working_outputs():
+    notebook = json.loads(KAGGLE_NOTEBOOK.read_text(encoding="utf-8"))
+    code = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"]
+        if cell["cell_type"] == "code"
+    )
+    assert "google.colab" not in code
+    assert "files.upload" not in code
+    assert "REPO_COMMIT='778aae9da6d8d3935dd63fcdee32156690fb0cac'" in code
+    assert "INPUT_ROOT=Path('/kaggle/input')" in code
+    assert "OUTPUT_DIR='/kaggle/working/srq_m12_locked_output'" in code
+    assert "unique_named_file" in code
+    assert code.index("'authorize'") < code.index("'extract-test'") < code.index("'run'")
+    assert "srq_generalization_m12_locked_test_confirmation.zip" in code
+    assert "scale_refined_int8" not in code
+
+
 def test_m12_runner_and_notebook_compile():
     compile((ROOT / "tools/srq_generalization_m12.py").read_text(encoding="utf-8"), "m12", "exec")
-    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-    for index, cell in enumerate(notebook["cells"]):
-        if cell["cell_type"] == "code":
-            compile("".join(cell["source"]), f"cell-{index}", "exec")
+    for path in (NOTEBOOK, KAGGLE_NOTEBOOK):
+        notebook = json.loads(path.read_text(encoding="utf-8"))
+        for index, cell in enumerate(notebook["cells"]):
+            if cell["cell_type"] == "code":
+                compile("".join(cell["source"]), f"{path.name}-cell-{index}", "exec")

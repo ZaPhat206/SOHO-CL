@@ -48,6 +48,14 @@ as the authorized training cache and binds the cache metadata to the
 authorization ID. The `run` command refuses a cache or source artifact that
 does not match this identity.
 
+Two environment-specific notebooks implement the same contract. The Colab
+notebook stores resumable units in Google Drive. The Kaggle notebook pins the
+complete source commit, discovers source artifacts and CIFAR from the
+read-only `/kaggle/input` mounts, keeps the sample-level feature cache in
+non-persistent `/kaggle/temp`, and writes only authorization, unit summaries,
+plots, and the final ZIP beneath `/kaggle/working`. Environment changes do not
+change any experimental choice or gate.
+
 ## Reporting contract
 
 M12 reports every replicate, task, width, and method. Primary metrics are AIA
