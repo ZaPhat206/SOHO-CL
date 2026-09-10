@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m11b-scale-refined-int8-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "diagnostic_widths": [10000, 20000],
+  "source_m6": {
+    "artifact_filename": "srq_generalization_m6_width_sweep_train_only.zip",
+    "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+    "result_member": "m6_results.json",
+    "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+    "required_status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY"
+  },
+  "source_m11": {
+    "artifact_filename": "srq_generalization_m11_adaptive_precision_train_only.zip",
+    "artifact_sha256": "65ce03df4da7041833014628b59aac1167f77bde2d64348b9a8a1e4fe09370a7",
+    "result_member": "m11_results.json",
+    "result_sha256": "ea1606e4476bdbe2a8e2acff9c6ae7b95aa78841eac6bdfc2b3c858c62986182",
+    "required_status": "PASS_M11_ADAPTIVE_PRECISION_TRAIN_ONLY"
+  },
+  "ranpac": {
+    "upstream_repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "upstream_commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "upstream_ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 20000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "scale_refinement": {
+    "initializer": "max_abs_over_127",
+    "update_rule": "least_squares_scale_then_nearest_int8_assignment",
+    "iterations": 4,
+    "selection_signal": "current_group_values_only_no_labels_or_accuracy",
+    "persistent_payload": "identical_shapes_and_dtypes_to_p2b_int8"
+  },
+  "gates": {
+    "require_source_identity_match": true,
+    "maximum_exact_reproduction_accuracy_difference_pp": 0.000001,
+    "require_same_persistent_bytes_as_p2b_every_task": true,
+    "require_local_factor_error_not_worse_than_maxabs": true,
+    "maximum_validation_aia_loss_pp": 0.25,
+    "require_aia_not_worse_than_p2b": true,
+    "maximum_solver_relative_residual": 0.00001
+  }
+}

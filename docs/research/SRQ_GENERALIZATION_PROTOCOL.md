@@ -274,25 +274,51 @@ gate, accuracy, timing, and numerical diagnostics are unaffected. The correct
 factor payloads derived from the archived backend totals are 25,015,000 bytes
 for FP16 and 13,298,596 bytes for P2B.
 
-### M11 -- optional adaptive precision
+### M11 -- budget-locked adaptive precision
 
-Status: implementation ready; real train-only run pending. M6 supplies the
-trigger: fixed INT8 narrowly fails the width-20,000 retention gate while FP16
-passes. M11 evaluates one preregistered label-free rule at widths 10,000 and
-20,000. It promotes strict-upper blocks to FP16 by the largest reduction in
-factor reconstruction MSE per added byte, using a fixed 25% allowance between
-all-INT8 and all-FP16 strict-upper payloads. Its uint8 precision mask and all
-scale metadata count toward persistent state. The M6 artifact locks the data,
-partitions, projection prefixes, Ridge values, and Exact/P2B/FP16 references.
-Full definitions are in
-`docs/research/SRQ_GENERALIZATION_M11_RUNBOOK.md`; the notebook is
-`notebooks/srq_generalization_m11_adaptive_precision_colab.ipynb`.
+Status: PASS on the locked train-only run. M6 supplied the trigger: fixed INT8
+narrowly failed the width-20,000 retention gate while FP16 passed. M11 tested
+one preregistered label-free rule at widths 10,000 and 20,000. It promoted
+strict-upper blocks to FP16 by the largest reduction in factor reconstruction
+MSE per added byte, using a fixed 25% allowance between all-INT8 and all-FP16
+strict-upper payloads. Its uint8 precision mask and all scale metadata were
+counted in persistent state.
 
-M11 is a development-only response to a disclosed failure, not a replacement
-for M6. A PASS would support the specific 10k/20k adaptive rule only; it would
-not establish an optimal allocation or resolve the separate GACL
-mini-batch-frequency drift. Packed INT4 and error feedback remain later
-alternatives, not prerequisites.
+Recorded artifact: `srq_generalization_m11_adaptive_precision_train_only.zip`,
+SHA-256
+`65ce03df4da7041833014628b59aac1167f77bde2d64348b9a8a1e4fe09370a7`.
+At widths 10k/20k, adaptive-minus-P2B validation AIA is +0.0792/+0.2599
+points, while adaptive-minus-Exact is -0.0085/+0.0041 points. Total-state
+reduction relative to Exact is 76.39%/79.92%. Adaptive update time is
+1.53/1.51 times the corresponding archived P2B time. All formal M11 gates
+pass. Full definitions are in
+`docs/research/SRQ_GENERALIZATION_M11_RUNBOOK.md`; the source-locked notebook
+is `notebooks/srq_generalization_m11_adaptive_precision_colab.ipynb`.
+
+M11 remains a development-only response to the disclosed M6 failure, not a
+replacement for M6. It supports the specific 25% allocation only and does not
+establish an optimal policy or resolve GACL mini-batch-frequency drift.
+
+### M11b -- same-byte INT8 scale refinement
+
+Status: implementation ready; real train-only run pending. This one-shot
+follow-up keeps every strict-upper value in INT8 and preserves exactly P2B's
+checkpoint tensor shapes and dtypes. It replaces max-absolute scaling with
+four deterministic alternating least-squares scale/code steps, accepting a
+candidate group only when reconstruction error does not increase. No mask,
+residual, labels, accuracy, or extra persistent state is used.
+
+M11b is locked to both the M6 and M11 artifacts. At widths 10k/20k it reruns
+Exact as a source sentinel and evaluates only the refined all-INT8 method.
+The decisive systems gate is byte equality with archived P2B after every
+task; the decisive accuracy gates are no worse than P2B and no more than 0.25
+point below Exact. Full definitions are in
+`docs/research/SRQ_GENERALIZATION_M11B_RUNBOOK.md`; the notebook is
+`notebooks/srq_generalization_m11b_scale_refined_colab.ipynb`.
+
+A PASS would add a simpler same-byte P2B improvement. It would not supersede
+M11: adaptive precision remains a distinct higher-state Pareto point. Packed
+INT4 and error feedback remain later alternatives, not prerequisites.
 
 ### M12 -- final locked evaluation
 
