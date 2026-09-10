@@ -95,7 +95,8 @@
     "require_source_artifact_identity": true,
     "require_authorization_before_test_materialization": true,
     "require_all_units_complete": true,
-    "require_taskwise_state_identity_with_sources": true,
+    "require_fixed_method_taskwise_state_identity_with_sources": true,
+    "require_adaptive_taskwise_budget_conformance": true,
     "maximum_solver_relative_residual": 0.00002,
     "accuracy_gate": null
   }

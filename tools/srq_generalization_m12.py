@@ -23,7 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from methods.analytic_ridge import ExactGramBackend, SquareRootBackend  # noqa: E402
+from methods.analytic_ridge import (  # noqa: E402
+    ExactGramBackend,
+    SquareRootBackend,
+    persistent_tensor_bytes,
+)
 from models.backbone import load_model  # noqa: E402
 from tools import srq_generalization_m5 as m5  # noqa: E402
 from tools.experiment_runner import split, validate_cache  # noqa: E402
@@ -161,7 +165,12 @@ def _read_config(path: str | Path) -> dict:
     ):
         raise ValueError("M12 evaluation policy changed")
     gates = config["integrity_gates"]
-    if gates.get("accuracy_gate", "missing") is not None:
+    if not (
+        gates.get("accuracy_gate", "missing") is None
+        and gates.get("require_fixed_method_taskwise_state_identity_with_sources")
+        is True
+        and gates.get("require_adaptive_taskwise_budget_conformance") is True
+    ):
         raise ValueError("M12 must not have an accuracy gate")
     if float(gates["maximum_solver_relative_residual"]) <= 0:
         raise ValueError("invalid M12 residual gate")
@@ -381,17 +390,68 @@ def _source_widths(sources: dict) -> tuple[dict, dict]:
     )
 
 
-def _expected_task_bytes(sources: dict, width: int, method: str) -> list[int]:
+def _task_state_contracts(sources: dict, width: int, method: str) -> list[dict]:
     m6_widths, m11_widths = _source_widths(sources)
     if method in {"exact", "p2b_int8"}:
         return [
-            int(record["state"][method]["total_persistent_bytes"])
+            {
+                "kind": "exact_source_identity",
+                "source_reference_bytes": int(
+                    record["state"][method]["total_persistent_bytes"]
+                ),
+                "minimum_bytes": int(
+                    record["state"][method]["total_persistent_bytes"]
+                ),
+                "maximum_bytes": int(
+                    record["state"][method]["total_persistent_bytes"]
+                ),
+            }
             for record in m6_widths[width]["records"]
         ]
-    return [
-        int(record["total_persistent_bytes"])
-        for record in m11_widths[width]["records"]
-    ]
+    if method != "adaptive_int8_fp16":
+        raise ValueError(f"unsupported state contract method: {method}")
+    contracts = []
+    m6_records = m6_widths[width]["records"]
+    m11_records = m11_widths[width]["records"]
+    if len(m6_records) != len(m11_records):
+        raise ValueError(f"source task-count mismatch at width {width}")
+    for m6_record, m11_record in zip(m6_records, m11_records):
+        source_total = int(m11_record["total_persistent_bytes"])
+        source_factor = int(m11_record["factor_persistent_bytes"])
+        factor_ceiling = int(m11_record["factor_budget_ceiling_bytes"])
+        total_blocks = int(m11_record["total_blocks"])
+        common_bytes = source_total - source_factor
+        minimum = (
+            int(m6_record["state"]["p2b_int8"]["total_persistent_bytes"])
+            + total_blocks
+        )
+        maximum = common_bytes + factor_ceiling
+        if not (0 < source_factor <= factor_ceiling and minimum <= source_total <= maximum):
+            raise ValueError(f"invalid adaptive source byte contract at width {width}")
+        contracts.append({
+            "kind": "locked_adaptive_budget_interval",
+            "source_reference_bytes": source_total,
+            "minimum_bytes": minimum,
+            "maximum_bytes": maximum,
+            "factor_budget_ceiling_bytes": factor_ceiling,
+            "total_blocks": total_blocks,
+        })
+    return contracts
+
+
+def _check_task_state_bytes(
+    *, actual: int, contract: dict, method: str, width: int, task: int
+) -> None:
+    minimum = int(contract["minimum_bytes"])
+    maximum = int(contract["maximum_bytes"])
+    if not minimum <= int(actual) <= maximum:
+        raise AssertionError(
+            f"M12 task-wise state contract failed {method}/{width}/task {task}: "
+            f"actual={actual}, permitted=[{minimum},{maximum}], "
+            f"source_reference={contract['source_reference_bytes']}"
+        )
+    if contract["kind"] == "exact_source_identity" and minimum != maximum:
+        raise AssertionError("fixed-state identity contract is not exact")
 
 
 def _make_backend(config: dict, width: int, method: str, device: torch.device):
@@ -460,29 +520,92 @@ def _run_unit(
     encoder = lambda values: torch.relu(
         values.to(device=device, dtype=torch.float32) @ projection
     )
-    expected = _expected_task_bytes(sources, width, method)
-    group = m5._run_group(
-        encoder=encoder, backends={method: backend},
-        extra_tensors={"projection": projection},
-        expected_total_bytes={method: expected[-1]}, features=features, labels=labels,
-        training_parts=training_parts, validation_parts=test_parts,
-        encode_batch_size=int(config["ranpac"]["encode_batch_size"]),
-        evaluation_batch_size=int(config["ranpac"]["evaluation_batch_size"]),
-        device=device,
-    )
+    contracts = _task_state_contracts(sources, width, method)
     task_records = []
-    for index, record in enumerate(group["records"]):
-        state = record["state"][method]
-        if int(state["total_persistent_bytes"]) != expected[index]:
-            raise AssertionError(
-                f"M12 task-wise state mismatch {method}/{width}/task {index + 1}"
-            )
-        task_records.append({
+    update_seconds = 0.0
+    encoding_seconds = 0.0
+    for index, train_indices in enumerate(training_parts):
+        m5._sync(device)
+        started = time.perf_counter()
+        codes = m5._encode_indices(
+            encoder, features, train_indices,
+            int(config["ranpac"]["encode_batch_size"]),
+        )
+        m5._sync(device)
+        encoding_seconds += time.perf_counter() - started
+        m5._sync(device)
+        started = time.perf_counter()
+        backend.update(codes, labels[train_indices])
+        m5._sync(device)
+        update_seconds += time.perf_counter() - started
+        seen_test = torch.cat(test_parts[: index + 1])
+        accuracy = m5._evaluate(
+            encoder=encoder, backends={method: backend}, features=features,
+            labels=labels, indices=seen_test,
+            batch_size=int(config["ranpac"]["evaluation_batch_size"]),
+        )[method]
+        actual = persistent_tensor_bytes(
+            {"projection": projection, **backend.persistent_tensors()}
+        )
+        contract = contracts[index]
+        _check_task_state_bytes(
+            actual=actual, contract=contract, method=method,
+            width=width, task=index + 1,
+        )
+        task_record = {
             "task": index + 1,
-            "test_accuracy_percent": float(record["accuracy_percent"][method]),
-            "total_persistent_bytes": int(state["total_persistent_bytes"]),
-            "solver_relative_residual": float(state["solver_relative_residual"]),
-        })
+            "test_accuracy_percent": float(accuracy),
+            "total_persistent_bytes": int(actual),
+            "solver_relative_residual": float(
+                backend.diagnostics["solver_relative_residual"]
+            ),
+            "state_contract": contract["kind"],
+            "source_reference_total_persistent_bytes": int(
+                contract["source_reference_bytes"]
+            ),
+            "minimum_permitted_total_persistent_bytes": int(
+                contract["minimum_bytes"]
+            ),
+            "maximum_permitted_total_persistent_bytes": int(
+                contract["maximum_bytes"]
+            ),
+        }
+        if method == "adaptive_int8_fp16":
+            factor_tensors = {
+                name: tensor for name, tensor in backend.persistent_tensors().items()
+                if name.startswith("factor.")
+            }
+            factor_bytes = persistent_tensor_bytes(factor_tensors)
+            if not (
+                factor_bytes == int(backend.diagnostics["factor_persistent_bytes"])
+                and int(backend.diagnostics["factor_budget_ceiling_bytes"])
+                == int(contract["factor_budget_ceiling_bytes"])
+                and int(backend.diagnostics["total_blocks"])
+                == int(contract["total_blocks"])
+            ):
+                raise AssertionError(
+                    f"M12 adaptive accounting identity failed {width}/task {index + 1}"
+                )
+            task_record.update({
+                "factor_persistent_bytes": factor_bytes,
+                "factor_budget_ceiling_bytes": int(
+                    backend.diagnostics["factor_budget_ceiling_bytes"]
+                ),
+                "selected_fp16_blocks": int(
+                    backend.diagnostics["selected_fp16_blocks"]
+                ),
+                "total_blocks": int(backend.diagnostics["total_blocks"]),
+            })
+        task_records.append(task_record)
+        print(
+            f"TASK {index + 1}/{len(training_parts)} {method}={accuracy:.4f} "
+            f"state={actual} contract=[{contract['minimum_bytes']},"
+            f"{contract['maximum_bytes']}]",
+            flush=True,
+        )
+        del codes
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     accuracies = [item["test_accuracy_percent"] for item in task_records]
     return {
         "identity": _unit_identity(authorization, config, replicate, width, method),
@@ -494,8 +617,8 @@ def _run_unit(
         "maximum_solver_relative_residual": max(
             item["solver_relative_residual"] for item in task_records
         ),
-        "representation_encoding_seconds": float(group["encoding_seconds"]),
-        "analytic_update_seconds": float(group["analytic_update_seconds"][method]),
+        "representation_encoding_seconds": float(encoding_seconds),
+        "analytic_update_seconds": float(update_seconds),
     }
 
 
@@ -512,19 +635,33 @@ def _validate_unit(
     if unit.get("class_order") != expected_order:
         raise RuntimeError("M12 unit class-order mismatch")
     records = unit.get("records", [])
-    expected = _expected_task_bytes(
+    contracts = _task_state_contracts(
         sources, int(identity["width"]), str(identity["method"])
     )
-    if len(records) != config["num_tasks"] or len(records) != len(expected):
+    if len(records) != config["num_tasks"] or len(records) != len(contracts):
         raise RuntimeError("M12 unit task count mismatch")
-    for index, (record, expected_bytes) in enumerate(zip(records, expected)):
+    for index, (record, contract) in enumerate(zip(records, contracts)):
         values = (
             record.get("test_accuracy_percent"),
             record.get("solver_relative_residual"),
         )
+        actual = record.get("total_persistent_bytes")
+        if actual is not None:
+            _check_task_state_bytes(
+                actual=int(actual), contract=contract,
+                method=str(identity["method"]), width=int(identity["width"]),
+                task=index + 1,
+            )
         if (
             record.get("task") != index + 1
-            or record.get("total_persistent_bytes") != expected_bytes
+            or actual is None
+            or record.get("state_contract") != contract["kind"]
+            or record.get("source_reference_total_persistent_bytes")
+            != contract["source_reference_bytes"]
+            or record.get("minimum_permitted_total_persistent_bytes")
+            != contract["minimum_bytes"]
+            or record.get("maximum_permitted_total_persistent_bytes")
+            != contract["maximum_bytes"]
             or any(value is None or not math.isfinite(float(value)) for value in values)
             or not 0.0 <= float(record["test_accuracy_percent"]) <= 100.0
         ):
@@ -546,7 +683,8 @@ def _validate_unit(
             float(unit.get("final_accuracy_percent", math.nan)),
             accuracies[-1], rel_tol=0.0, abs_tol=1e-12,
         )
-        and unit.get("final_total_persistent_bytes") == expected[-1]
+        and unit.get("final_total_persistent_bytes")
+        == records[-1]["total_persistent_bytes"]
         and math.isclose(
             float(unit.get("maximum_solver_relative_residual", math.nan)),
             residual, rel_tol=0.0, abs_tol=1e-12,
@@ -584,6 +722,7 @@ def _aggregate(units: list[dict], config: dict) -> list[dict]:
                 - exact_by_seed[u["identity"]["class_order_seed"]]["final_accuracy_percent"]
                 for u in values
             ]
+            state_values = [int(u["final_total_persistent_bytes"]) for u in values]
             by_method[method] = {
                 "average_incremental_accuracy_percent": _mean_sd(
                     [u["average_incremental_accuracy_percent"] for u in values]
@@ -593,7 +732,12 @@ def _aggregate(units: list[dict], config: dict) -> list[dict]:
                 ),
                 "paired_aia_difference_from_exact_pp": _mean_sd(deltas_aia),
                 "paired_final_difference_from_exact_pp": _mean_sd(deltas_final),
-                "final_total_persistent_bytes": int(values[0]["final_total_persistent_bytes"]),
+                "final_total_persistent_bytes": statistics.mean(state_values),
+                "final_total_persistent_bytes_sample_standard_deviation": (
+                    statistics.stdev(state_values) if len(state_values) > 1 else 0.0
+                ),
+                "minimum_final_total_persistent_bytes": min(state_values),
+                "maximum_final_total_persistent_bytes": max(state_values),
                 "analytic_update_seconds": _mean_sd(
                     [u["analytic_update_seconds"] for u in values]
                 ),
@@ -620,7 +764,12 @@ def _write_csv(path: Path, aggregate: list[dict]) -> None:
                 "final_sd": result["final_accuracy_percent"]["sample_standard_deviation"],
                 "paired_aia_minus_exact_mean_pp": result["paired_aia_difference_from_exact_pp"]["mean"],
                 "paired_final_minus_exact_mean_pp": result["paired_final_difference_from_exact_pp"]["mean"],
-                "state_bytes": result["final_total_persistent_bytes"],
+                "state_bytes_mean": result["final_total_persistent_bytes"],
+                "state_bytes_sample_standard_deviation": result[
+                    "final_total_persistent_bytes_sample_standard_deviation"
+                ],
+                "state_bytes_minimum": result["minimum_final_total_persistent_bytes"],
+                "state_bytes_maximum": result["maximum_final_total_persistent_bytes"],
                 "update_seconds_mean": result["analytic_update_seconds"]["mean"],
                 "maximum_solver_relative_residual": result["maximum_solver_relative_residual"],
             })
@@ -695,7 +844,8 @@ def run(args) -> dict:
         "prior_authorization": True,
         "sample_and_class_inventory": True,
         "all_units_complete": len(units) == expected_units,
-        "taskwise_state_identity_with_sources": True,
+        "fixed_method_taskwise_state_identity_with_sources": True,
+        "adaptive_taskwise_budget_conformance": True,
         "finite_metrics": finite,
         "solver_residual": maximum_residual
         <= config["integrity_gates"]["maximum_solver_relative_residual"],

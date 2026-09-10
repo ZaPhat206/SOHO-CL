@@ -75,9 +75,14 @@ update time, representation time, and solver residual are also retained.
 
 There is deliberately **no accuracy gate**. Completion depends only on source
 identity, prior authorization, exact sample/class inventory, all 36 units
-being present, task-wise state-byte identity with the locked development
-sources, finite metrics, and solver residual at most `2e-5`. An unfavorable
-accuracy result is still a completed result and cannot trigger a retry.
+being present, finite metrics, and solver residual at most `2e-5`. Exact Gram
+and fixed P2B INT8 must retain task-wise byte identity with M6. Adaptive
+INT8/FP16 is value-sensitive: different locked projection seeds may choose
+different mixtures of unequal-size edge blocks, especially when the width is
+not divisible by 256. It is therefore checked task-wise against the locked M11
+all-INT8 floor and 25% factor-budget ceiling, while the policy, block layout,
+mask dtype, and accounting identity remain fixed. An unfavorable accuracy
+result is still a completed result and cannot trigger a retry.
 
 ## Permitted conclusion
 

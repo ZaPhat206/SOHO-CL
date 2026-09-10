@@ -31,6 +31,12 @@ def test_m12_config_freezes_test_confirmation_without_accuracy_gate():
     assert config["methods"] == list(m12.METHODS)
     assert config["excluded_development_method"]["method"] == "scale_refined_int8"
     assert config["integrity_gates"]["accuracy_gate"] is None
+    assert config["integrity_gates"][
+        "require_fixed_method_taskwise_state_identity_with_sources"
+    ] is True
+    assert config["integrity_gates"][
+        "require_adaptive_taskwise_budget_conformance"
+    ] is True
     assert len(config["replicates"]) == 6
 
 
@@ -90,12 +96,15 @@ def _unit(width, method, seed, aia, final, state):
 def test_m12_aggregate_uses_paired_differences_and_sample_sd():
     config = {"widths": [10]}
     units = []
-    for seed, exact in ((1, 90.0), (2, 92.0)):
+    for seed, exact, adaptive_state in ((1, 90.0, 120), (2, 92.0, 124)):
         units.extend(
             [
                 _unit(10, "exact", seed, exact, exact - 1, 400),
                 _unit(10, "p2b_int8", seed, exact - 0.2, exact - 1.3, 100),
-                _unit(10, "adaptive_int8_fp16", seed, exact - 0.1, exact - 1.1, 120),
+                _unit(
+                    10, "adaptive_int8_fp16", seed,
+                    exact - 0.1, exact - 1.1, adaptive_state,
+                ),
             ]
         )
     result = m12._aggregate(units, config)[0]["methods"]
@@ -103,6 +112,51 @@ def test_m12_aggregate_uses_paired_differences_and_sample_sd():
     assert result["exact"]["average_incremental_accuracy_percent"]["sample_standard_deviation"] == pytest.approx(2**0.5)
     assert result["p2b_int8"]["paired_aia_difference_from_exact_pp"]["mean"] == pytest.approx(-0.2)
     assert result["adaptive_int8_fp16"]["paired_final_difference_from_exact_pp"]["mean"] == pytest.approx(-0.1)
+    assert result["adaptive_int8_fp16"]["final_total_persistent_bytes"] == 122
+    assert result["adaptive_int8_fp16"]["minimum_final_total_persistent_bytes"] == 120
+    assert result["adaptive_int8_fp16"]["maximum_final_total_persistent_bytes"] == 124
+
+
+def test_m12_adaptive_state_contract_accepts_seed_dependent_bytes_within_budget():
+    sources = {
+        "source_m6": {"width_results": [{
+            "width": 300,
+            "records": [{"state": {
+                "exact": {"total_persistent_bytes": 5000},
+                "p2b_int8": {"total_persistent_bytes": 1000},
+            }}],
+        }]},
+        "source_m11": {"width_results": [{
+            "width": 300,
+            "records": [{
+                "total_persistent_bytes": 1300,
+                "factor_persistent_bytes": 500,
+                "factor_budget_ceiling_bytes": 550,
+                "total_blocks": 5,
+            }],
+        }]},
+    }
+    contract = m12._task_state_contracts(
+        sources, 300, "adaptive_int8_fp16"
+    )[0]
+    assert contract == {
+        "kind": "locked_adaptive_budget_interval",
+        "source_reference_bytes": 1300,
+        "minimum_bytes": 1005,
+        "maximum_bytes": 1350,
+        "factor_budget_ceiling_bytes": 550,
+        "total_blocks": 5,
+    }
+    m12._check_task_state_bytes(
+        actual=1320, contract=contract,
+        method="adaptive_int8_fp16", width=300, task=1,
+    )
+    for invalid in (1004, 1351):
+        with pytest.raises(AssertionError, match="permitted"):
+            m12._check_task_state_bytes(
+                actual=invalid, contract=contract,
+                method="adaptive_int8_fp16", width=300, task=1,
+            )
 
 
 def test_m12_authorization_id_is_canonical_and_sensitive():
@@ -117,14 +171,14 @@ def test_m12_authorization_id_is_canonical_and_sensitive():
 
 def test_m12_small_locked_unit_runs_all_three_backends_with_taskwise_bytes():
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
-    config.update({"num_classes": 4, "num_tasks": 2, "widths": [12]})
-    config["selected_ridge_by_width"] = {"12": 10.0}
+    config.update({"num_classes": 4, "num_tasks": 2, "widths": [128]})
+    config["selected_ridge_by_width"] = {"128": 10.0}
     config["ranpac"].update(
-        {"feature_dimension": 5, "maximum_expand_dimension": 12,
+        {"feature_dimension": 5, "maximum_expand_dimension": 128,
          "encode_batch_size": 8, "evaluation_batch_size": 8}
     )
     config["p2b"].update(
-        {"block_size": 4, "group_size": 2, "update_panel_size": 4,
+        {"block_size": 64, "group_size": 64, "update_panel_size": 64,
          "quantization_batch_blocks": 2}
     )
     replicate = {"class_order_seed": 11, "projection_seed": 17}
@@ -137,21 +191,36 @@ def test_m12_small_locked_unit_runs_all_three_backends_with_taskwise_bytes():
     order = __import__("random").Random(11).sample(list(range(4)), 4)
     parts = m12.split(labels, order, 2)
     expected = {}
-    projection = torch.empty(5, 12)
+    adaptive_records = []
+    projection = torch.empty(5, 128)
     for method in m12.METHODS:
-        backend = m12._make_backend(config, 12, method, torch.device("cpu"))
+        backend = m12._make_backend(config, 128, method, torch.device("cpu"))
         method_bytes = []
         for indices in parts:
-            backend.update(torch.randn(len(indices), 12, generator=generator), labels[indices])
+            backend.update(torch.randn(len(indices), 128, generator=generator), labels[indices])
             method_bytes.append(
                 persistent_tensor_bytes(
                     {"projection": projection, **backend.persistent_tensors()}
                 )
             )
+            if method == "adaptive_int8_fp16":
+                factor_bytes = persistent_tensor_bytes({
+                    name: tensor
+                    for name, tensor in backend.persistent_tensors().items()
+                    if name.startswith("factor.")
+                })
+                adaptive_records.append({
+                    "total_persistent_bytes": method_bytes[-1],
+                    "factor_persistent_bytes": factor_bytes,
+                    "factor_budget_ceiling_bytes": int(
+                        backend.diagnostics["factor_budget_ceiling_bytes"]
+                    ),
+                    "total_blocks": int(backend.diagnostics["total_blocks"]),
+                })
         expected[method] = method_bytes
     sources = {
         "source_m6": {"width_results": [{
-            "width": 12,
+            "width": 128,
             "records": [
                 {"state": {
                     "exact": {"total_persistent_bytes": expected["exact"][task]},
@@ -160,22 +229,22 @@ def test_m12_small_locked_unit_runs_all_three_backends_with_taskwise_bytes():
             ],
         }]},
         "source_m11": {"width_results": [{
-            "width": 12,
-            "records": [
-                {"total_persistent_bytes": expected["adaptive_int8_fp16"][task]}
-                for task in range(2)
-            ],
+            "width": 128,
+            "records": adaptive_records,
         }]},
     }
     authorization = {"authorization_id": "a" * 64}
     for method in m12.METHODS:
         result = m12._run_unit(
             config=config, authorization=authorization, sources=sources,
-            train=train, test=test, replicate=replicate, width=12,
+            train=train, test=test, replicate=replicate, width=128,
             method=method, device=torch.device("cpu"),
         )
         assert len(result["records"]) == 2
-        assert result["final_total_persistent_bytes"] == expected[method][-1]
+        contract = m12._task_state_contracts(sources, 128, method)[-1]
+        assert contract["minimum_bytes"] <= result[
+            "final_total_persistent_bytes"
+        ] <= contract["maximum_bytes"]
         assert result["uses_test_set"] is True
         m12._validate_unit(result, result["identity"], sources, config)
 
