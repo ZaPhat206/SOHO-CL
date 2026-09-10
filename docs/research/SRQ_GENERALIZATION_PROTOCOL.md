@@ -337,9 +337,21 @@ feedback remain future alternatives, not prerequisites for finalization.
 
 ### M12 -- final locked evaluation
 
-Final evaluation is authorized only after configurations, budgets, seeds,
-statistics, and source hashes are committed. It has no accuracy gate, no
-test-time retry, and no post-test method selection.
+Status: protocol and runner prepared; test has not yet been executed. M12 is
+restricted to the controlled RanPAC random-ReLU frontend at widths 10,000 and
+20,000. It compares Exact Gram, fixed P2B INT8/FP32, and the single M11
+adaptive INT8/FP16 policy over six paired class-order/projection replicates.
+M11b is excluded because it failed its train-only development gate.
+
+Authorization is created only after the configuration, current commit,
+train-cache content, and exact M6/M11/M11b ZIP identities have been verified
+while `test.pt` is absent. The authorized extractor then materializes the
+official CIFAR-100 test features. All 36 units are resumable, and their state
+bytes must match the locked development artifacts after every task. Completion
+has no accuracy gate, no test-time retry, and no post-test method selection.
+The complete frozen contract is in
+`docs/research/SRQ_GENERALIZATION_M12_PROTOCOL.md`; the executable notebook is
+`notebooks/srq_generalization_m12_locked_test_colab.ipynb`.
 
 ## Naming gate
 
