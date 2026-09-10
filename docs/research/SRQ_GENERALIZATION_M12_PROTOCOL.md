@@ -56,6 +56,16 @@ non-persistent `/kaggle/temp`, and writes only authorization, unit summaries,
 plots, and the final ZIP beneath `/kaggle/working`. Environment changes do not
 change any experimental choice or gate.
 
+Kaggle Datasets extract recognized archives server-side. Therefore, each of
+the three source ZIPs must be renamed locally by appending `.bin` before it is
+uploaded (for example, `artifact.zip` becomes `artifact.zip.bin`), without
+extracting or recompressing it. The Kaggle notebook accepts either an exact ZIP
+that remains available or this canonical `.zip.bin` form, verifies the frozen
+outer SHA-256, and copies the unchanged bytes to an exact `.zip` filename under
+`/kaggle/temp` before authorization. Reconstructing a ZIP from Kaggle-extracted
+members is intentionally forbidden because archive metadata would change the
+locked outer identity.
+
 ## Reporting contract
 
 M12 reports every replicate, task, width, and method. Primary metrics are AIA
