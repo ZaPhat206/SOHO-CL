@@ -301,24 +301,39 @@ establish an optimal policy or resolve GACL mini-batch-frequency drift.
 
 ### M11b -- same-byte INT8 scale refinement
 
-Status: implementation ready; real train-only run pending. This one-shot
-follow-up keeps every strict-upper value in INT8 and preserves exactly P2B's
-checkpoint tensor shapes and dtypes. It replaces max-absolute scaling with
-four deterministic alternating least-squares scale/code steps, accepting a
-candidate group only when reconstruction error does not increase. No mask,
-residual, labels, accuracy, or extra persistent state is used.
+Status: formal FAIL; diagnostic complete. This one-shot follow-up kept every
+strict-upper value in INT8 and preserved exactly P2B's checkpoint tensor
+shapes and dtypes. It replaced max-absolute scaling with four deterministic
+alternating least-squares scale/code steps, accepting a candidate group only
+when reconstruction error did not increase. No mask, residual, labels,
+accuracy, or extra persistent state was used.
 
 M11b is locked to both the M6 and M11 artifacts. At widths 10k/20k it reruns
 Exact as a source sentinel and evaluates only the refined all-INT8 method.
-The decisive systems gate is byte equality with archived P2B after every
-task; the decisive accuracy gates are no worse than P2B and no more than 0.25
-point below Exact. Full definitions are in
+The decisive systems gate was byte equality with archived P2B after every
+task; the decisive accuracy gates were no worse than P2B and no more than
+0.25 point below Exact. Full definitions are in
 `docs/research/SRQ_GENERALIZATION_M11B_RUNBOOK.md`; the notebook is
 `notebooks/srq_generalization_m11b_scale_refined_colab.ipynb`.
 
-A PASS would add a simpler same-byte P2B improvement. It would not supersede
-M11: adaptive precision remains a distinct higher-state Pareto point. Packed
-INT4 and error feedback remain later alternatives, not prerequisites.
+Recorded artifact: `srq_generalization_m11b_scale_refined_train_only.zip`,
+SHA-256
+`f33153c24716a7c660044cacc1e56cf040ee63d314fd13be2c7d47cf4895a9cf`.
+All source, byte-equality, local-error, P2B-improvement, and solver gates pass.
+Refinement reduces the same-input local factor error by approximately
+1.8--2.0% at every task and improves validation AIA over P2B by 0.0368/0.0057
+points at widths 10k/20k. At 10k its Exact-relative loss is 0.050865 points.
+At 20k the loss is 0.250115 points, exceeding the locked 0.25-point gate by
+0.000115 points; the formal status therefore remains
+`FAIL_M11B_SCALE_REFINED_INT8_TRAIN_ONLY`. Refined update time is 1.080/1.046
+times P2B and state is byte-identical to P2B.
+
+The threshold is not rounded or relaxed. M11b is useful negative evidence:
+lower local reconstruction MSE alone is insufficient to recover the 20k
+retention gate. It does not supersede M11, whose adaptive precision remains a
+distinct higher-state, higher-accuracy Pareto point. No further scale-rule
+search is authorized on this development stream. Packed INT4 and error
+feedback remain future alternatives, not prerequisites for finalization.
 
 ### M12 -- final locked evaluation
 

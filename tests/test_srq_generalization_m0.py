@@ -30,7 +30,7 @@ def test_manifest_is_machine_readable_and_complete():
     assert len(payload["repository"]["baseline_head_full"]) == 40
 
     evidence = payload["evidence"]
-    assert len(evidence) == 11
+    assert len(evidence) == 14
     assert len({entry["id"] for entry in evidence}) == len(evidence)
     for entry in evidence:
         assert len(entry["artifact_sha256"]) == 64
@@ -60,6 +60,19 @@ def test_state_matched_recovery_caveat_cannot_be_silently_dropped():
     assert entry["uses_test_set"] is True
     assert "adapter" in entry["caveat"].lower()
     assert "recovery" in entry["caveat"].lower()
+
+
+def test_precision_followup_outcomes_cannot_be_silently_relabelled():
+    payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    by_id = {entry["id"]: entry for entry in payload["evidence"]}
+    assert (
+        by_id["adaptive_precision_train_only"]["status"]
+        == "PASS_M11_ADAPTIVE_PRECISION_TRAIN_ONLY"
+    )
+    refined = by_id["same_byte_scale_refinement_train_only"]
+    assert refined["status"] == "FAIL_M11B_SCALE_REFINED_INT8_TRAIN_ONLY"
+    assert "0.000115" in refined["caveat"]
+    assert "not rounded or relaxed" in refined["caveat"]
 
 
 def test_protocol_is_fail_closed_about_scope_and_test_use():

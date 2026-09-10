@@ -661,6 +661,48 @@ and its randomized action diagnostic does not estimate
 $\|A_t^{-1}\Delta_t\|_2$, eigenvalues, or a condition number. M6 therefore
 remains a formal failure.
 
+\subsection{Precision Allocation and Same-Byte Scale Refinement}
+
+We evaluate two train-only responses without changing the failed M6 gate.
+Adaptive SRQ promotes strict-upper blocks to FP16 using the largest reduction
+in reconstruction MSE per added byte, subject to one fixed 25\% allowance
+between the all-INT8 and all-FP16 payloads. Selection is factor-only and its
+precision mask is included in state. A second control keeps every value INT8
+and alternates four fixed nearest-code and least-squares scale updates within
+each group. This refined variant has exactly P2B's persistent bytes and uses no
+mask or residual state.
+
+\begin{table}
+\caption{Locked precision follow-ups on the train-only RanPAC stream. The AIA
+gap is Exact minus the reported variant. Update time is normalized by P2B.}
+\label{tab:precision-followup}
+\centering
+\small
+\begin{tabular}{rlrrrrr}
+\toprule
+Width & Variant & AIA & Final & State (MiB) & AIA gap & Update/P2B \\
+\midrule
+10,000 & P2B      & 92.3551 & 88.23 & 87.62  & 0.0877 & 1.000 \\
+10,000 & Refined  & 92.3919 & 88.32 & 87.62  & 0.0509 & 1.080 \\
+10,000 & Adaptive & 92.4343 & 88.44 & 98.80  & 0.0085 & 1.527 \\
+20,000 & P2B      & 92.3870 & 88.52 & 276.58 & 0.2558 & 1.000 \\
+20,000 & Refined  & 92.3928 & 88.51 & 276.58 & 0.2501 & 1.046 \\
+20,000 & Adaptive & 92.6469 & 88.94 & 321.28 & $-$0.0041 & 1.512 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Adaptive SRQ passes its locked retention and state gates at both widths, but
+is a higher-state and slower Pareto point rather than a free replacement for
+P2B. Same-byte refinement decreases local factor reconstruction error by
+approximately 1.8--2.0\% after every task and improves AIA over P2B by 0.0368
+and 0.0057 points at 10k and 20k. Nevertheless, its 20k Exact-relative loss is
+0.250115 points, exceeding the locked 0.25-point gate by 0.000115 points. We
+retain the formal failure without rounding the threshold. Together, these
+controls show that reducing local factor MSE is helpful but insufficient at
+20k, whereas spending a fixed additional precision budget can recover the
+observed accuracy loss. Both findings remain one-seed development evidence.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state, serialized checkpoint size,
@@ -742,6 +784,12 @@ that fixed INT8 precision scales without increasing approximation loss. The
 task-wise diagnostic is consistent with cumulative effective-system drift and
 stronger downstream amplification at 20k, but its one-seed randomized probes
 do not establish causality or ill-conditioning.
+The adaptive follow-up recovers the locked 20k retention gate using a fixed
+25\% allowance toward FP16 storage, but increases state and update time.
+Conversely, same-byte scale refinement reduces local reconstruction error yet
+still exceeds the 20k gate by 0.000115 points. This negative control warns that
+factor reconstruction MSE is not by itself a sufficient proxy for downstream
+classification error.
 The GACL-style experiment is likewise a controlled equation-level adapter,
 not an official reproduction: it uses one seed, a small train-only subset,
 cached ViT-B/16 features, no image augmentation, and
@@ -774,7 +822,10 @@ memory advantage grows with width but fixed INT8 narrowly fails the locked
 accuracy-retention gate at width 20,000. A task-wise follow-up connects this
 failure to growing system, weight, and logit discrepancies, in agreement with
 the derived cumulative perturbation recurrence, while leaving causal and
-conditioning claims open.
+conditioning claims open. A fixed-budget adaptive-precision variant recovers
+the 20k development gate at additional state and update cost, whereas a
+same-byte scale refinement reduces local factor error but formally misses the
+same gate by 0.000115 points.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or

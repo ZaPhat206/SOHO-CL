@@ -179,6 +179,51 @@
       "test_tuning_allowed": false,
       "paper_roles": ["repeated_whole_process_memory_and_time"],
       "caveat": "Four paired repetitions on one Tesla T4 and one software stack. Zero observed variance in byte and peak-memory plateaus does not imply identical behavior on other GPUs or deployments."
+    },
+    {
+      "id": "generic_backend_gacl_controlled_train_only",
+      "artifact": "srq_generalization_m10_gacl_train_only.zip",
+      "artifact_sha256": "8002ac80be9845186b8d9a753d0cf786f0e581b401c927dbf7a0dc95b713208c",
+      "result_sha256": "c96f018609b9d20dd3a301174944b37fe45ad2a82cab9ff558c334537f416b40",
+      "source_commit": "a2cdc3485bc7fb24fde90b5f7a47694473468258",
+      "config": "configs/srq_generalization_m10_gacl_train_only.json",
+      "repository_config_sha256": "f3756aa078823a472740fe07a7898e32a04964b1ddf43862304e56013239e4d4",
+      "status": "PASS_M10_GACL_CONTROLLED_TRAIN_ONLY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["controlled_gacl_equation_adapter"],
+      "caveat": "Controlled equation-level GACL-style stream with cached ViT-B/16, online_iter=1, and no image augmentation; not an official end-to-end reproduction of published GACL accuracy."
+    },
+    {
+      "id": "adaptive_precision_train_only",
+      "artifact": "srq_generalization_m11_adaptive_precision_train_only.zip",
+      "artifact_sha256": "65ce03df4da7041833014628b59aac1167f77bde2d64348b9a8a1e4fe09370a7",
+      "result_sha256": "ea1606e4476bdbe2a8e2acff9c6ae7b95aa78841eac6bdfc2b3c858c62986182",
+      "source_commit": "02b2381e91c64a3c158633880bedd7273030cb89",
+      "config": "configs/srq_generalization_m11_adaptive_precision_train_only.json",
+      "repository_config_sha256": "1fc5e740b2236a52943d79485c737508f0684366bdf53a4aede267971c3b30d9",
+      "status": "PASS_M11_ADAPTIVE_PRECISION_TRAIN_ONLY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["fixed_budget_adaptive_precision"],
+      "caveat": "One controlled development seed and one preregistered 25% precision allowance. The result does not establish an optimal allocation policy."
+    },
+    {
+      "id": "same_byte_scale_refinement_train_only",
+      "artifact": "srq_generalization_m11b_scale_refined_train_only.zip",
+      "artifact_sha256": "f33153c24716a7c660044cacc1e56cf040ee63d314fd13be2c7d47cf4895a9cf",
+      "result_sha256": "637cddd6109012d8f746a1f675d2d24f5b5754df856a63a3f1edf221e59eabec",
+      "source_commit": "c4d96a6cf9932f7f814ba02f807e26f4d283e14f",
+      "config": "configs/srq_generalization_m11b_scale_refined_train_only.json",
+      "repository_config_sha256": "30a790ee210f557e0dd55b7bfde7160298628481ac916ce5e0087ec7f2277d52",
+      "status": "FAIL_M11B_SCALE_REFINED_INT8_TRAIN_ONLY",
+      "datasets": ["cifar100_train_only"],
+      "uses_test_set": false,
+      "test_tuning_allowed": false,
+      "paper_roles": ["same_byte_scale_refinement_negative_control"],
+      "caveat": "Formal preregistered gate failure: width-20000 loss is 0.250115 percentage points, exceeding the 0.25 threshold by 0.000115 points. The threshold was not rounded or relaxed."
     }
   ],
   "known_open_evidence": [
@@ -187,6 +232,8 @@
     "No second-backbone result is available.",
     "Whole-process memory has four paired repetitions but still only one Tesla T4 and one software stack.",
     "The M6 fixed-INT8 width sweep formally fails its 0.25-point accuracy-retention gate at width 20000; M7 localizes downstream amplification but does not establish causality or measure the spectral condition number.",
+    "M11 adaptive precision passes at widths 10000 and 20000 but is based on one development seed and increases state and update time relative to fixed P2B.",
+    "M11b same-byte scale refinement lowers local factor error but formally fails the width-20000 retention gate by 0.000115 percentage points; no further scale-rule search is authorized on this stream.",
     "The legacy ImageNet-R split is not content-disjoint.",
     "The state-matched final artifact requires a clean source-locked rerun before it is primary final evidence."
   ]
