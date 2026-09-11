@@ -1,7 +1,10 @@
 # SRQ generalization M12: locked test confirmation
 
-Status: implementation complete; locked test run pending. This protocol
-freezes the final RanPAC confirmation before test features are materialized.
+Status: complete. The locked run produced all 36 units and the final artifact
+`srq_generalization_m12_locked_test_confirmation.zip` (SHA-256
+`02ada7180e66e780be77c7934b87d268f0d171dfee1c318fd3e9ae7e48846b1e`).
+This protocol froze the final RanPAC confirmation before test features were
+materialized.
 
 ## Purpose and scope
 
@@ -95,6 +98,35 @@ not divisible by 256. It is therefore checked task-wise against the locked M11
 all-INT8 floor and 25% factor-budget ceiling, while the policy, block layout,
 mask dtype, and accounting identity remain fixed. An unfavorable accuracy
 result is still a completed result and cannot trigger a retry.
+
+## Completed result
+
+The authorization ID is
+`c5599009d760cdfc85a1846ba4c762428afa39a739a3fc73efdc8a34ce5abe99`.
+The final result has status `COMPLETE_M12_LOCKED_TEST_CONFIRMATION`; its
+`m12_results.json` SHA-256 is
+`e6af9e735fe64a8a40177a4dbc2cb38979ccae6a51ccc35e53d5654c08ee1f25`.
+All 36 units completed, all source/state/budget/inventory gates passed, and the
+maximum solver relative residual was `7.243e-6`, below the locked `2e-5`
+threshold. Accuracy remained descriptive and was not a completion gate.
+
+Values below are mean ± sample standard deviation over six paired replicates.
+Differences are method minus Exact at the same width.
+
+| Width | Method | Test AIA | Final | AIA difference | Final difference | State | State reduction | Update/Exact |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 10,000 | Exact | 92.5783 ± 0.3829 | 89.128 ± 0.075 | -- | -- | 418.40 MiB | -- | 1.00× |
+| 10,000 | P2B INT8/FP32 | 92.4444 ± 0.4135 | 88.905 ± 0.135 | -0.1339 pp | -0.223 pp | 87.62 MiB | 79.06% | 1.88× |
+| 10,000 | Adaptive INT8/FP16 | 92.5731 ± 0.3886 | 89.115 ± 0.067 | -0.0052 pp | -0.013 pp | 98.80 MiB | 76.39% | 2.79× |
+| 20,000 | Exact | 92.8220 ± 0.4147 | 89.660 ± 0.113 | -- | -- | 1,599.73 MiB | -- | 1.00× |
+| 20,000 | P2B INT8/FP32 | 92.4956 ± 0.4860 | 89.003 ± 0.150 | -0.3264 pp | -0.657 pp | 276.57 MiB | 82.71% | 1.91× |
+| 20,000 | Adaptive INT8/FP16 | 92.8266 ± 0.4111 | 89.678 ± 0.087 | +0.0046 pp | +0.018 pp | 321.28 MiB | 79.92% | 2.91× |
+
+The locked multi-seed result confirms the train-only diagnosis: fixed P2B is
+the smallest tested state but loses more accuracy at width 20,000. Adaptive
+SRQ tracks Exact closely at both widths while spending more state and update
+time than fixed P2B. Its small positive mean differences at width 20,000 are
+not evidence that quantization improves accuracy.
 
 ## Permitted conclusion
 

@@ -438,6 +438,40 @@ không được nén. Thứ hai, analytic update thực sự chậm hơn khoản
 stage chỉ chậm hơn khoảng 1,3% vì riêng feature extraction đã chiếm khoảng 600
 giây mỗi worker.
 
+### 2.11. Xác nhận RanPAC đa seed đã khóa trước
+
+Artifact `srq_generalization_m12_locked_test_confirmation.zip`, SHA-256
+`02ada7180e66e780be77c7934b87d268f0d171dfee1c318fd3e9ae7e48846b1e`,
+chạy đủ 36 unit: ba backend, hai width và sáu cặp class-order/projection seed.
+M12 chỉ đánh giá analytic head random-ReLU có kiểm soát của RanPAC; nó không
+tái lập PETL hoặc toàn bộ pipeline RanPAC chính thức. Các phương pháp, width,
+Ridge và precision policy đã được khóa từ train-only trước khi tạo test cache.
+Accuracy không phải gate hoàn thành.
+
+| Width | Backend | Test AIA | Final | State | Giảm state | Update/Exact |
+|---:|---|---:|---:|---:|---:|---:|
+| 10.000 | Exact | 92,5783 ± 0,3829 | 89,128 ± 0,075 | 418,40 MiB | -- | 1,00 lần |
+| 10.000 | P2B INT8/FP32 | 92,4444 ± 0,4135 | 88,905 ± 0,135 | 87,62 MiB | 79,06% | 1,88 lần |
+| 10.000 | Adaptive INT8/FP16 | 92,5731 ± 0,3886 | 89,115 ± 0,067 | 98,80 MiB | 76,39% | 2,79 lần |
+| 20.000 | Exact | 92,8220 ± 0,4147 | 89,660 ± 0,113 | 1.599,73 MiB | -- | 1,00 lần |
+| 20.000 | P2B INT8/FP32 | 92,4956 ± 0,4860 | 89,003 ± 0,150 | 276,57 MiB | 82,71% | 1,91 lần |
+| 20.000 | Adaptive INT8/FP16 | 92,8266 ± 0,4111 | 89,678 ± 0,087 | 321,28 MiB | 79,92% | 2,91 lần |
+
+So với Exact cùng width, P2B mất `0,1339/0,3264` pp AIA và
+`0,223/0,657` pp final ở 10k/20k. Adaptive chỉ thay đổi
+`-0,0052/+0,0046` pp AIA và `-0,013/+0,018` pp final. Vì vậy kết luận đúng là
+adaptive bám rất sát Exact ở cả hai width, còn P2B cố định nhỏ và nhanh hơn
+adaptive nhưng sai số accuracy tăng rõ ở 20k. Chênh lệch dương rất nhỏ của
+adaptive tại 20k không phải bằng chứng lượng tử hóa làm tăng accuracy.
+
+Lần chạy M12 đầu tiên đã tạo metric test nhưng dừng trước khi export vì gate
+byte yêu cầu mask adaptive phụ thuộc giá trị ở mọi seed phải khớp chính xác
+mask của một seed M11. Recovery chỉ thay gate phi-accuracy này bằng cận byte
+INT8 và trần 25% đã khóa; không đổi method, width, Ridge, seed, precision policy
+hoặc quyết định dựa trên accuracy. Test split cũng đã được dùng trong các thí
+nghiệm FLY trước đó, nên M12 là confirmation có khóa nguồn, không phải benchmark
+held-out chưa từng mở.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -480,9 +514,12 @@ giây mỗi worker.
   `{task_id: DataLoader}` thành danh sách theo task ID. Adapter không đổi mẫu,
   model hoặc hyperparameter, nhưng không nằm trong source identity ban đầu;
   vì vậy ZIP hiện là recovery evidence, chưa phải artifact source-locked cuối.
-- Bằng chứng RanPAC mới có một development seed train-only, chỉ kiểm tra
-  random-ReLU analytic head; chưa bao gồm PETL hoặc lịch chọn Ridge theo từng
-  task của implementation RanPAC gốc.
+- Bằng chứng RanPAC đã có một development stream train-only và sáu replicate
+  test khóa nguồn, nhưng vẫn chỉ kiểm tra random-ReLU analytic head; chưa bao
+  gồm PETL hoặc lịch chọn Ridge theo từng task của implementation RanPAC gốc.
+- M12 không phải test split first-use và có một recovery sau khi metric test đã
+  được tạo. Recovery không đổi lựa chọn khoa học, nhưng phải được công bố cùng
+  kết quả và không được diễn giải như một held-out benchmark mới.
 - Đối chứng cùng byte mới loại được reduced-width Exact, raw Ridge và một
   CountSketch có signed hash cố định trên một stream. Nó chưa bao phủ learned
   sketch, low-rank, Nyström, Frequent Directions hoặc dataset khác. P2B còn
@@ -522,6 +559,12 @@ analytic head random-ReLU của RanPAC, P2B giảm 79.06% tổng persistent stat
 mất 0.1614 pp validation AIA. Vì vậy có thể nâng định vị lên “backend
 additive-Ridge tái sử dụng được, đã kiểm tra trên hai frontend,” nhưng chưa thể
 gọi là universal plug-in.
+
+M12 củng cố kết luận này bằng sáu replicate test đã khóa nguồn. Adaptive SRQ
+giảm `76,39/79,92%` state ở width 10k/20k và bám Exact trong khoảng 0,005 pp
+AIA, nhưng update chậm `2,79/2,91` lần. P2B tiết kiệm nhiều state hơn, đặc biệt
+82,71% ở 20k, nhưng mất 0,326 pp AIA. Do đó adaptive là điểm Pareto ưu tiên
+accuracy, còn P2B là điểm ưu tiên state; không phương án nào trội mọi chỉ tiêu.
 
 M5 bổ sung đối chứng khó hơn: tại cùng khoảng 91.9 MB, P2B giữ full width và
 hơn reduced-width Exact/CountSketch `0.4838/0.5720` pp AIA. Điều này củng cố

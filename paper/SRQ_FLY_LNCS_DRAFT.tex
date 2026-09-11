@@ -36,11 +36,11 @@ disclosed legacy ImageNet-R split, SRQ-FLY reduces persistent learner state by
 percentage points relative to same-width Exact FLY. At nearly equal state, it
 exceeds lower-width Exact FLY by 0.132--0.856 AIA points. Direct-quantization
 controls support factor-space compression over INT8 Gram quantization with
-SPD repair. A train-only transfer to RanPAC's random-ReLU head reduces state
-by 79.1\%; at equal state it outperforms reduced-width Exact and CountSketch
-by 0.484 and 0.572 AIA points. On a controlled GACL-style generalized stream,
-P2B reduces state by 72.6\% with a 0.139-point AIA loss. At width 20,000,
-fixed INT8 narrowly fails a predeclared 0.25-point retention gate.
+SPD repair. A source-locked six-replicate confirmation on a controlled RanPAC
+random-ReLU head shows adaptive SRQ reducing state by 76.4\% and 79.9\% at
+widths 10,000 and 20,000 while changing AIA by $-0.005$ and $+0.005$ points.
+On a controlled GACL-style generalized stream, P2B reduces state by 72.6\%
+with a 0.139-point AIA loss.
 Across four paired runs on one Tesla T4, whole-process peak memory falls
 13.9\%, but updates remain slower. SRQ is therefore an accuracy--memory trade-off for additive-Ridge
 heads, not a universal plug-in or an accuracy-improving replacement for Exact
@@ -703,6 +703,52 @@ controls show that reducing local factor MSE is helpful but insufficient at
 20k, whereas spending a fixed additional precision budget can recover the
 observed accuracy loss. Both findings remain one-seed development evidence.
 
+\subsection{Locked Multi-Seed RanPAC Confirmation}
+
+M12 freezes the Exact, P2B, and adaptive choices before materializing test
+features, then evaluates six paired class-order/projection replicates. It is a
+source-locked confirmation on the controlled Phase-2 random-ReLU head, not a
+fresh first-use benchmark or an end-to-end RanPAC reproduction. Accuracy is
+reported descriptively and is deliberately not a completion gate.
+
+\begin{table}
+\caption{Locked CIFAR-100 test confirmation on the controlled RanPAC head.
+Values are mean $\pm$ sample standard deviation over six paired replicates.
+State reduction and update time are relative to Exact at the same width.}
+\label{tab:m12-confirmation}
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rlrrrrr}
+\toprule
+Width & Backend & AIA & Final & State (MiB) & State reduction & Update/Exact \\
+\midrule
+10,000 & Exact    & 92.5783$\pm$.3829 & 89.128$\pm$.075 & 418.40   & --      & 1.00$\times$ \\
+10,000 & P2B      & 92.4444$\pm$.4135 & 88.905$\pm$.135 & 87.62    & 79.06\% & 1.88$\times$ \\
+10,000 & Adaptive & 92.5731$\pm$.3886 & 89.115$\pm$.067 & 98.80    & 76.39\% & 2.79$\times$ \\
+20,000 & Exact    & 92.8220$\pm$.4147 & 89.660$\pm$.113 & 1,599.73 & --      & 1.00$\times$ \\
+20,000 & P2B      & 92.4956$\pm$.4860 & 89.003$\pm$.150 & 276.57   & 82.71\% & 1.91$\times$ \\
+20,000 & Adaptive & 92.8266$\pm$.4111 & 89.678$\pm$.087 & 321.28   & 79.92\% & 2.91$\times$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Relative to Exact, P2B changes AIA by $-0.1339$ and $-0.3264$ points and
+final accuracy by $-0.223$ and $-0.657$ points at 10k and 20k. Adaptive changes
+AIA by $-0.0052$ and $+0.0046$ points and final accuracy by $-0.013$ and
+$+0.018$ points. Thus adaptive SRQ tracks Exact closely at both widths, while
+fixed P2B remains the smaller and faster compressed point but exhibits the
+large-width degradation diagnosed in M6--M7. The small positive adaptive means
+at 20k are not evidence of an accuracy improvement.
+
+The first M12 execution exposed test metrics but stopped before export because
+an integrity gate incorrectly required every value-sensitive adaptive mask to
+match the exact bytes of the one-seed M11 mask. Recovery replaced only this
+non-accuracy check with the already locked all-INT8 floor and 25\% factor-byte
+ceiling. No method, width, Ridge value, seed, precision policy, or
+accuracy-based decision changed after test observation.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state, serialized checkpoint size,
@@ -768,11 +814,17 @@ Future work should optimize the factor update, repeat process-isolated memory
 measurement on other GPU architectures, evaluate packed INT4 with real byte accounting, and test
 error-feedback variants whose residual state is included in the memory budget.
 Additional untouched datasets and backbones are required before making broad
-generalization claims. The RanPAC transfer currently uses one train-only
-development seed, omits PETL, and replaces the original per-task Ridge
+generalization claims. The RanPAC transfer now includes one train-only
+development stream and a source-locked six-replicate test confirmation, but it
+still omits PETL and replaces the original per-task Ridge
 schedule with one fixed train-only-selected coefficient so that every backend
 solves the same additive system. It establishes frontend portability, not a
-reproduction of published RanPAC accuracy. The one-seed equal-budget control
+reproduction of published RanPAC accuracy. The test split had already been
+consumed by earlier FLY experiments, so M12 is not a fresh first-use held-out
+benchmark. Its disclosed recovery changed only a faulty non-accuracy
+adaptive-byte check after test metrics had been materialized; consequently it
+is confirmation evidence rather than a new selection opportunity. The
+one-seed equal-budget control
 rules out reduced-width Exact, one fixed signed CountSketch, and raw Ridge as
 dominators on that stream, but does not cover learned sketches, low-rank or
 Nystr\"om approximations, other widths, or other datasets. It also exposes a
@@ -789,7 +841,11 @@ The adaptive follow-up recovers the locked 20k retention gate using a fixed
 Conversely, same-byte scale refinement reduces local reconstruction error yet
 still exceeds the 20k gate by 0.000115 points. This negative control warns that
 factor reconstruction MSE is not by itself a sufficient proxy for downstream
-classification error.
+classification error. The locked six-replicate confirmation preserves this
+distinction: fixed P2B loses 0.3264 AIA points at 20k, whereas adaptive SRQ
+changes AIA by only $+0.0046$ points while using more state and 2.91 times
+Exact's update time. This near-zero mean change must not be framed as an
+accuracy gain.
 The GACL-style experiment is likewise a controlled equation-level adapter,
 not an official reproduction: it uses one seed, a small train-only subset,
 cached ViT-B/16 features, no image augmentation, and
@@ -825,7 +881,10 @@ the derived cumulative perturbation recurrence, while leaving causal and
 conditioning claims open. A fixed-budget adaptive-precision variant recovers
 the 20k development gate at additional state and update cost, whereas a
 same-byte scale refinement reduces local factor error but formally misses the
-same gate by 0.000115 points.
+same gate by 0.000115 points. The locked multi-seed confirmation further shows
+that adaptive SRQ tracks Exact within 0.005 AIA points at both 10k and 20k,
+while fixed P2B's 20k loss grows to 0.326 points; adaptive remains the
+higher-state, slower Pareto point.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or

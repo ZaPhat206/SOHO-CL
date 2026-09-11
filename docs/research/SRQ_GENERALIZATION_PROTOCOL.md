@@ -337,8 +337,9 @@ feedback remain future alternatives, not prerequisites for finalization.
 
 ### M12 -- final locked evaluation
 
-Status: protocol and runner prepared; test has not yet been executed. M12 is
-restricted to the controlled RanPAC random-ReLU frontend at widths 10,000 and
+Status: complete. The source-locked artifact contains all 36 units and passes
+every non-accuracy completion gate. M12 is restricted to the controlled RanPAC
+random-ReLU frontend at widths 10,000 and
 20,000. It compares Exact Gram, fixed P2B INT8/FP32, and the single M11
 adaptive INT8/FP16 policy over six paired class-order/projection replicates.
 M11b is excluded because it failed its train-only development gate.
@@ -347,13 +348,25 @@ Authorization is created only after the configuration, current commit,
 train-cache content, and exact M6/M11/M11b ZIP identities have been verified
 while `test.pt` is absent. The authorized extractor then materializes the
 official CIFAR-100 test features. All 36 units are resumable, and their state
-bytes must match the locked development artifacts after every task. Completion
+bytes are checked after every task: Exact and fixed P2B must match M6 exactly,
+whereas adaptive state must remain within the M11-locked all-INT8 floor and
+25% factor-budget ceiling under the unchanged accounting identity. Completion
 has no accuracy gate, no test-time retry, and no post-test method selection.
 The complete frozen contract is in
 `docs/research/SRQ_GENERALIZATION_M12_PROTOCOL.md`; the executable notebook is
 available for both environments as
 `notebooks/srq_generalization_m12_locked_test_colab.ipynb` and
 `notebooks/srq_generalization_m12_locked_test_kaggle.ipynb`.
+
+Across six paired test replicates, adaptive SRQ changes AIA relative to Exact
+by -0.0052 points at width 10,000 and +0.0046 points at width 20,000 while
+reducing state by 76.39% and 79.92%. Fixed P2B reduces state by 79.06% and
+82.71% but loses 0.1339 and 0.3264 AIA points. Adaptive is therefore the
+higher-state, slower accuracy-retaining point; the small positive 20,000-width
+difference is not an accuracy-improvement claim. The final artifact SHA-256 is
+`02ada7180e66e780be77c7934b87d268f0d171dfee1c318fd3e9ae7e48846b1e`.
+The protocol-recovery disclosure in the M12-specific document remains part of
+the result.
 
 ## Naming gate
 
