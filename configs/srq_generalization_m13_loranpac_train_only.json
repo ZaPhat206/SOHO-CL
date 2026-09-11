@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m13-loranpac-budget-screen-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "widths": [10000, 20000],
+  "budget_targets": ["p2b_int8", "adaptive_int8_fp16"],
+  "source_m6": {
+    "artifact_filename": "srq_generalization_m6_width_sweep_train_only.zip",
+    "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+    "result_member": "m6_results.json",
+    "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+    "required_status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY"
+  },
+  "source_m11": {
+    "artifact_filename": "srq_generalization_m11_adaptive_precision_train_only.zip",
+    "artifact_sha256": "65ce03df4da7041833014628b59aac1167f77bde2d64348b9a8a1e4fe09370a7",
+    "result_member": "m11_results.json",
+    "result_sha256": "ea1606e4476bdbe2a8e2acff9c6ae7b95aa78841eac6bdfc2b3c858c62986182",
+    "required_status": "PASS_M11_ADAPTIVE_PRECISION_TRAIN_ONLY"
+  },
+  "ranpac": {
+    "upstream_repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "upstream_commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "upstream_ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 20000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "loranpac": {
+    "upstream_repository": "https://github.com/liangzu/loranpac",
+    "upstream_commit": "32782f9d260e5d722de5702675ed66cca8234883",
+    "upstream_tsvd_py_sha256": "a7611663103197e9cf9972a05f5d38147324b9ef7f059df170fcaabe3125169b",
+    "upstream_inc_net_py_sha256": "2eb720487cd7494fe7c397cb4870405e92f9710b221865995832f082313888c1",
+    "upstream_cifar_config_sha256": "a05ff22a875fa654b9bdbf614a3e3f28e17ac7915f08cd4b3b45b72a3e1aa24f",
+    "truncate_percent": 25.0,
+    "rank_rule": "official_code_python_round",
+    "paper_rank_rule": "ceil",
+    "official_ridge_lambda": 0.0,
+    "matched_ridge_diagnostic": "reuse_locked_m6_ridge_without_accuracy_selection",
+    "rank_cap_policy": "largest_integer_rank_not_exceeding_locked_total_state_budget",
+    "rank_cap_selection_signal": "tensor_shapes_and_dtypes_only_no_labels_or_accuracy"
+  },
+  "gates": {
+    "require_source_identity_match": true,
+    "require_all_units_complete": true,
+    "require_rank_caps_derived_from_bytes": true,
+    "require_total_state_not_above_target": true,
+    "maximum_budget_underfill_one_rank_bytes": true,
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_orthogonality_residual": 0.01,
+    "accuracy_gate": null
+  }
+}
