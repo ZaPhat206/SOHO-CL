@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
+import subprocess
 import zipfile
 
 import pytest
@@ -148,6 +150,19 @@ def test_m13_notebook_is_source_locked_train_only_and_compiles():
     assert "--require-clean-git" in code
     assert "m13_results.json" in code
     assert "srq_generalization_m13_loranpac_train_only.zip" in code
+    pinned = re.search(r"REPO_COMMIT='([0-9a-f]{40})'", code)
+    assert pinned is not None
+    for required in (
+        "tests/test_loranpac_analytic_frontend.py",
+        "tests/test_srq_generalization_m13.py",
+        "tests/test_ranpac_analytic_frontend.py",
+        "tests/test_tail_fly_math.py",
+    ):
+        completed = subprocess.run(
+            ["git", "cat-file", "-e", f"{pinned.group(1)}:{required}"],
+            cwd=ROOT,
+        )
+        assert completed.returncode == 0, required
     locked_paths = (
         "configs/srq_generalization_m13_loranpac_train_only.json",
         "tools/srq_generalization_m13.py",
