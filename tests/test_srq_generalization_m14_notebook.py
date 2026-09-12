@@ -95,6 +95,9 @@ def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     assert "subprocess.Popen(command" in code
     assert "stderr=subprocess.STDOUT" in code
     assert "LAST 200 RUNNER LOG LINES" in code
+    assert code.index("os.chdir(source_dir)") < code.index("files.upload()")
+    assert "accidental=Path(WORK_DIR)/name" in code
+    assert "Checkout dirty after artifact upload" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
