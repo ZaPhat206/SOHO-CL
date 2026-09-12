@@ -91,6 +91,10 @@ def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     assert "60 units" in code
     assert "COMPLETED UNITS BEFORE RUN" in code
     assert "resumable only while this runtime remains alive" in code
+    assert "m14_runner.log" in code
+    assert "subprocess.Popen(command" in code
+    assert "stderr=subprocess.STDOUT" in code
+    assert "LAST 200 RUNNER LOG LINES" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
