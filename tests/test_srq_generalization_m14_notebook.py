@@ -105,6 +105,7 @@ def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     assert "source_sha256':SOURCE_SHA" in code
     assert "archive.extract(relative,path=PERSIST_ROOT)" in code
     assert "HANDOFF READY:" in code
+    assert "HANDOFF TRAIN CACHE FOUND: raw CIFAR and checkpoint download skipped" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
