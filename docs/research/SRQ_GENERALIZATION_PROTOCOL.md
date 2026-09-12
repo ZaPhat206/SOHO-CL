@@ -368,6 +368,39 @@ difference is not an accuracy-improvement claim. The final artifact SHA-256 is
 The protocol-recovery disclosure in the M12-specific document remains part of
 the result.
 
+### M13 -- equal-budget LoRanPAC challenger (formal FAIL)
+
+M13 adds a source-pinned truncated-SVD LoRanPAC control at widths 10,000 and
+20,000 under the exact P2B and adaptive total-state budgets. Rank is derived
+from bytes before accuracy is observed. The train-only artifact SHA-256 is
+`b7cc3e1993b150d829806ac8062b10a2e31ad9c533ef729ce7a806647496d28c`.
+All source, cache, rank, and byte contracts pass, and all four units complete.
+LoRanPAC does not dominate its matched SRQ backend on the one development
+seed, but the archived status remains `FAIL_M13_LORANPAC_TRAIN_ONLY`: the
+task-1 raw basis-orthogonality Frobenius residual and solver residual exceed
+the preregistered absolute gates. The accuracy fields are therefore retained
+as descriptive evidence only. Full results are recorded in
+`docs/research/SRQ_GENERALIZATION_M13_RESULT.md`.
+
+### M13-N -- rank-aware numerical audit (PASS)
+
+M13-N is an accuracy-free, test-free diagnostic of the two M13 failures. Its
+artifact SHA-256 is
+`726853486664cbf26ec109a061585a1effcd90569ce056108e9ff594f94e031d`.
+All gates pass. It reproduces M13's raw task-1 metrics, reports raw and
+rank-normalized Frobenius plus spectral orthogonality residuals, and checks a
+small FP64 oracle. A diagnostic QR reduces orthogonality error by at least
+803.65 times and solver residual by at least 730.74 times. This localizes the
+failure to FP32 high-rank basis orthogonality and a non-scale-aware raw gate,
+not to a demonstrated algebraic error in the adapter.
+
+The QR path changes the represented truncated system if singular values are
+left unchanged and is not substituted into the official LoRanPAC path. M13
+therefore remains FAIL. M13-N only authorizes a newly preregistered multi-seed
+M14 with scale-aware numerical gates. The audit and recovery disclosure are
+recorded in `docs/research/SRQ_GENERALIZATION_M13N_RESULT.md`; the M14 contract
+is frozen in `docs/research/SRQ_GENERALIZATION_M14_PLAN.md`.
+
 ## Naming gate
 
 - FLY evidence only: `SRQ-FLY`.

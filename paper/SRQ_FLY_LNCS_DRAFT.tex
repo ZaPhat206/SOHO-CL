@@ -824,11 +824,19 @@ consumed by earlier FLY experiments, so M12 is not a fresh first-use held-out
 benchmark. Its disclosed recovery changed only a faulty non-accuracy
 adaptive-byte check after test metrics had been materialized; consequently it
 is confirmation evidence rather than a new selection opportunity. The
-one-seed equal-budget control
-rules out reduced-width Exact, one fixed signed CountSketch, and raw Ridge as
-dominators on that stream, but does not cover learned sketches, low-rank or
-Nystr\"om approximations, other widths, or other datasets. It also exposes a
-large update-time disadvantage relative to the equal-budget controls.
+one-seed equal-budget control rules out reduced-width Exact, one fixed signed
+CountSketch, and raw Ridge as dominators on that stream. A subsequent
+source-pinned truncated-SVD LoRanPAC screen at the P2B and adaptive byte
+budgets did not dominate the matched SRQ backends on its one development seed.
+That screen nevertheless remains a formal failure because its preregistered
+raw task-1 orthogonality and solver-residual gates were not scale-aware for
+high-rank FP32 SVD bases. An accuracy-free numerical audit reproduced the raw
+metrics, showed nearly rank-stable normalized and spectral errors, and reduced
+the residuals by more than 700 times with diagnostic reorthogonalization. This
+does not retroactively pass the screen or justify an accuracy claim; a newly
+preregistered multi-seed comparison is still required. Learned sketches,
+Nystr\"om approximations, other widths, and other datasets remain uncovered.
+The controls also expose a large update-time disadvantage for SRQ.
 The width sweep further exposes a formal accuracy-retention failure at width
 20,000: the P2B gap exceeds the locked limit by 0.005845 AIA points. Although
 FP16 and solver diagnostics remain stable, the present evidence does not show

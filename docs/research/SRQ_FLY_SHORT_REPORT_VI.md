@@ -472,6 +472,28 @@ hoặc quyết định dựa trên accuracy. Test split cũng đã được dùn
 nghiệm FLY trước đó, nên M12 là confirmation có khóa nguồn, không phải benchmark
 held-out chưa từng mở.
 
+### 2.12. Đối chứng LoRanPAC cùng byte và kiểm toán số học M13-N
+
+M13 bổ sung đối chứng truncated-SVD LoRanPAC ở width 10.000/20.000 và đúng hai
+ngân sách tổng state của P2B/adaptive. Rank được suy ra từ byte trước khi đọc
+accuracy. Trên một development seed, LoRanPAC không thống trị SRQ: chênh lệch
+AIA LoRanPAC trừ backend SRQ tương ứng là `-0,538/-0,480/+0,004/-0,218` pp
+cho 10k-P2B, 10k-adaptive, 20k-P2B và 20k-adaptive. Tuy nhiên, M13 giữ trạng
+thái formal `FAIL_M13_LORANPAC_TRAIN_ONLY` vì hai gate số học tuyệt đối ở task
+đầu thất bại; các số accuracy này chỉ là bằng chứng mô tả một seed.
+
+Artifact M13-N `srq_generalization_m13n_numerical_audit.zip`, SHA-256
+`726853486664cbf26ec109a061585a1effcd90569ce056108e9ff594f94e031d`,
+không dùng test và không tính prediction. Audit cho thấy raw Frobenius
+`||U^T U-I||_F` tăng từ 0,0411 lên 0,0574 khi rank tăng, nhưng đại lượng chia
+`sqrt(rank)` ổn định trong khoảng 0,00105--0,00113 và spectral norm trong
+0,00243--0,00249. QR chỉ để chẩn đoán làm giảm sai số trực giao ít nhất 803,65
+lần và solver residual ít nhất 730,74 lần; oracle FP64 kích thước nhỏ đạt mức
+`1e-15`. Vì vậy lỗi M13 được định vị là hiệu ứng precision/thước đo không
+scale-aware ở rank lớn, không phải bằng chứng adapter sai. QR không được dùng
+để đổi M13 thành PASS. Bước hợp lệ tiếp theo là M14 đa seed với gate mới đã
+đăng ký trước, không phải sửa ngưỡng M13 sau khi thấy kết quả.
+
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
 ### Ưu điểm
@@ -520,10 +542,13 @@ held-out chưa từng mở.
 - M12 không phải test split first-use và có một recovery sau khi metric test đã
   được tạo. Recovery không đổi lựa chọn khoa học, nhưng phải được công bố cùng
   kết quả và không được diễn giải như một held-out benchmark mới.
-- Đối chứng cùng byte mới loại được reduced-width Exact, raw Ridge và một
-  CountSketch có signed hash cố định trên một stream. Nó chưa bao phủ learned
-  sketch, low-rank, Nyström, Frequent Directions hoặc dataset khác. P2B còn
-  chậm hơn hai đối chứng cùng byte từ 15.25 đến 19.22 lần ở analytic update.
+- Đối chứng cùng byte đã bao gồm reduced-width Exact, raw Ridge, một
+  CountSketch cố định và một LoRanPAC truncated-SVD source-pinned. LoRanPAC mới
+  chỉ chạy một development seed; M13 formal FAIL do gate số học task đầu, còn
+  M13-N chỉ chẩn đoán precision/thước đo và không biến accuracy một seed thành
+  xác nhận. Learned sketch, Nyström, Frequent Directions và dataset khác vẫn
+  chưa được bao phủ. P2B còn chậm hơn reduced-width/CountSketch từ 15.25 đến
+  19.22 lần ở analytic update.
 
 ## 4. Việc cần làm tiếp theo
 
