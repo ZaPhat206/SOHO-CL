@@ -79,10 +79,10 @@ def test_m14_kaggle_notebook_is_pinned_train_only_and_byte_preserving():
     _assert_cells_compile(notebook, KAGGLE_NOTEBOOK)
 
 
-def test_m14_colab_notebook_is_pinned_train_only_and_cross_session_resumable():
+def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     notebook, code, commit = _read_code(COLAB_NOTEBOOK)
-    assert "drive.mount('/content/drive')" in code
-    assert "SRQ_M14_LORANPAC_2cf2093" in code
+    assert "drive.mount(" not in code
+    assert "PERSIST_ROOT='/content/srq_m14_local'" in code
     assert "--extract-train-only" in code
     assert "not (cache/'test.pt').exists()" in code
     assert "--source-m6-artifact" in code
@@ -90,6 +90,7 @@ def test_m14_colab_notebook_is_pinned_train_only_and_cross_session_resumable():
     assert "--source-m13n-artifact" in code
     assert "60 units" in code
     assert "COMPLETED UNITS BEFORE RUN" in code
+    assert "resumable only while this runtime remains alive" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
