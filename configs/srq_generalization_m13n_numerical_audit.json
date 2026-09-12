@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m13n-loranpac-numerical-audit-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "computes_accuracy": false,
+  "uses_accuracy_for_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "source_m13": {
+    "artifact_filename": "srq_generalization_m13_loranpac_train_only.zip",
+    "artifact_sha256": "b7cc3e1993b150d829806ac8062b10a2e31ad9c533ef729ce7a806647496d28c",
+    "source_commit": "120a84cd0340ef880d34680e07b6225b356f0928",
+    "required_status_disclosure": "FAIL_M13_LORANPAC_TRAIN_ONLY",
+    "archive_opening_permitted": false
+  },
+  "train_identity": {
+    "train_pt_sha256": "ba53b82123964708123fe868a69d688bfdda4d66b1a3b7ea56329cc9ee9321dc",
+    "class_order_seed": 2025,
+    "training_indices_sha256": "c62f3dd83d31f2105f75e66f2a62aa5b06463b0d5a05adf10e3ed98d54fe9ed5",
+    "validation_indices_sha256": "edfa250fbbf7dbb0747d69d17f95e5ef35b13d2520978bc6a0bae04ee261ed44"
+  },
+  "ranpac": {
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 20000,
+    "projection_seed": 2025,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "encode_batch_size": 256
+  },
+  "loranpac": {
+    "upstream_repository": "https://github.com/liangzu/loranpac",
+    "upstream_commit": "32782f9d260e5d722de5702675ed66cca8234883",
+    "upstream_tsvd_py_sha256": "a7611663103197e9cf9972a05f5d38147324b9ef7f059df170fcaabe3125169b",
+    "upstream_inc_net_py_sha256": "2eb720487cd7494fe7c397cb4870405e92f9710b221865995832f082313888c1",
+    "truncate_percent": 25.0,
+    "rank_rule": "official_code_python_round",
+    "official_ridge_lambda": 0.0,
+    "matched_ridge_lambda": 1000000.0
+  },
+  "units": [
+    {
+      "width": 10000,
+      "budget_target": "p2b_int8",
+      "maximum_rank": 1328,
+      "task1_effective_rank": 1328,
+      "target_total_persistent_bytes": 91880088,
+      "m13_task1_raw_orthogonality": 0.04107087105512619,
+      "m13_task1_official_solver_residual": 0.00063373255371612,
+      "m13_task1_matched_solver_residual": 0.0006326395732647334
+    },
+    {
+      "width": 10000,
+      "budget_target": "adaptive_int8_fp16",
+      "maximum_rank": 1621,
+      "task1_effective_rank": 1621,
+      "target_total_persistent_bytes": 103596140,
+      "m13_task1_raw_orthogonality": 0.04308929666876793,
+      "m13_task1_official_solver_residual": 0.0006323911458155877,
+      "m13_task1_matched_solver_residual": 0.0006319965473654098
+    },
+    {
+      "width": 20000,
+      "budget_target": "p2b_int8",
+      "maximum_rank": 2656,
+      "task1_effective_rank": 2656,
+      "target_total_persistent_bytes": 290009776,
+      "m13_task1_raw_orthogonality": 0.054527897387742996,
+      "m13_task1_official_solver_residual": 0.0006073721593891122,
+      "m13_task1_matched_solver_residual": 0.000603063861123641
+    },
+    {
+      "width": 20000,
+      "budget_target": "adaptive_int8_fp16",
+      "maximum_rank": 3242,
+      "task1_effective_rank": 3000,
+      "target_total_persistent_bytes": 336883120,
+      "m13_task1_raw_orthogonality": 0.057394713163375854,
+      "m13_task1_official_solver_residual": 0.0006093115419445831,
+      "m13_task1_matched_solver_residual": 0.0006036945164806254
+    }
+  ],
+  "small_oracle": {
+    "feature_dimension": 256,
+    "rows": 192,
+    "retained_rank": 128,
+    "matrix_seed": 13130,
+    "right_hand_side_columns": 16,
+    "right_hand_side_seed": 13131
+  },
+  "audit_metrics": {
+    "orthogonality": ["raw_frobenius", "frobenius_over_sqrt_rank", "spectral_norm", "maximum_absolute_entry"],
+    "solver": ["official_formula_relative_residual", "matched_ridge_relative_residual", "qr_reorthogonalized_relative_residual"],
+    "spectral_norm_computation": "symmetric_eigvalsh_exact",
+    "accuracy_fields_permitted": false
+  },
+  "gates": {
+    "require_source_artifact_sha256": true,
+    "require_source_archive_unopened": true,
+    "require_train_identity": true,
+    "require_rank_contracts": true,
+    "require_all_metrics_finite": true,
+    "minimum_qr_orthogonality_improvement_factor": 10.0,
+    "minimum_qr_solver_residual_improvement_factor": 10.0,
+    "maximum_small_oracle_fp64_normalized_orthogonality": 1e-10,
+    "accuracy_gate": null
+  }
+}
