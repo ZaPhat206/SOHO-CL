@@ -25,6 +25,7 @@ LOCKED_PATHS = (
     "utils/data_utils.py",
     "utils/train_utils.py",
     "tests/test_srq_generalization_m13n.py",
+    "docs/research/SRQ_GENERALIZATION_M13N_PROTOCOL.md",
 )
 
 
