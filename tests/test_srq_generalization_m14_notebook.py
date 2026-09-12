@@ -29,6 +29,8 @@ def test_m14_kaggle_notebook_is_pinned_train_only_and_byte_preserving():
     assert "--source-m13n-artifact" in code
     assert "name+'.bin'" in code
     assert "60 units" in code
+    assert "PRIOR M14 UNITS IMPORTED" in code
+    assert "Conflicting prior M14 unit" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     locked_paths = (
@@ -56,4 +58,3 @@ def test_m14_kaggle_notebook_is_pinned_train_only_and_byte_preserving():
     for cell in notebook["cells"]:
         if cell["cell_type"] == "code":
             compile("".join(cell.get("source", [])), str(NOTEBOOK), "exec")
-
