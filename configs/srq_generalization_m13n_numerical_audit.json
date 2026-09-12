@@ -23,8 +23,19 @@
   "train_identity": {
     "train_pt_sha256": "ba53b82123964708123fe868a69d688bfdda4d66b1a3b7ea56329cc9ee9321dc",
     "class_order_seed": 2025,
-    "training_indices_sha256": "c62f3dd83d31f2105f75e66f2a62aa5b06463b0d5a05adf10e3ed98d54fe9ed5",
-    "validation_indices_sha256": "edfa250fbbf7dbb0747d69d17f95e5ef35b13d2520978bc6a0bae04ee261ed44"
+    "training_indices_sha256": "ff06d5687dc8069c599b73c29c435cd84e2be160fc878fcfde8e37a565f326c9",
+    "validation_indices_sha256": "979e3bea647ed5f51b8a354c8adb13be9fb82739a7773e3c941080bd848cb313"
+  },
+  "protocol_recovery": {
+    "reason": "two preregistered split hashes did not match the deterministic split reconstructed from the byte-identical locked train.pt",
+    "failure_stage": "pre_svd_train_identity_check",
+    "numerical_metrics_observed_before_recovery": false,
+    "corrected_fields": [
+      "train_identity.training_indices_sha256",
+      "train_identity.validation_indices_sha256"
+    ],
+    "scientific_choices_changed": false,
+    "ranks_thresholds_methods_and_seeds_unchanged": true
   },
   "ranpac": {
     "feature_dimension": 768,

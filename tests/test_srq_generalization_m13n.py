@@ -28,6 +28,16 @@ def test_m13n_config_locks_nonpredictive_train_only_audit():
         "FAIL_M13_LORANPAC_TRAIN_ONLY"
     )
     assert config["gates"]["accuracy_gate"] is None
+    assert config["train_identity"]["training_indices_sha256"] == (
+        "ff06d5687dc8069c599b73c29c435cd84e2be160fc878fcfde8e37a565f326c9"
+    )
+    assert config["train_identity"]["validation_indices_sha256"] == (
+        "979e3bea647ed5f51b8a354c8adb13be9fb82739a7773e3c941080bd848cb313"
+    )
+    assert config["protocol_recovery"][
+        "numerical_metrics_observed_before_recovery"
+    ] is False
+    assert config["protocol_recovery"]["scientific_choices_changed"] is False
     assert {(unit["width"], unit["budget_target"]) for unit in config["units"]} == {
         (10000, "p2b_int8"),
         (10000, "adaptive_int8_fp16"),

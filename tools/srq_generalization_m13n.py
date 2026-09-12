@@ -52,6 +52,7 @@ TOP_KEYS = {
     "solver_dtype",
     "source_m13",
     "train_identity",
+    "protocol_recovery",
     "ranpac",
     "loranpac",
     "units",
@@ -127,6 +128,27 @@ def _read_config(path: str | Path) -> dict:
         )
     ):
         raise ValueError("invalid M13-N train identity")
+
+    recovery = config["protocol_recovery"]
+    if set(recovery) != {
+        "reason",
+        "failure_stage",
+        "numerical_metrics_observed_before_recovery",
+        "corrected_fields",
+        "scientific_choices_changed",
+        "ranks_thresholds_methods_and_seeds_unchanged",
+    } or (
+        recovery["failure_stage"] != "pre_svd_train_identity_check"
+        or recovery["numerical_metrics_observed_before_recovery"] is not False
+        or recovery["corrected_fields"]
+        != [
+            "train_identity.training_indices_sha256",
+            "train_identity.validation_indices_sha256",
+        ]
+        or recovery["scientific_choices_changed"] is not False
+        or recovery["ranks_thresholds_methods_and_seeds_unchanged"] is not True
+    ):
+        raise ValueError("invalid M13-N protocol-recovery disclosure")
 
     ranpac = config["ranpac"]
     if set(ranpac) != {
@@ -508,6 +530,13 @@ def run(args) -> dict:
         == list(range(config["num_classes"]))
     )
     if not train_identity_matches:
+        print(
+            "M13-N TRAIN IDENTITY MISMATCH:\n"
+            + json.dumps(
+                {"expected": identity, "actual": train_identity}, indent=2
+            ),
+            flush=True,
+        )
         raise ValueError("M13-N train feature/split identity mismatch")
 
     device = torch.device(args.device)
@@ -643,6 +672,7 @@ def run(args) -> dict:
             "source_archive_semantics_read": False,
             "qr_reorthogonalization_is_diagnostic_only": True,
         },
+        "protocol_recovery": config["protocol_recovery"],
         "source_identity": source_identity,
         "train_identity": train_identity,
         "units": units,

@@ -80,3 +80,19 @@ bitwise-identical giữa mọi GPU.
 
 M13-N không cung cấp bằng chứng rằng QR nên được thêm vào LoRanPAC, không chứng
 minh accuracy-state trade-off bền qua seed và cũng không mở quyền truy cập test.
+
+## 6. Recovery disclosure trước phép đo
+
+Lần chạy đầu tiên dừng tại `pre_svd_train_identity_check`, trước khi in
+`M13-N SVD START` và trước khi tạo bất kỳ numerical metric nào. Kiểm tra cho
+thấy raw SHA của `train.pt`, checkpoint, feature dimension và class inventory
+đều khớp, nhưng hai split hash đã điền trong config không khớp kết quả tất định
+của chính cache, seed và hàm split đã khóa. Các hash đúng được tái lập là:
+
+- training indices: `ff06d5687dc8069c599b73c29c435cd84e2be160fc878fcfde8e37a565f326c9`;
+- validation indices: `979e3bea647ed5f51b8a354c8adb13be9fb82739a7773e3c941080bd848cb313`.
+
+Recovery chỉ sửa hai expected identity hash này và thêm disclosure vào output.
+Không thay source artifact, cache, seed, rank, Ridge, metric, threshold, method
+hay gate. Vì chưa quan sát kết quả số trước recovery, thay đổi này sửa một lỗi
+preflight có thể kiểm chứng độc lập, không phải điều chỉnh theo kết quả.
