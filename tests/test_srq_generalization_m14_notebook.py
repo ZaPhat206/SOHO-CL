@@ -100,12 +100,16 @@ def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     assert "Checkout dirty after artifact upload" in code
     assert "IMPORT_HANDOFF=False" in code
     assert "HANDOFF_NAME='m14_handoff_checkpoint.zip'" in code
-    assert "def create_handoff():" in code
+    assert "def create_handoff(filename=HANDOFF_NAME):" in code
     assert "HANDOFF_MANIFEST.json" in code
     assert "source_sha256':SOURCE_SHA" in code
     assert "archive.extract(relative,path=PERSIST_ROOT)" in code
     assert "HANDOFF READY:" in code
     assert "HANDOFF TRAIN CACHE FOUND: raw CIFAR and checkpoint download skipped" in code
+    assert "next_checkpoint=((completed_before//10)+1)*10" in code
+    assert "m14_handoff_{next_checkpoint:03d}_units.zip" in code
+    assert "AUTOMATIC CHECKPOINT:" in code
+    assert "files.download(str(checkpoint))" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
