@@ -53,6 +53,13 @@ def test_m14_rejects_test_use_accuracy_gate_and_seed_mutation(tmp_path):
     with pytest.raises(ValueError, match="design"):
         m14._read_config(path)
 
+    broken = json.loads(json.dumps(original))
+    broken["p2b"]["group_size"] = 128
+    path = tmp_path / "p2b.json"
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(ValueError, match="P2B"):
+        m14._read_config(path)
+
 
 def test_m14_rank_contract_uses_exact_paired_backend_bytes():
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -116,4 +123,3 @@ def test_m14_small_loranpac_unit_is_train_only_and_byte_matched():
     assert len(result["records"]) == 2
     assert result["records"][0]["orthogonality"]["spectral_norm"] is not None
     assert result["records"][1]["orthogonality"]["spectral_norm"] is None
-

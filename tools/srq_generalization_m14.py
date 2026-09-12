@@ -119,6 +119,28 @@ def _read_config(path: str | Path) -> dict:
         and min(ranpac.get("encode_batch_size", 0), ranpac.get("evaluation_batch_size", 0)) > 0
     ):
         raise ValueError("M14 RanPAC frontend identity changed")
+    p2b = config["p2b"]
+    if not (
+        p2b.get("block_size") == 256
+        and p2b.get("group_size") == 64
+        and p2b.get("update_panel_size") == 128
+        and p2b.get("update_trailing_chunk_size") is None
+        and p2b.get("first_update_backend") == "gram_cholesky"
+        and p2b.get("quantization_backend") == "streaming"
+        and p2b.get("quantization_batch_blocks") == 64
+    ):
+        raise ValueError("M14 P2B identity changed")
+    adaptive = config["adaptive"]
+    if not (
+        adaptive.get("budget_fraction_between_int8_and_fp16") == 0.25
+        and adaptive.get("selection_rule")
+        == "largest_factor_mse_reduction_per_added_byte"
+        and adaptive.get("selection_signal")
+        == "current_factor_values_only_no_labels_or_accuracy"
+        and adaptive.get("precision_mask_dtype") == "uint8"
+        and adaptive.get("tie_break") == "ascending_upper_block_index"
+    ):
+        raise ValueError("M14 adaptive policy changed")
     loranpac = config["loranpac"]
     if not (
         loranpac.get("upstream_commit") == "32782f9d260e5d722de5702675ed66cca8234883"
@@ -137,6 +159,20 @@ def _read_config(path: str | Path) -> dict:
         raise ValueError("M14 LoRanPAC policy changed")
     evaluation = config["evaluation"]
     gates = config["integrity_gates"]
+    if not (
+        evaluation.get("training_split")
+        == "outer_train_portion_of_official_train_split"
+        and evaluation.get("validation_split")
+        == "outer_validation_portion_of_official_train_split"
+        and evaluation.get("schedule")
+        == "class_incremental_seen_classes_after_each_task"
+        and evaluation.get("primary_metrics")
+        == ["validation_aia", "final_validation_accuracy"]
+        and evaluation.get("report_mean_and_sample_standard_deviation") is True
+        and evaluation.get("report_paired_differences") is True
+        and evaluation.get("confidence_intervals_in_main_table") is False
+    ):
+        raise ValueError("M14 evaluation contract changed")
     if evaluation.get("accuracy_gate", "missing") is not None or gates.get(
         "accuracy_gate", "missing"
     ) is not None:
