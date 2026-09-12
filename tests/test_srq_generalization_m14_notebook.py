@@ -98,6 +98,13 @@ def test_m14_colab_notebook_is_pinned_train_only_and_session_local():
     assert code.index("os.chdir(source_dir)") < code.index("files.upload()")
     assert "accidental=Path(WORK_DIR)/name" in code
     assert "Checkout dirty after artifact upload" in code
+    assert "IMPORT_HANDOFF=False" in code
+    assert "HANDOFF_NAME='m14_handoff_checkpoint.zip'" in code
+    assert "def create_handoff():" in code
+    assert "HANDOFF_MANIFEST.json" in code
+    assert "source_sha256':SOURCE_SHA" in code
+    assert "archive.extract(relative,path=PERSIST_ROOT)" in code
+    assert "HANDOFF READY:" in code
     assert "PASS_M14_LORANPAC_MULTISEED_TRAIN_ONLY" in code
     assert "srq_generalization_m14_loranpac_multiseed_train_only.zip" in code
     assert "files.download(str(export))" in code
