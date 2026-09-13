@@ -433,7 +433,7 @@ comparator. Its artifact SHA-256 is
 the full audit is recorded in
 `docs/research/SRQ_GENERALIZATION_M15_RESULT.md`.
 
-### M16 -- fresh Cars/ResNet-50 Phase-2 confirmation (preregistered)
+### M16 -- fresh Cars/ResNet-50 Phase-2 confirmation (PASS)
 
 M16 is the next out-of-development confirmation. It uses the standard
 Stanford Cars split, the published RanPAC Cars schedule (16 initial classes,
@@ -450,8 +450,16 @@ not a full PETL reproduction. RanPAC's code retunes Ridge at every task;
 because an SRQ factor embeds `sqrt(lambda) I`, M16 instead applies the official
 first-task 80/20 MSE grid once and freezes the selected value for the stream.
 Every backend within a replicate receives that same value. There is no test
-accuracy gate or post-test retry. The frozen contract is in
-`docs/research/SRQ_GENERALIZATION_M16_PROTOCOL.md`.
+accuracy gate or post-test retry.
+
+All 18/18 units complete and all locked gates pass. P2B reduces final state by
+69.70% while changing paired AIA by `-0.0663 +/- 0.0594` points. Adaptive
+reduces state by 67.35% while changing paired AIA by only
+`-0.0006 +/- 0.0076` points, at 3.64 times Exact's analytic-update time. The
+artifact SHA-256 is
+`9d904939c2e3dfcb1ee62d2e39223508833f6855d2eb77aab3566a2dcb6b653a`.
+The frozen contract is in `docs/research/SRQ_GENERALIZATION_M16_PROTOCOL.md`;
+the audited result is in `docs/research/SRQ_GENERALIZATION_M16_RESULT.md`.
 
 ## Naming gate
 

@@ -36,9 +36,9 @@ disclosed legacy ImageNet-R split, SRQ-FLY reduces persistent learner state by
 percentage points relative to same-width Exact FLY. At nearly equal state, it
 exceeds lower-width Exact FLY by 0.132--0.856 AIA points. Direct-quantization
 controls support factor-space compression over INT8 Gram quantization with
-SPD repair. A source-locked six-replicate confirmation on a controlled RanPAC
-random-ReLU head shows adaptive SRQ reducing state by 76.4\% and 79.9\% at
-widths 10,000 and 20,000 while changing AIA by $-0.005$ and $+0.005$ points.
+SPD repair. Source-locked six-replicate confirmations on controlled RanPAC
+random-ReLU heads show adaptive SRQ reducing state by 67.3--79.9\% on
+CIFAR-100 and Stanford Cars while changing AIA by at most 0.005 points.
 On a controlled GACL-style generalized stream, P2B reduces state by 72.6\%
 with a 0.139-point AIA loss.
 Across four paired runs on one Tesla T4, whole-process peak memory falls
@@ -802,6 +802,45 @@ diagonal-core formula that assumes exact orthogonality, rather than a detected
 error in the general Ridge adapter. M15 passes its diagnostic gates but does
 not retroactively pass M14 or establish prediction equivalence.
 
+\subsection{Fresh Stanford Cars/ResNet-50 Confirmation}
+
+M16 changes both the dataset and frozen backbone relative to the CIFAR/ViT
+development stream. It uses the official Stanford Cars split, the published
+RanPAC Cars schedule of 16 initial classes followed by nine increments of 20,
+ResNet-50 ImageNet-1K V2 features, and a width-10,000 random-ReLU head. Ridge is
+selected once from an 80/20 split of the first training task and frozen before
+test features are materialized. All three backends share the class order,
+projection, and selected Ridge within each of six paired replicates.
+
+\begin{table}
+\caption{Locked Stanford Cars confirmation on a controlled RanPAC Phase-2
+head. Values are mean $\pm$ sample standard deviation over six paired
+replicates. Differences are compressed backend minus Exact.}
+\label{tab:m16-cars}
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Backend & AIA & Final & $\Delta$AIA & $\Delta$Final & State (MiB) & Update/Exact \\
+\midrule
+Exact & 59.3517$\pm$.8116 & 48.5574$\pm$.2595 & -- & -- & 474.55 & 1.00$\times$ \\
+P2B & 59.2855$\pm$.7964 & 48.4351$\pm$.2728 & $-.0663\pm.0594$ & $-.1223\pm.0780$ & 143.78 & 1.58$\times$ \\
+Adaptive & 59.3511$\pm$.8143 & 48.5450$\pm$.2759 & $-.0006\pm.0076$ & $-.0124\pm.0352$ & 154.95 & 3.64$\times$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+P2B and Adaptive reduce state by 69.70\% and 67.35\%, respectively. Adaptive
+tracks Exact within 0.001 mean AIA point, whereas P2B gives the smaller and
+faster compressed point with a 0.066-point mean AIA loss. All 18 units and all
+locked integrity gates pass; the maximum solver residual is
+$8.36\times10^{-6}$ against the preregistered $2\times10^{-5}$ limit. Accuracy
+is not a gate. This is evidence for backend portability across the tested
+fixed-feature additive-Ridge frontends, not a full PETL RanPAC reproduction or
+a reproduction of its published accuracy.
+
 \subsection{Whole-Process Memory}
 
 Table~\ref{tab:memory} separates deployed state, serialized checkpoint size,
@@ -855,8 +894,9 @@ larger than raw-feature Ridge. The current implementation is INT8 rather than
 true packed INT4 and has no error feedback.
 
 System memory has been measured in four paired repetitions, but only on
-CIFAR-100, one Tesla T4, and one software stack. All accuracy experiments use
-one frozen ViT-B/16. Repeated final evaluations reuse
+CIFAR-100, one Tesla T4, and one software stack. Most accuracy experiments use
+a frozen ViT-B/16; M16 adds one frozen ResNet-50 configuration on Stanford
+Cars. Repeated final evaluations reuse
 the same dataset test split, so replicate variation reflects class order and
 projection seeds rather than new dataset sampling. The ImageNet-R split has a
 known duplicate-content limitation. Feature and WTA caches contain
@@ -866,7 +906,7 @@ as evidence that the complete experiment is sample-free.
 Future work should optimize the factor update, repeat process-isolated memory
 measurement on other GPU architectures, evaluate packed INT4 with real byte accounting, and test
 error-feedback variants whose residual state is included in the memory budget.
-Additional untouched datasets and backbones are required before making broad
+More untouched datasets and backbones are required before making broad
 generalization claims. The RanPAC transfer now includes one train-only
 development stream and a source-locked six-replicate test confirmation, but it
 still omits PETL and replaces the original per-task Ridge
@@ -917,6 +957,12 @@ mini-batch-frequency compression, it cannot establish compatibility with
 GACL's changing representation, published accuracy, or every generalized
 stream. Its growing P2B logit drift and 3.79-times update cost relative to the
 inverse-RLS reference are explicit limitations.
+The Stanford Cars experiment is also a controlled Phase-2 backend comparison,
+not full RanPAC: it omits PETL and freezes a first-task train-only-selected
+Ridge coefficient instead of retuning it after every task. Its adaptive point
+nearly matches Exact accuracy but costs 3.64 times Exact's analytic-update
+time, so the result strengthens portability rather than runtime-efficiency
+claims.
 
 \section{Conclusion}
 
@@ -954,6 +1000,11 @@ prediction-free closure traces that residual to FP32 basis non-orthogonality
 under an exact-orthogonality projected formula and finds no general
 Ridge-adapter inconsistency; this diagnosis does not convert the comparison
 into a passing confirmation.
+Finally, the locked Stanford Cars/ResNet-50 confirmation passes all gates:
+adaptive SRQ reduces state by 67.35\% with a paired AIA change of only
+$-0.0006$ points, while P2B reduces state by 69.70\% with a $-0.0663$-point
+change. This fresh dataset/backbone result strengthens, but does not make
+universal, the reusable fixed-feature additive-Ridge backend claim.
 
 \subsubsection{Acknowledgments.}
 Replace this sentence with the actual funding and assistance statement, or
