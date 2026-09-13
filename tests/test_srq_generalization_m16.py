@@ -26,6 +26,10 @@ def test_m16_config_pins_official_cars_phase2_scope():
     assert config["backbone"]["architecture"] == "resnet50"
     assert config["backbone"]["weights"] == "IMAGENET1K_V2"
     assert config["ranpac_source"]["cars_publish_row"] == 10
+    assert config["data_source"]["handle"] == (
+        "jutrera/stanford-car-dataset-by-classes-folder/versions/2"
+    )
+    assert config["data_source"]["expected_total_bytes"] == 1990113870
     assert config["methods"] == list(m16.METHODS)
     assert config["integrity_gates"]["accuracy_gate"] is None
     assert len(config["replicates"]) == 6
@@ -38,6 +42,7 @@ def test_m16_config_pins_official_cars_phase2_scope():
         ("accuracy_based_method_selection", True),
         ("class_increments", [196]),
         ("methods", ["exact"]),
+        ("data_source", {}),
     ],
 )
 def test_m16_rejects_changed_frozen_scope(tmp_path, field, value):
@@ -208,9 +213,11 @@ def test_m16_notebook_locks_source_and_authorizes_before_test():
         "".join(cell.get("source", []))
         for cell in notebook["cells"] if cell["cell_type"] == "code"
     )
-    assert "REPO_COMMIT='209f8f901fcf248530d25d0ca36f4f7bd87f05fd'" in code
+    assert "REPO_COMMIT='30d78a40eb13736f9de0ced29979a9e6c3156078'" in code
     assert code.index("'select-ridge'") < code.index("'authorize'") < code.index("'extract-test'") < code.index("'run'")
-    assert "eduardo4jesus/stanford-cars-dataset" in code
+    assert "jutrera/stanford-car-dataset-by-classes-folder/versions/2" in code
+    assert "eduardo4jesus/stanford-cars-dataset" not in code
+    assert "def run_visible(command):" in code
     assert "m16_handoff_{count:03d}_units.zip" in code
     assert "--max-new-units','6'" in code
     assert "accuracy_gate" not in code
