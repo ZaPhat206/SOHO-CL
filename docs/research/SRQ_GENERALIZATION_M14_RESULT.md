@@ -57,11 +57,24 @@ Tại cùng byte, AIA trung bình của SRQ cao hơn LoRanPAC ở cả bốn so 
 độ bền theo seed yếu nhất ở width 20k/P2B budget: SRQ chỉ cao hơn ở bốn trên
 sáu seed. Không được diễn giải các số này thành bằng chứng LoRanPAC end-to-end.
 
-## 4. Quyết định tiếp theo
+## 4. Khép kín bằng M15
 
-M14 được giữ nguyên là formal FAIL. M15 là audit train-only, không predictive,
-chỉ tái dựng task 1 của seed lỗi `4105` và một seed sentinel `4101`. M15 phải
-phân biệt sai số trực giao FP32 với lỗi solver/adapter bằng đánh giá FP64 trên
-cùng factor và QR có biến đổi core bảo toàn hệ. M15 không được sửa prediction,
-không được nới gate M14 và không được biến kết quả chẩn đoán thành một phương
-pháp LoRanPAC mới.
+M15 đã hoàn thành với trạng thái `PASS_M15_LORANPAC_TASK1_CLOSURE`; artifact có
+SHA-256
+`942cd777674d3e1089ef60b7c1835de70b283b00d948b77c43ab673497a6f9c6`.
+Nó tái lập residual M14 với sai khác tương đối tối đa 0,0322%. Việc tính lại
+công thức chính thức bằng FP64 trên cùng factor gần như không đổi residual
+(tỷ lệ FP64/FP32 từ 0,99966 đến 1,00025). Ngược lại, QR kèm biến đổi core bảo
+toàn hệ đạt sai số tái dựng tối đa `7,53e-7` và backward error FP64 tối đa
+`5,06e-17`.
+
+Do đó, M15 không tìm thấy lỗi đại số trong adapter Ridge. Residual task 1 phù
+hợp với việc cơ sở SVD FP32 đã hơi mất trực chuẩn trong khi projected formula
+giả định trực chuẩn chính xác. Sai khác tương đối tối đa giữa trọng số chính
+thức và nghiệm core bảo toàn hệ là `1,37e-4`; M15 không tính prediction nên
+không được suy diễn thành bảo toàn nhãn.
+
+M14 vẫn được giữ nguyên là formal FAIL: M15 không sửa prediction, không nới
+gate và không loại seed. Kết quả accuracy sáu seed chỉ được dùng như bằng chứng
+mô tả cùng byte với disclosure này. Chi tiết đầy đủ nằm trong
+`docs/research/SRQ_GENERALIZATION_M15_RESULT.md`.

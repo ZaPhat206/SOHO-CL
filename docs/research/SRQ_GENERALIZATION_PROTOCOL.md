@@ -401,6 +401,38 @@ M14 with scale-aware numerical gates. The audit and recovery disclosure are
 recorded in `docs/research/SRQ_GENERALIZATION_M13N_RESULT.md`; the M14 contract
 is frozen in `docs/research/SRQ_GENERALIZATION_M14_PLAN.md`.
 
+### M14 -- multi-seed equal-byte LoRanPAC comparison (formal FAIL)
+
+M14 completes all 60 preregistered units across six paired seeds, widths
+10,000/20,000, and five methods. Ten of eleven gates pass. The sole failure is
+the raw task-1 projected-solver residual: its maximum is
+`1.9147568e-3`, above the locked `1e-3` threshold; later-task residuals remain
+below `4.392e-6`. No seed is removed and the threshold is not changed. Across
+all four equal-byte comparisons, mean validation AIA favors the matched SRQ
+backend, but these accuracy results are descriptive because the artifact
+status remains `FAIL_M14_LORANPAC_MULTISEED_TRAIN_ONLY`. The artifact SHA-256
+is `4beb726bf7f29f8569e5c6de630d90284abdf7ae53928471c27bba178d148b0c`.
+
+### M15 -- LoRanPAC task-1 numerical closure (PASS)
+
+M15 is a train-only, prediction-free audit of the failing seed `4105` and a
+sentinel seed `4101` at both widths and budgets. Re-evaluating the official
+formula in FP64 on the same stored FP32 basis leaves the residual essentially
+unchanged (FP64/FP32 ratio `0.99966--1.00025`). A system-preserving
+factorization `U=QT`, with core `T diag(s^2) T^T`, reconstructs the same
+truncated system within `7.53e-7` relative error and reduces FP64 core backward
+error to at most `5.06e-17`. This closes the failure as an interaction between
+small FP32 basis non-orthogonality and a diagonal projected formula that
+assumes exact orthogonality, rather than a demonstrated error in the general
+Ridge adapter.
+
+M15 passes all gates, but it does not retroactively pass M14, change any M14
+prediction, or authorize substituting the diagnostic QR path into the
+comparator. Its artifact SHA-256 is
+`942cd777674d3e1089ef60b7c1835de70b283b00d948b77c43ab673497a6f9c6`;
+the full audit is recorded in
+`docs/research/SRQ_GENERALIZATION_M15_RESULT.md`.
+
 ## Naming gate
 
 - FLY evidence only: `SRQ-FLY`.

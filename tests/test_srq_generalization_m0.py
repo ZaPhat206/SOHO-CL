@@ -30,7 +30,7 @@ def test_manifest_is_machine_readable_and_complete():
     assert len(payload["repository"]["baseline_head_full"]) == 40
 
     evidence = payload["evidence"]
-    assert len(evidence) == 14
+    assert len(evidence) == 19
     assert len({entry["id"] for entry in evidence}) == len(evidence)
     for entry in evidence:
         assert len(entry["artifact_sha256"]) == 64
@@ -73,6 +73,25 @@ def test_precision_followup_outcomes_cannot_be_silently_relabelled():
     assert refined["status"] == "FAIL_M11B_SCALE_REFINED_INT8_TRAIN_ONLY"
     assert "0.000115" in refined["caveat"]
     assert "not rounded or relaxed" in refined["caveat"]
+
+
+def test_loranpac_failure_and_closure_cannot_be_silently_relabelled():
+    payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    by_id = {entry["id"]: entry for entry in payload["evidence"]}
+    assert (
+        by_id["multiseed_equal_byte_loranpac_train_only"]["status"]
+        == "FAIL_M14_LORANPAC_MULTISEED_TRAIN_ONLY"
+    )
+    assert "No seed is excluded" in by_id[
+        "multiseed_equal_byte_loranpac_train_only"
+    ]["caveat"]
+    assert (
+        by_id["loranpac_task1_numerical_closure"]["status"]
+        == "PASS_M15_LORANPAC_TASK1_CLOSURE"
+    )
+    assert "nor retroactively passes M14" in by_id[
+        "loranpac_task1_numerical_closure"
+    ]["caveat"]
 
 
 def test_protocol_is_fail_closed_about_scope_and_test_use():

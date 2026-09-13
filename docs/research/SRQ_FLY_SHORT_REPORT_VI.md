@@ -472,7 +472,7 @@ hoặc quyết định dựa trên accuracy. Test split cũng đã được dùn
 nghiệm FLY trước đó, nên M12 là confirmation có khóa nguồn, không phải benchmark
 held-out chưa từng mở.
 
-### 2.12. Đối chứng LoRanPAC cùng byte và kiểm toán số học M13-N
+### 2.12. Đối chứng LoRanPAC cùng byte và khép kín số học M13--M15
 
 M13 bổ sung đối chứng truncated-SVD LoRanPAC ở width 10.000/20.000 và đúng hai
 ngân sách tổng state của P2B/adaptive. Rank được suy ra từ byte trước khi đọc
@@ -491,8 +491,42 @@ không dùng test và không tính prediction. Audit cho thấy raw Frobenius
 lần và solver residual ít nhất 730,74 lần; oracle FP64 kích thước nhỏ đạt mức
 `1e-15`. Vì vậy lỗi M13 được định vị là hiệu ứng precision/thước đo không
 scale-aware ở rank lớn, không phải bằng chứng adapter sai. QR không được dùng
-để đổi M13 thành PASS. Bước hợp lệ tiếp theo là M14 đa seed với gate mới đã
-đăng ký trước, không phải sửa ngưỡng M13 sau khi thấy kết quả.
+để đổi M13 thành PASS.
+
+M14 sau đó hoàn thành đủ 60/60 unit trên sáu seed ghép cặp, hai width và năm
+phương pháp. Tại cùng tổng byte, SRQ có AIA trung bình cao hơn LoRanPAC trong cả
+bốn cặp:
+
+| Width/ngân sách | AIA SRQ/LoRanPAC | Final SRQ/LoRanPAC | State SRQ/LoRanPAC (MiB) | LoRanPAC update/SRQ |
+|---|---:|---:|---:|---:|
+| 10k/P2B | 92,6315/92,1279 | 88,668/87,653 | 87,62/87,59 | 23,33x |
+| 10k/adaptive | 92,7527/92,2272 | 88,923/87,852 | 98,80/98,77 | 20,34x |
+| 20k/P2B | 92,7088/92,6160 | 88,855/88,562 | 276,58/276,50 | 11,20x |
+| 20k/adaptive | 93,0089/92,6990 | 89,350/88,738 | 321,28/321,21 | 10,92x |
+
+Tuy nhiên, M14 vẫn mang trạng thái
+`FAIL_M14_LORANPAC_MULTISEED_TRAIN_ONLY`: 10/11 gate đạt, còn residual solver
+task 1 cực đại `1,9148e-3` vượt ngưỡng khóa trước `1e-3`. Không seed nào bị bỏ
+và ngưỡng không được sửa sau khi xem kết quả. Do đó, bảng trên là bằng chứng mô
+tả đa seed, không phải một confirmation đã vượt toàn bộ gate.
+
+M15 (`PASS_M15_LORANPAC_TASK1_CLOSURE`) khép kín nguyên nhân bằng một audit
+train-only, không prediction. Tính lại công thức chính thức ở FP64 trên cùng
+factor hầu như không giảm residual: tỷ lệ FP64/FP32 nằm trong
+`0,99966--1,00025`. Khi phân tích `U=QT` và biến đổi core để bảo toàn đúng hệ
+truncated, sai số tái dựng tối đa là `7,53e-7` còn backward error FP64 giảm
+xuống tối đa `5,06e-17`. Điều này không cho thấy lỗi đại số của adapter Ridge;
+residual phù hợp với cơ sở SVD FP32 hơi mất trực chuẩn trong khi công thức core
+chéo giả định trực chuẩn chính xác. Sai khác trọng số tương đối tối đa giữa hai
+đường là `1,37e-4`, nhưng M15 không đo prediction nên không được suy diễn thành
+bảo toàn nhãn. Artifact M15 có SHA-256
+`942cd777674d3e1089ef60b7c1835de70b283b00d948b77c43ab673497a6f9c6`.
+
+M15 PASS không làm M14 PASS ngược trở lại và QR chẩn đoán không được thay vào
+comparator chính thức. Kết luận hợp lệ hiện tại là: LoRanPAC truncated-SVD
+không thống trị SRQ trong so sánh cùng byte đã thử, nhưng SRQ cũng chậm hơn rõ
+rệt về analytic update và đối chứng M14 phải luôn đi cùng disclosure formal
+FAIL.
 
 ## 3. Ưu điểm và hạn chế so với FLY gốc
 
@@ -527,7 +561,7 @@ scale-aware ở rank lớn, không phải bằng chứng adapter sai. QR không 
   gói vào checkpoint khi tuyên bố exemplar-free.
 - Bằng chứng chỉ dùng một frozen ViT-B/16. Chưa có train-from-scratch,
   representation adaptation hay backbone khác.
-- Sáu replicate dùng lại cùng tập test; confidence interval phản ánh biến thiên
+- Sáu replicate dùng lại cùng tập test; độ lệch chuẩn phản ánh biến thiên
   class-order/projection seed, không phải uncertainty do lấy mẫu dataset mới.
 - State-matched final là secondary control trên test đã dùng trước đó, không
   phải một held-out benchmark mới.
@@ -543,27 +577,35 @@ scale-aware ở rank lớn, không phải bằng chứng adapter sai. QR không 
   được tạo. Recovery không đổi lựa chọn khoa học, nhưng phải được công bố cùng
   kết quả và không được diễn giải như một held-out benchmark mới.
 - Đối chứng cùng byte đã bao gồm reduced-width Exact, raw Ridge, một
-  CountSketch cố định và một LoRanPAC truncated-SVD source-pinned. LoRanPAC mới
-  chỉ chạy một development seed; M13 formal FAIL do gate số học task đầu, còn
-  M13-N chỉ chẩn đoán precision/thước đo và không biến accuracy một seed thành
-  xác nhận. Learned sketch, Nyström, Frequent Directions và dataset khác vẫn
-  chưa được bao phủ. P2B còn chậm hơn reduced-width/CountSketch từ 15.25 đến
-  19.22 lần ở analytic update.
+  CountSketch cố định và LoRanPAC truncated-SVD source-pinned. M14 đã chạy đủ
+  sáu seed nhưng formal FAIL vì residual solver task 1 vượt gate khóa trước;
+  M15 xác định đây là tương tác giữa sai số trực chuẩn của basis SVD FP32 và
+  công thức diagonal-core, không phải lỗi đại số Ridge, nhưng không biến M14
+  thành PASS. Learned sketch, Nyström, Frequent Directions và dataset khác vẫn
+  chưa được bao phủ. LoRanPAC cùng byte cũng chậm hơn SRQ từ 10,92 đến 23,33
+  lần trong analytic update ở M14.
 
 ## 4. Việc cần làm tiếp theo
 
-1. **Đóng lại provenance của state-matched control.** Rerun extraction/final
+1. **M16: xác nhận frontend trên một dataset chưa dùng để chọn phương pháp.**
+   Khóa trước dataset, encoder/checkpoint, preprocessing, Ridge policy, width,
+   precision policy, seed và gate; tách train-validation để chọn nếu cần, rồi
+   chỉ mở test một lần. Nếu không tái lập PETL và lịch Ridge của RanPAC gốc thì
+   phải gọi đây là backend confirmation trong pipeline cố định đặc trưng, không
+   gọi là tái lập RanPAC end-to-end chính thức.
+2. **Đóng lại provenance của state-matched control cũ.** Rerun extraction/final
    evaluation trên commit đã sửa dictionary-loader; không thay selection,
-   width, lambda, seed hoặc test-time decision.
-2. **Mở rộng systems measurement sang GPU khác nếu claim rộng hơn.** Luôn tách
+   width, lambda, seed hoặc test-time decision. Đây là việc vệ sinh bằng chứng,
+   không phải cơ hội chọn lại phương pháp.
+3. **Mở rộng systems measurement sang GPU khác nếu claim rộng hơn.** Luôn tách
    NVML process, NVML device, PyTorch allocated và reserved.
-3. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
+4. **Thử error feedback như một method mới.** Chỉ triển khai sau khi có công
    thức state và bound rõ ràng; error state phải được tính vào persistent bytes.
    So sánh no-EF/EF trên train-validation trước, không tune bằng test.
-4. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
+5. **Thử true int4 có packing thực.** Nếu chỉ lưu int4 trong tensor int8 thì
    không được tuyên bố giảm byte. Cần pack hai giá trị mỗi byte, kiểm tra kernel,
    tốc độ giải mã và accuracy-memory Pareto.
-5. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
+6. **Hoàn thiện bằng chứng paper.** Giữ CIFAR và CUB như kết quả đã tiêu thụ;
    thay ImageNet-R legacy bằng split sạch hoặc thêm một dataset chưa mở test.
    Báo Exact FLY là baseline chính, raw Ridge là lower-memory baseline và SOHO
    replay ở bảng riêng với toàn bộ sample-level state bytes.
@@ -596,3 +638,11 @@ hơn reduced-width Exact/CountSketch `0.4838/0.5720` pp AIA. Điều này củng
 việc nén state thay vì thu hẹp representation. Đổi lại, chênh lệch update time
 15--19 lần cho thấy paper chưa thể tuyên bố hiệu quả tính toán tổng thể; bước
 tiếp theo phải đo đường scaling và tìm nút thắt update một cách minh bạch.
+
+M14 mở rộng đối chứng low-rank cùng byte lên sáu seed: mean AIA của SRQ cao hơn
+LoRanPAC ở cả bốn width/budget, nhưng LoRanPAC chậm hơn SRQ 10,92--23,33 lần.
+M14 vẫn formal FAIL vì residual task 1 vượt gate khóa trước. M15 đã khép kín
+số học rằng hiện tượng này đến từ basis SVD FP32 hơi mất trực chuẩn kết hợp với
+công thức projected-core giả định trực chuẩn chính xác, chứ không phát hiện lỗi
+đại số của adapter. Đây là disclosure giúp paper đáng tin hơn, không phải lý do
+để xóa nhãn FAIL hoặc tuyên bố SRQ thắng tuyệt đối.
