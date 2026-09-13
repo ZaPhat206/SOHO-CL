@@ -37,6 +37,10 @@ paper RanPAC.
 ## 3. Protocol khóa trước
 
 - Dataset: official Stanford Cars, 196 lớp, 8.144 train và 8.041 test.
+- Nguồn tải: Kaggle mirror `jutrera/stanford-car-dataset-by-classes-folder`,
+  version 2, đã được sắp theo `train/<class>` và `test/<class>`. Handle có version,
+  tổng số byte và mô tả giấy phép được khóa trong config; mirror chỉ là phương tiện
+  phân phối lại official split, không phải một split thực nghiệm mới.
 - Schedule: 16 lớp đầu, sau đó 9 task x 20 lớp.
 - Backbone: ResNet-50 IMAGENET1K_V2; checkpoint URL, kích thước và SHA-256
   đầy đủ được khóa trong config.

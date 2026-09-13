@@ -9,6 +9,14 @@
   "class_increments": [16, 20, 20, 20, 20, 20, 20, 20, 20, 20],
   "expected_train_samples": 8144,
   "expected_test_samples": 8041,
+  "data_source": {
+    "provider": "Kaggle",
+    "handle": "jutrera/stanford-car-dataset-by-classes-folder/versions/2",
+    "layout": "car_data/car_data/{train,test}/<class>/*.jpg",
+    "expected_total_bytes": 1990113870,
+    "license": "Other (specified in description)",
+    "role": "class-folder mirror of the official Stanford Cars train/test split"
+  },
   "replicates": [
     {"class_order_seed": 1993, "projection_seed": 1993, "ridge_split_seed": 1993},
     {"class_order_seed": 1994, "projection_seed": 1994, "ridge_split_seed": 1994},

@@ -36,7 +36,7 @@ TOP_KEYS = {
     "schema_version", "study_id", "dataset", "uses_test_set",
     "test_tuning_allowed", "accuracy_based_method_selection", "num_classes",
     "class_increments", "expected_train_samples", "expected_test_samples",
-    "replicates", "methods", "ranpac_source", "backbone", "ranpac",
+    "data_source", "replicates", "methods", "ranpac_source", "backbone", "ranpac",
     "ridge_selection", "p2b", "adaptive", "evaluation", "integrity_gates",
 }
 
@@ -102,6 +102,16 @@ def _read_config(path: str | Path) -> dict:
         and tuple(config["methods"]) == METHODS
     ):
         raise ValueError("M16 frozen scope changed")
+    expected_data_source = {
+        "provider": "Kaggle",
+        "handle": "jutrera/stanford-car-dataset-by-classes-folder/versions/2",
+        "layout": "car_data/car_data/{train,test}/<class>/*.jpg",
+        "expected_total_bytes": 1990113870,
+        "license": "Other (specified in description)",
+        "role": "class-folder mirror of the official Stanford Cars train/test split",
+    }
+    if config["data_source"] != expected_data_source:
+        raise ValueError("M16 Stanford Cars mirror identity changed")
     expected_replicates = [
         {
             "class_order_seed": seed,
