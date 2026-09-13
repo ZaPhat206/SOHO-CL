@@ -433,6 +433,26 @@ comparator. Its artifact SHA-256 is
 the full audit is recorded in
 `docs/research/SRQ_GENERALIZATION_M15_RESULT.md`.
 
+### M16 -- fresh Cars/ResNet-50 Phase-2 confirmation (preregistered)
+
+M16 is the next out-of-development confirmation. It uses the standard
+Stanford Cars split, the published RanPAC Cars schedule (16 initial classes,
+then nine increments of 20), the official ResNet-50 ImageNet-1K V2 weights,
+and the published random-ReLU width of 10,000. Six paired seeds compare Exact
+Gram, locked P2B, and the locked 25% adaptive policy. The test cache may be
+materialized only after train-only Ridge selection and an immutable
+authorization record.
+
+The experiment is source-pinned to RanPAC commit
+`cf4b301d18b0c27db030f4371b72b768005ae58a` and configuration row 10 in
+`args/cars_publish.csv`. It is a protocol-faithful Phase-2 backend comparison,
+not a full PETL reproduction. RanPAC's code retunes Ridge at every task;
+because an SRQ factor embeds `sqrt(lambda) I`, M16 instead applies the official
+first-task 80/20 MSE grid once and freezes the selected value for the stream.
+Every backend within a replicate receives that same value. There is no test
+accuracy gate or post-test retry. The frozen contract is in
+`docs/research/SRQ_GENERALIZATION_M16_PROTOCOL.md`.
+
 ## Naming gate
 
 - FLY evidence only: `SRQ-FLY`.

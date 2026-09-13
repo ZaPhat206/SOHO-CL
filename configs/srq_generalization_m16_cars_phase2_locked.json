@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m16-cars-ranpac-phase2-locked-v1",
+  "dataset": "Stanford Cars",
+  "uses_test_set": true,
+  "test_tuning_allowed": false,
+  "accuracy_based_method_selection": false,
+  "num_classes": 196,
+  "class_increments": [16, 20, 20, 20, 20, 20, 20, 20, 20, 20],
+  "expected_train_samples": 8144,
+  "expected_test_samples": 8041,
+  "replicates": [
+    {"class_order_seed": 1993, "projection_seed": 1993, "ridge_split_seed": 1993},
+    {"class_order_seed": 1994, "projection_seed": 1994, "ridge_split_seed": 1994},
+    {"class_order_seed": 1995, "projection_seed": 1995, "ridge_split_seed": 1995},
+    {"class_order_seed": 1996, "projection_seed": 1996, "ridge_split_seed": 1996},
+    {"class_order_seed": 1997, "projection_seed": 1997, "ridge_split_seed": 1997},
+    {"class_order_seed": 1998, "projection_seed": 1998, "ridge_split_seed": 1998}
+  ],
+  "methods": ["exact", "p2b_int8", "adaptive_int8_fp16"],
+  "ranpac_source": {
+    "repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "resnet_py_sha256": "618baf2cbd265fefbe549f244b53aa47f5cefa2bf76a9648e439703e715e9ed7",
+    "data_py_sha256": "a181af7fae796a0d6c8cb59d8b6950d5bd0e54c5269eb158d02282bb4a5cdbca",
+    "cars_publish_csv_sha256": "a24fac27639ad3f2777c6324dd75a0e0ba163b00722bc014cc06ec6b4fa38047",
+    "cars_publish_row": 10,
+    "path": "phase2_no_petl_random_relu"
+  },
+  "backbone": {
+    "architecture": "resnet50",
+    "weights": "IMAGENET1K_V2",
+    "feature_dimension": 2048,
+    "checkpoint_url": "https://download.pytorch.org/models/resnet50-11ad3fa6.pth",
+    "checkpoint_size_bytes": 102540417,
+    "checkpoint_sha256": "11ad3fa62ca79e40addfd354a8ec4b7c75143b3038b8d2a807fbc68deab379ca",
+    "preprocessing": "resize_256_bicubic_center_crop_224_imagenet_normalize"
+  },
+  "ranpac": {
+    "expand_dimension": 10000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "encode_batch_size": 192,
+    "evaluation_batch_size": 192
+  },
+  "ridge_selection": {
+    "policy": "first_task_train_only_80_20_mse_then_freeze",
+    "candidate_lambdas": [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0],
+    "fit_fraction": 0.8,
+    "metric": "mean_squared_error",
+    "solver": "mathematically_equivalent_dual_ridge",
+    "tie_break": "smallest_lambda",
+    "common_across_backends_within_replicate": true
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "adaptive": {
+    "budget_fraction_between_int8_and_fp16": 0.25,
+    "selection_rule": "largest_factor_mse_reduction_per_added_byte",
+    "selection_signal": "current_factor_values_only_no_labels_or_accuracy",
+    "precision_mask_dtype": "uint8",
+    "tie_break": "ascending_upper_block_index"
+  },
+  "evaluation": {
+    "training_split": "complete_official_train_split",
+    "test_split": "official_test_split",
+    "schedule": "official_cars_16_then_nine_by_20",
+    "primary_metrics": ["average_incremental_accuracy", "final_accuracy"],
+    "report_mean_and_sample_standard_deviation": true,
+    "report_paired_differences": true,
+    "confidence_intervals_in_main_table": false,
+    "allow_post_test_method_selection": false,
+    "allow_post_test_retry": false
+  },
+  "integrity_gates": {
+    "require_clean_git": true,
+    "require_train_only_ridge_selection_before_authorization": true,
+    "require_authorization_before_test_feature_materialization": true,
+    "require_all_units_complete": true,
+    "require_exact_shared_projection_and_ridge_within_replicate": true,
+    "require_compressed_state_smaller_than_exact": true,
+    "maximum_solver_relative_residual": 0.00002,
+    "accuracy_gate": null
+  }
+}
