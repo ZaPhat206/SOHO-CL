@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from tools import srq_generalization_m16 as m16
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/srq_generalization_m16_cars_phase2_locked.json"
+NOTEBOOK = ROOT / "notebooks/srq_generalization_m16_cars_phase2_colab.ipynb"
 
 
 def test_m16_config_pins_official_cars_phase2_scope():
@@ -198,3 +200,32 @@ def test_m16_runner_compiles():
         "m16",
         "exec",
     )
+
+
+def test_m16_notebook_locks_source_and_authorizes_before_test():
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    code = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"] if cell["cell_type"] == "code"
+    )
+    assert "REPO_COMMIT='209f8f901fcf248530d25d0ca36f4f7bd87f05fd'" in code
+    assert code.index("'select-ridge'") < code.index("'authorize'") < code.index("'extract-test'") < code.index("'run'")
+    assert "eduardo4jesus/stanford-cars-dataset" in code
+    assert "m16_handoff_{count:03d}_units.zip" in code
+    assert "--max-new-units','6'" in code
+    assert "accuracy_gate" not in code
+    for relative in (
+        "configs/srq_generalization_m16_cars_phase2_locked.json",
+        "tools/srq_generalization_m16.py",
+    ):
+        digest = hashlib.sha256(
+            (ROOT / relative).read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()
+        assert f"'{relative}':'{digest}'" in code
+
+
+def test_m16_notebook_code_cells_compile():
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    for index, cell in enumerate(notebook["cells"]):
+        if cell["cell_type"] == "code":
+            compile("".join(cell["source"]), f"m16-cell-{index}", "exec")
