@@ -110,3 +110,12 @@ def test_m19_warning_preserves_result_when_prediction_gate_fails(tmp_path):
     result = m19.summarize(config, [first, second], config_path=path)
     assert result["status"] == m19.STATUS_WARNING
     assert result["gates"]["predictions_identical_across_panels"] is False
+
+
+def test_m19_provenance_has_a_safe_archive_fallback(monkeypatch):
+    class Completed:
+        returncode = 128
+        stdout = ""
+
+    monkeypatch.setattr(m19.subprocess, "run", lambda *args, **kwargs: Completed())
+    assert m19._git_commit_or_unavailable() == "unavailable"

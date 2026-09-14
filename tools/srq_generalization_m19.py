@@ -436,6 +436,16 @@ def _geometric_mean(values: list[float]) -> float:
     return math.exp(sum(math.log(value) for value in values) / len(values))
 
 
+def _git_commit_or_unavailable() -> str:
+    """Record provenance without making an exported source tree un-runnable."""
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else "unavailable"
+
+
 def summarize(config: dict, units: list[dict], *, config_path: Path) -> dict:
     expected = {(width, panel) for width in config["widths"] for panel in config["panel_sizes"]}
     observed = {(row["width"], row["panel_size"]) for row in units if row.get("status") == "complete"}
@@ -553,9 +563,7 @@ def summarize(config: dict, units: list[dict], *, config_path: Path) -> dict:
         "synthetic_only": True,
         "config_sha256": _sha256(config_path, source=True),
         "runner_sha256": _sha256(Path(__file__), source=True),
-        "git_commit": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-        ).strip(),
+        "git_commit": _git_commit_or_unavailable(),
         "grid": {
             "widths": config["widths"],
             "panel_sizes": config["panel_sizes"],
