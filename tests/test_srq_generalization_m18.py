@@ -114,6 +114,24 @@ def test_m18_backend_construction_is_exact_int8_and_adaptive():
     assert adaptive.adaptive_budget_fraction == 0.25
 
 
+def test_m18_code_identity_can_be_checked_before_large_cache_materialization():
+    config = _config()
+    identity, digest = m18._expected_code_identity(
+        config, 5031, "a" * 64, 60_000
+    )
+    assert identity == {
+        "raw_dim": 768,
+        "expand_dim": 20_000,
+        "synaptic_degree": 300,
+        "coding_level": 0.3,
+        "seed": 5031,
+        "statistics_dtype": "float32",
+        "source_train_sha256": "a" * 64,
+        "sample_count": 60_000,
+    }
+    assert len(digest) == 64
+
+
 def test_m18_paired_toy_run_shares_codes_and_accounts_state():
     config = _toy_config()
     stream, code_indices, code_values, projection, training_parts, test_parts = (

@@ -47,7 +47,6 @@ from tools.tail_fly_phasea import _load_unit, _save_unit, _unit_path  # noqa: E4
 from tools.twa_fly_pilot import (  # noqa: E402
     _prepare_code_cache,
     _sequence_sha256,
-    _tensor_content_sha256,
 )
 from tools.experiment_runner import validate_cache  # noqa: E402
 from utils.data_utils import load_dataset  # noqa: E402
@@ -541,6 +540,26 @@ def _cache_config(config: dict, projection_seed: int) -> dict:
     }
 
 
+def _expected_code_identity(
+    config: dict, projection_seed: int, source_tensor_sha256: str, sample_count: int
+) -> tuple[dict, str]:
+    representation = config["representation"]
+    identity = {
+        "raw_dim": int(config["backbone"]["feature_dim"]),
+        "expand_dim": int(representation["expand_dim"]),
+        "synaptic_degree": int(representation["synaptic_degree"]),
+        "coding_level": float(representation["coding_level"]),
+        "seed": int(projection_seed),
+        "statistics_dtype": representation["statistics_dtype"],
+        "source_train_sha256": source_tensor_sha256,
+        "sample_count": int(sample_count),
+    }
+    identity_sha256 = _sha256_bytes(
+        json.dumps(identity, sort_keys=True).encode("utf-8")
+    )
+    return identity, identity_sha256
+
+
 def _relative_logit_error(reference: list[torch.Tensor], value: list[torch.Tensor]) -> float:
     numerator = sum(
         float(((right - left) ** 2).sum())
@@ -895,12 +914,11 @@ def run(args) -> dict:
         class_order, training_parts, test_parts = _parts(
             config, train, test, replicate
         )
-        cache = _prepare_code_cache(
-            train=stream,
-            train_sha256=source_tensor_sha,
-            cache_dir=code_cache_root / f"replicate_{replicate_index}",
-            config=_cache_config(config, replicate["projection_seed"]),
-            device=device,
+        code_identity, code_identity_sha256 = _expected_code_identity(
+            config,
+            replicate["projection_seed"],
+            source_tensor_sha,
+            len(stream["features"]),
         )
         context = {
             "config_sha256": _sha256_file(config_path),
@@ -914,28 +932,44 @@ def run(args) -> dict:
             "training_parts_sha256": _sequence_sha256(training_parts),
             "test_parts_sha256": _sequence_sha256(test_parts),
             "source_tensor_sha256": source_tensor_sha,
-            "code_identity_sha256": cache[2]["identity_sha256"],
-            "projection_sha256": _tensor_content_sha256(cache[3]),
+            "code_identity": code_identity,
+            "code_identity_sha256": code_identity_sha256,
             "methods": list(METHODS),
         }
         context_sha256 = _canonical_sha256(context)
-        unit = _run_unit(
-            _unit_path(output_dir, f"replicate_{replicate_index}_paired"),
-            context_sha256,
-            f"replicate={replicate_index + 1}/6 exact+int8+adaptive",
-            lambda cache=cache, training_parts=training_parts,
-            test_parts=test_parts, replicate_index=replicate_index: _evaluate_replicate(
-                config=config,
-                stream=stream,
-                code_indices=cache[0],
-                code_values=cache[1],
-                projection=cache[3],
-                training_parts=training_parts,
-                test_parts=test_parts,
+        unit_path = _unit_path(output_dir, f"replicate_{replicate_index}_paired")
+        unit = _load_unit(unit_path, context_sha256)
+        cache = None
+        if unit is None:
+            cache = _prepare_code_cache(
+                train=stream,
+                train_sha256=source_tensor_sha,
+                cache_dir=code_cache_root / f"replicate_{replicate_index}",
+                config=_cache_config(config, replicate["projection_seed"]),
                 device=device,
-                replicate_index=replicate_index,
-            ),
-        )
+            )
+            if (
+                cache[2].get("identity") != code_identity
+                or cache[2].get("identity_sha256") != code_identity_sha256
+            ):
+                raise RuntimeError("M18 WTA cache identity mismatch")
+            unit = _run_unit(
+                unit_path,
+                context_sha256,
+                f"replicate={replicate_index + 1}/6 exact+int8+adaptive",
+                lambda cache=cache, training_parts=training_parts,
+                test_parts=test_parts, replicate_index=replicate_index: _evaluate_replicate(
+                    config=config,
+                    stream=stream,
+                    code_indices=cache[0],
+                    code_values=cache[1],
+                    projection=cache[3],
+                    training_parts=training_parts,
+                    test_parts=test_parts,
+                    device=device,
+                    replicate_index=replicate_index,
+                ),
+            )
         if unit.get("status") != "complete":
             seed_results.append({
                 "replicate_index": replicate_index,
