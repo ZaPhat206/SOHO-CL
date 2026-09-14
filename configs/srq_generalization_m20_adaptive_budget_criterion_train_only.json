@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m20-adaptive-budget-criterion-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "train_cache_sha256": "ba53b82123964708123fe868a69d688bfdda4d66b1a3b7ea56329cc9ee9321dc",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "width": 20000,
+  "ridge_lambda": 1000000.0,
+  "required_device_name_substring": "T4",
+  "streams": [
+    {"stream_id": "s2025", "class_order_seed": 2025, "split_seed": 2025, "projection_seed": 2025, "m6_identity_locked": true},
+    {"stream_id": "s2026", "class_order_seed": 2026, "split_seed": 2026, "projection_seed": 2026, "m6_identity_locked": false},
+    {"stream_id": "s2027", "class_order_seed": 2027, "split_seed": 2027, "projection_seed": 2027, "m6_identity_locked": false}
+  ],
+  "source_m6": {
+    "artifact_filename": "srq_generalization_m6_width_sweep_train_only.zip",
+    "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+    "result_member": "m6_results.json",
+    "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+    "required_status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY"
+  },
+  "ranpac": {
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 20000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "budget_sweep": {
+    "factor_mse_budgets": [0.0, 0.05, 0.1, 0.25, 0.5, 1.0],
+    "row_weighted_system_budgets": [0.05, 0.1, 0.25, 0.5],
+    "reported_locked_budget": 0.25,
+    "precision_mask_dtype": "uint8",
+    "tie_break": "ascending_upper_block_index",
+    "selection_signal": "current_factor_values_only_no_labels_or_accuracy"
+  },
+  "scoring_benchmark": {
+    "stream_id": "s2025",
+    "criterion": "factor_mse",
+    "budget": 0.25,
+    "batch_blocks": 64
+  },
+  "interpretation": {
+    "sufficient_budget_maximum_aia_loss_pp": 0.01,
+    "criterion_comparison_budgets": [0.05, 0.1],
+    "criterion_supported_rule": "row_weighted_final_classifier_error_lower_on_every_stream_at_every_comparison_budget_and_mean_aia_loss_not_higher"
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_m6_reproduction_accuracy_difference_pp": 0.000001,
+    "require_m6_identity_for_locked_stream": true,
+    "require_budget_conformance": true,
+    "require_state_monotone_in_budget": true,
+    "require_criterion_backend_fidelity": true,
+    "require_batched_scoring_decision_agreement": true,
+    "require_t4_device": true,
+    "accuracy_gate": null
+  }
+}
