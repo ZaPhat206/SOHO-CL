@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m17-conditioning-audit-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "prediction_free": true,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "audit_dtype": "float64",
+  "diagnostic_widths": [10000, 20000],
+  "ridge_by_width": {
+    "10000": 1000000.0,
+    "20000": 1000000.0
+  },
+  "source_m6": {
+    "artifact_filename": "srq_generalization_m6_width_sweep_train_only.zip",
+    "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+    "result_member": "m6_results.json",
+    "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+    "required_status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY"
+  },
+  "source_m7": {
+    "artifact_filename": "srq_generalization_m7_error_trajectory_train_only.zip",
+    "artifact_sha256": "df92adadce046c53efa5b9fcf01435d1fab2a4c71a690b10c3d7c221205acf36",
+    "result_member": "m7_results.json",
+    "trajectory_member": "error_trajectory.csv",
+    "required_status": "PASS_M7_ERROR_TRAJECTORY_TRAIN_ONLY"
+  },
+  "ranpac": {
+    "upstream_repository": "https://github.com/McDonnell-Research-Lab/RanPAC",
+    "upstream_commit": "cf4b301d18b0c27db030f4371b72b768005ae58a",
+    "upstream_ranpac_py_sha256": "36ba66a6ce6993b5830539a511e84dbd2b4994d8ebe2a0d5024ec5438a427e11",
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "maximum_expand_dimension": 20000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "projection_seed": 2025,
+    "encode_batch_size": 256
+  },
+  "conditioning": {
+    "power_iteration_seed": 8191,
+    "power_iteration_max_steps": 200,
+    "power_iteration_tolerance": 1e-6,
+    "power_iteration_restarts": 2,
+    "measure_lambda_max": true,
+    "measure_lambda_min": true,
+    "measure_epsilon_operator_norm": true,
+    "comment_epsilon": "epsilon_t = ||A_t^{-1} Delta_t||_2 estimated by power iteration on M^T M with M = A_t^{-1} Delta_t. Delta_t is applied matrix-free as Rhat^T (Rhat v) - A_t v so the quantized system is never materialised.",
+    "comment_solve": "A_t^{-1} is applied through a Cholesky factor of the exact regularized Gram, recomputed once per task. A_t is symmetric positive definite so A_t^{-T} = A_t^{-1}."
+  },
+  "p2b": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "gates": {
+    "require_source_m6_identity": true,
+    "require_source_m7_identity": true,
+    "require_all_widths_and_tasks": true,
+    "require_power_iteration_convergence": true,
+    "require_finite_diagnostics": true,
+    "require_spd_exact_system": true,
+    "maximum_cholesky_relative_residual": 1e-5,
+    "require_epsilon_below_one": true,
+    "require_epsilon_resolved_above_noise_floor": true,
+    "require_replay_matches_m7": true,
+    "maximum_replay_local_factor_relative_drift": 1e-6,
+    "comment_replay": "The local factor error is a property of the replay, so reproducing M7's recorded value proves this run regenerated the same stream. That is what makes it valid to compare a bound computed here against a weight error recorded there, on any GPU. TF32 is disabled explicitly so an Ampere card cannot silently diverge from the Turing-class arithmetic upstream.",
+    "require_bound_dominates_measured_weight_error": true,
+    "comment_noise_floor": "Delta_t is formed as Rhat^T Rhat - A_t, so its rounding error is of order eps_machine * ||A_t||, which after applying A_t^{-1} leaves a floor of about eps_machine * kappa(A_t) on epsilon_t. Below that floor the estimate is arithmetic noise. Run the audit in float64 if a width reports epsilon close to its floor.",
+    "bound_slack_tolerance": 0.0,
+    "comment_bound_gate": "The Ridge perturbation bound is only valid when epsilon_t < 1. The decisive scientific gate is that epsilon_t/(1-epsilon_t) is at least the relative weight error recorded by M7 for the same width and task. A violation would indicate an error in the derivation or in the estimator, not a property of the method, and must be reported rather than tuned away.",
+    "comment_no_accuracy": "M17 measures no accuracy, makes no prediction, opens no test split, and cannot change the status of M6 or M7."
+  }
+}
