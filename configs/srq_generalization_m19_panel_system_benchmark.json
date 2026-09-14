@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m19-panel-system-benchmark-t4-v1",
+  "seed": 2025,
+  "uses_test_set": false,
+  "synthetic_only": true,
+  "required_device_name_substring": "T4",
+  "widths": [10000, 20000],
+  "panel_sizes": [64, 128, 256, 512, 1024],
+  "rows_per_update": 5000,
+  "num_classes": 100,
+  "probe_rows": 256,
+  "warmup_repetitions": 1,
+  "measured_repetitions": 3,
+  "ridge_lambda": 1000000.0,
+  "synthetic_update_standard_deviation": 1.0,
+  "prior_factor_off_diagonal_scale": 0.001,
+  "storage": {
+    "mode": "int8",
+    "block_size": 256,
+    "group_size": 64,
+    "quantization_batch_blocks": 64
+  },
+  "update": {
+    "backend": "blocked_qr",
+    "trailing_chunk_size": null,
+    "preserve_update_rows": true
+  },
+  "timed_stages": [
+    "factor_dequantization",
+    "blocked_qr",
+    "factor_requantization",
+    "triangular_solve"
+  ],
+  "selection": {
+    "reference_panel_size": 128,
+    "rule": "minimum_geometric_mean_total_stage_time_ratio_across_widths",
+    "tie_break": "smaller_panel_size",
+    "uses_accuracy": false
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_relative_logit_drift_from_reference_panel": 0.0001,
+    "require_identical_predictions_across_panels": true,
+    "require_identical_persistent_state_bytes": true,
+    "require_all_repetitions_finite": true
+  }
+}
