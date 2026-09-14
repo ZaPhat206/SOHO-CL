@@ -21,7 +21,7 @@ def _code() -> str:
 
 def test_m19_notebook_pins_clean_portable_source():
     code = _code()
-    assert "REPO_COMMIT='aa8c2d016657b13bd0cb1668be8691582b2a49c3'" in code
+    assert "REPO_COMMIT='17c1b734e8d825b832517ae5ac463b648512528e'" in code
     for relative in (
         "configs/srq_generalization_m19_panel_system_benchmark.json",
         "tools/srq_generalization_m19.py",
