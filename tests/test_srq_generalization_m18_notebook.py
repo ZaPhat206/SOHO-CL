@@ -22,7 +22,7 @@ def _code() -> str:
 
 def test_m18_notebook_pins_committed_scientific_source():
     code = _code()
-    assert "REPO_COMMIT='6464950c3834ff9a1f81faed1ba9a40a746e9f89'" in code
+    assert "REPO_COMMIT='4cb9b27dec86a2f533cd2caffd23c503f4da1a3c'" in code
     for relative in (
         "configs/srq_generalization_m18_fly20k_adaptive_locked_test.json",
         "tools/srq_generalization_m18.py",
