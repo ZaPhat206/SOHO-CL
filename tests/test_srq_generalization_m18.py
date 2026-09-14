@@ -212,3 +212,17 @@ def test_m18_visible_test_cache_is_rejected_before_authorization(tmp_path):
     (tmp_path / "test.pt").write_bytes(b"visible")
     with pytest.raises(RuntimeError, match="test.pt"):
         m18._validate_cache(_config(), tmp_path, require_test=False)
+
+
+def test_m18_run_parser_supports_operational_one_replicate_checkpoints():
+    args = m18.parse_args([
+        "run",
+        "--config", "config.json",
+        "--selection-artifact", "selection.zip",
+        "--feature-cache-dir", "cache",
+        "--authorization", "authorization.json",
+        "--code-cache-root", "codes",
+        "--output-dir", "output",
+        "--max-new-replicates", "1",
+    ])
+    assert args.max_new_replicates == 1

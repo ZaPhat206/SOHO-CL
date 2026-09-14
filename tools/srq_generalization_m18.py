@@ -889,6 +889,8 @@ def _summarize_results(config: dict, seed_results: list[dict]) -> tuple[dict, di
 def run(args) -> dict:
     config_path = Path(args.config).resolve()
     config = _read_config(config_path)
+    if args.max_new_replicates is not None and args.max_new_replicates <= 0:
+        raise ValueError("--max-new-replicates must be positive")
     if config["integrity_gates"]["require_clean_committed_checkout"]:
         _require_clean_git()
     authorization, train, test, metadata = _read_authorization(
@@ -910,6 +912,7 @@ def run(args) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     code_cache_root = Path(args.code_cache_root).resolve()
     seed_results = []
+    new_replicates = 0
     for replicate_index, replicate in enumerate(config["replicates"]):
         class_order, training_parts, test_parts = _parts(
             config, train, test, replicate
@@ -941,6 +944,11 @@ def run(args) -> dict:
         unit = _load_unit(unit_path, context_sha256)
         cache = None
         if unit is None:
+            if (
+                args.max_new_replicates is not None
+                and new_replicates >= args.max_new_replicates
+            ):
+                break
             cache = _prepare_code_cache(
                 train=stream,
                 train_sha256=source_tensor_sha,
@@ -970,6 +978,7 @@ def run(args) -> dict:
                     replicate_index=replicate_index,
                 ),
             )
+            new_replicates += 1
         if unit.get("status") != "complete":
             seed_results.append({
                 "replicate_index": replicate_index,
@@ -999,6 +1008,23 @@ def run(args) -> dict:
         gc.collect()
         if device.type == "cuda":
             torch.cuda.empty_cache()
+
+    if len(seed_results) < len(config["replicates"]):
+        partial = {
+            "schema_version": 1,
+            "study_id": config["study_id"],
+            "status": "M18_PARTIAL_CHECKPOINT",
+            "completed_replicates": len(seed_results),
+            "required_replicates": len(config["replicates"]),
+            "new_replicates_this_invocation": new_replicates,
+            "accuracy_gate": None,
+        }
+        _atomic_json(output_dir / "m18_partial_status.json", partial)
+        print(
+            f"M18 PARTIAL CHECKPOINT {len(seed_results)}/"
+            f"{len(config['replicates'])}", flush=True,
+        )
+        return partial
 
     summary, gates = _summarize_results(config, seed_results)
     status = (
@@ -1105,6 +1131,7 @@ def parse_args(argv=None):
         if name == "run":
             child.add_argument("--code-cache-root", required=True)
             child.add_argument("--output-dir", required=True)
+            child.add_argument("--max-new-replicates", type=int)
     return parser.parse_args(argv)
 
 
