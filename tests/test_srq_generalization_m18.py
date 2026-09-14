@@ -79,6 +79,12 @@ def test_m18_locked_config_and_source_identity():
     assert config["evaluation"]["accuracy_gate"] is None
     assert config["integrity_gates"]["accuracy_gate"] is None
     assert m18._verify_source_identity(config) == config["source_identity"]
+    assert m18._sha256_source_file(ROOT / "models/backbone.py") == (
+        "941e449dc6e66ca4018fb0d3ab3218d97ec97f498b557ed220c8332e75850a46"
+    )
+    assert m18._sha256_source_file(ROOT / "utils/data_utils.py") == (
+        "3cf85993e231b068ad5ae2f96be608b2e50e9c52f98fb2387fd3badfb44b6764"
+    )
 
 
 @pytest.mark.parametrize(

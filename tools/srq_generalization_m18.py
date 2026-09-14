@@ -78,6 +78,11 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _sha256_source_file(path: str | Path) -> str:
+    """Hash committed text identically under Windows CRLF and Linux LF."""
+    return _sha256_bytes(Path(path).read_bytes().replace(b"\r\n", b"\n"))
+
+
 def _canonical_sha256(value) -> str:
     return _sha256_bytes(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -123,7 +128,7 @@ def _require_clean_git() -> None:
 
 def _verify_source_identity(config: dict) -> dict[str, str]:
     observed = {
-        relative: _sha256_file(ROOT / relative)
+        relative: _sha256_source_file(ROOT / relative)
         for relative in config["source_identity"]
     }
     if observed != config["source_identity"]:
