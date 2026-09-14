@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m18-fly20k-adaptive-locked-test-v1",
+  "dataset": {
+    "name": "CIFAR-100",
+    "version": "torchvision-cifar100",
+    "num_classes": 100,
+    "num_tasks": 10,
+    "expected_train_samples": 50000,
+    "expected_test_samples": 10000
+  },
+  "backbone": {
+    "hf_model_id": "timm/vit_base_patch16_224.augreg2_in21k_ft_in1k",
+    "model_name": "vit_base_patch16_224",
+    "checkpoint_size": 346284714,
+    "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+    "feature_dim": 768,
+    "preprocessing": "vit"
+  },
+  "representation": {
+    "frontend": "fly_wta",
+    "expand_dim": 20000,
+    "synaptic_degree": 300,
+    "coding_level": 0.3,
+    "absolute_wta": false,
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256,
+    "statistics_dtype": "float32",
+    "solver_dtype": "float32"
+  },
+  "methods": [
+    "exact_fly_20000",
+    "srq_fly_p2b_20000",
+    "srq_fly_adaptive_20000"
+  ],
+  "replicates": [
+    {"class_order_seed": 3031, "projection_seed": 5031},
+    {"class_order_seed": 3032, "projection_seed": 5032},
+    {"class_order_seed": 3033, "projection_seed": 5033},
+    {"class_order_seed": 3034, "projection_seed": 5034},
+    {"class_order_seed": 3035, "projection_seed": 5035},
+    {"class_order_seed": 3036, "projection_seed": 5036}
+  ],
+  "ridge": {
+    "lambda": 1000000.0,
+    "policy": "inherit_locked_fly_family_lambda_from_primary_train_only_selection",
+    "width_20000_retuned": false,
+    "interpretation": "controlled_backend_comparison_not_an_optimized_width_20000_frontend_claim"
+  },
+  "selection_evidence": {
+    "artifact_filename": "srq_fly_selfcontained_three_dataset_results.zip",
+    "artifact_sha256": "e4b630781ff6f69deaecb63dda9926d256cd6b654ef4b51a682bf3ef94e6490b",
+    "result_member": "train_only_selection/cifar100_selection.json",
+    "result_sha256": "1785eed6aa3cc8796adb19ae077585652d2a31a05364b37f908c0a1a8843250b",
+    "required_status": "SELECTION_COMPLETE",
+    "required_protocol_sha256": "e1c9fefedf9a55beb4d7734f8dcd8fafdcd551bd76af8a703d27b0b447e16759",
+    "required_runner_sha256": "92ebd8ec12c73ac7da9ee1f591e8613d88515418db15a2918db13d1c98fe5cdc",
+    "required_selected_fly_family_lambda": 1000000.0
+  },
+  "square_root_backend": {
+    "block_size": 256,
+    "group_size": 64,
+    "update_backend": "blocked_qr",
+    "update_panel_size": 128,
+    "update_trailing_chunk_size": null,
+    "first_update_backend": "gram_cholesky",
+    "quantization_backend": "streaming",
+    "quantization_batch_blocks": 64
+  },
+  "adaptive": {
+    "budget_fraction_between_int8_and_fp16": 0.25,
+    "selection_rule": "largest_factor_mse_reduction_per_added_byte",
+    "selection_signal": "current_factor_values_only_no_labels_logits_predictions_or_accuracy",
+    "precision_mask_dtype": "uint8",
+    "tie_break": "ascending_upper_block_index"
+  },
+  "evaluation": {
+    "training_split": "complete_official_train_split",
+    "test_split": "official_test_split_previously_used_by_primary_study",
+    "schedule": "class_incremental_seen_classes_after_each_task",
+    "uses_test_set": true,
+    "test_tuning_allowed": false,
+    "accuracy_based_selection": false,
+    "accuracy_based_early_stop": false,
+    "seed_exclusion_allowed": false,
+    "report_mean_and_sample_standard_deviation": true,
+    "report_paired_differences": true,
+    "accuracy_gate": null,
+    "test_use_disclosure": "The CIFAR-100 test split was consumed by the primary locked SRQ-FLY study. M18 is a prespecified frontend-closure comparison and not a fresh first-use held-out evaluation."
+  },
+  "source_identity": {
+    "configs/srq_fly_selfcontained_final.json": "e1c9fefedf9a55beb4d7734f8dcd8fafdcd551bd76af8a703d27b0b447e16759",
+    "tools/srq_fly_selfcontained.py": "92ebd8ec12c73ac7da9ee1f591e8613d88515418db15a2918db13d1c98fe5cdc",
+    "tools/srq_fly_heldout.py": "4ef35968912f459579607c3eb4fbddd5d855a231fe6f34ef1ec9c1b2e9985d12",
+    "tools/twa_fly_pilot.py": "ee1efe6f793ea7ec6ba5ba4489dafefa76a8c2342447a3076bb3fae0316f088a",
+    "methods/frontends/fly.py": "1576a98d9b422d68764d32c99e29e08971c4f456e6315968e7252397bdb480fa",
+    "methods/analytic_ridge/backends.py": "cb97a6b65991e41af5f52302bcbdeac5ded6dc95774055c64c6eecdbbfb50ad3",
+    "methods/analytic_ridge/adaptive_upper.py": "d34eae6072ea3e8736b6fb940c7a0691c845d8217569c7b6fe33f4b9e143c5dc",
+    "methods/analytic_ridge/compressed_upper.py": "dc3ff6ca1c62255628e40d8a9c29610c5ee138eadf5c352aa3b926c2cacd8f62",
+    "methods/analytic_ridge/qr.py": "19d24d887e60ee7fc7adb1a2265253ea261c90636aef241241e5c6faad3a507b",
+    "models/flyhash.py": "24ba321a71f735031b0da430ab4d3519e54e6c3149fc6c913c63b4172f6712cb",
+    "models/backbone.py": "90f70c9a2b16e4435e6e348ba701083a17de830d9a3d9ba080695e23d333f58b",
+    "utils/data_utils.py": "cad262c013dbbd85c6bcd790b9276882ba1ff0a15b2bae57bff5a20293e9e5d8",
+    "utils/train_utils.py": "e24983bd3042ad82ec069916ba2853cf1c818cb2911ce193710c8ccd70e86bda"
+  },
+  "integrity_gates": {
+    "require_clean_committed_checkout": true,
+    "require_selection_artifact_identity": true,
+    "require_test_absent_before_authorization": true,
+    "require_all_six_paired_replicates": true,
+    "require_no_seed_exclusion": true,
+    "require_identical_codes_within_replicate": true,
+    "require_exact_state_larger_than_adaptive_larger_than_int8": true,
+    "require_adaptive_budget_conformance": true,
+    "maximum_solver_relative_residual": 0.00002,
+    "accuracy_gate": null
+  }
+}
