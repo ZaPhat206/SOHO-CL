@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m21-accumulation-and-gram-load-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "train_cache_sha256": "ba53b82123964708123fe868a69d688bfdda4d66b1a3b7ea56329cc9ee9321dc",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "seed": 2025,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "required_device_name_substring": "T4",
+  "gram_load": {
+    "priority3_config": "configs/srq_fly_priority3_direct_control_cifar100_train_only.json",
+    "priority3_config_sha256": "909fbd4da753018c3e8b3e8dcd8ea33e78dc5c5f6f32880035875d2b2b51e4dd",
+    "methods": [
+      "exact_fly_10000",
+      "srq_int8_p2b",
+      "direct_int8_gram_weyl_repair",
+      "direct_int8_gram_minimal_load"
+    ],
+    "minimal_load": {
+      "load_margin_multiplier": 8.0,
+      "load_grid_steps_per_doubling": 4,
+      "maximum_load_to_ridge_ratio": 1000000.0,
+      "error_chunk_size": 256,
+      "success_test": "fp32_cholesky_of_symmetrized_loaded_system",
+      "monotone_success_assumed": true,
+      "uses_labels_or_accuracy": false
+    },
+    "priority3_reference": {
+      "artifact_filename": "srq_fly_priority3_direct_control_train_only.zip",
+      "artifact_sha256": "9c5f8c9c0d945393cea48d23204ed585e42e656359bbb12386691f4ba452988e",
+      "validation_average_accuracy": {
+        "exact_fly_10000": 92.25724603174604,
+        "srq_int8_p2b": 92.26718253968254,
+        "direct_int8_gram_weyl_repair": 87.34184920634921
+      }
+    },
+    "interpretation": {
+      "practical_equivalence_pp": 0.1,
+      "material_advantage_pp": 0.5
+    }
+  },
+  "accumulation": {
+    "outer_validation_fraction": 0.2,
+    "ridge_lambda": 1000000.0,
+    "streams": [
+      {"stream_id": "s2025", "class_order_seed": 2025, "split_seed": 2025, "projection_seed": 2025, "m6_identity_locked": true},
+      {"stream_id": "s2026", "class_order_seed": 2026, "split_seed": 2026, "projection_seed": 2026, "m6_identity_locked": false},
+      {"stream_id": "s2027", "class_order_seed": 2027, "split_seed": 2027, "projection_seed": 2027, "m6_identity_locked": false}
+    ],
+    "units": [
+      {"unit_id": "acc_w20000_s2025", "width": 20000, "stream_id": "s2025"},
+      {"unit_id": "acc_w20000_s2026", "width": 20000, "stream_id": "s2026"},
+      {"unit_id": "acc_w20000_s2027", "width": 20000, "stream_id": "s2027"},
+      {"unit_id": "acc_w10000_s2025", "width": 10000, "stream_id": "s2025"}
+    ],
+    "source_m6": {
+      "artifact_filename": "srq_generalization_m6_width_sweep_train_only.zip",
+      "artifact_sha256": "b2739b9da023ebd2eedb6fdfe01c394e94f252773e847533b35350021c3d239e",
+      "result_member": "m6_results.json",
+      "result_sha256": "648630c5f0b70ed85e675942a8c2fb10e6f33eb3ff8f03e8a71421de22f44cbb",
+      "required_status": "FAIL_M6_WIDTH_SWEEP_TRAIN_ONLY"
+    },
+    "ranpac": {
+      "path": "phase2_no_petl_random_relu",
+      "feature_dimension": 768,
+      "maximum_expand_dimension": 20000,
+      "projection_distribution": "standard_normal",
+      "activation": "relu",
+      "encode_batch_size": 256,
+      "evaluation_batch_size": 256
+    },
+    "p2b": {
+      "block_size": 256,
+      "group_size": 64,
+      "update_panel_size": 128,
+      "update_trailing_chunk_size": null,
+      "first_update_backend": "gram_cholesky",
+      "quantization_backend": "streaming",
+      "quantization_batch_blocks": 64
+    },
+    "system_probe_count": 16,
+    "system_probe_seed": 7071,
+    "reference": {
+      "acc_w20000_s2025": {
+        "source": "M6 and M20",
+        "exact_aia_percent": 92.64287301587301, "exact_final_percent": 88.92, "exact_bytes": 1677440400,
+        "p2b_int8_aia_percent": 92.38702777777777, "p2b_int8_final_percent": 88.52, "p2b_int8_bytes": 290009776,
+        "m7_p2b_int8_relative_logit_error": [0.11828957923976531, 0.18567770489065302, 0.2628751331334936, 0.33474140651208956, 0.4022406034635394, 0.45962912947459134, 0.5142729614484561, 0.5692568815313128, 0.6025434577869065, 0.6351499387542153]
+      },
+      "acc_w20000_s2026": {
+        "source": "M20",
+        "exact_aia_percent": 92.72254365079365, "exact_final_percent": 89.0, "exact_bytes": 1677440400,
+        "p2b_int8_aia_percent": 92.38089285714285, "p2b_int8_final_percent": 88.57, "p2b_int8_bytes": 290009776,
+        "m7_p2b_int8_relative_logit_error": null
+      },
+      "acc_w20000_s2027": {
+        "source": "M20",
+        "exact_aia_percent": 93.31657142857144, "exact_final_percent": 89.36, "exact_bytes": 1677440400,
+        "p2b_int8_aia_percent": 93.05159523809525, "p2b_int8_final_percent": 88.85, "p2b_int8_bytes": 290009776,
+        "m7_p2b_int8_relative_logit_error": null
+      },
+      "acc_w10000_s2025": {
+        "source": "M6",
+        "exact_aia_percent": 92.44275793650795, "exact_final_percent": 88.45, "exact_bytes": 438720400,
+        "p2b_int8_aia_percent": 92.35507936507936, "p2b_int8_final_percent": 88.23, "p2b_int8_bytes": 91880088,
+        "m7_p2b_int8_relative_logit_error": [0.07315699525893421, 0.10889442575194867, 0.14896301025623238, 0.18203017509873268, 0.21365853041866648, 0.23995318409721184, 0.26223029703940115, 0.2870935497394152, 0.3026122457389796, 0.31784492689915783]
+      }
+    },
+    "interpretation": {
+      "primary_width": 20000,
+      "primary_endpoint": "final_relative_logit_error_recursive_over_one_shot",
+      "dominant_minimum_ratio": 1.5,
+      "contributes_minimum_ratio": 1.1
+    }
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.00002,
+    "maximum_reproduction_accuracy_difference_pp": 0.000001,
+    "maximum_m7_logit_error_relative_difference": 0.001,
+    "maximum_task1_identity_relative_difference": 0.000001,
+    "require_t4_device": true,
+    "accuracy_gate": null
+  }
+}
