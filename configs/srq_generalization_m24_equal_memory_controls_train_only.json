@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "study_id": "srq-generalization-m24-equal-memory-controls-train-only-v1",
+  "dataset": "CIFAR-100",
+  "model_name": "vit_base_patch16_224",
+  "checkpoint_sha256": "32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b",
+  "uses_test_set": false,
+  "accuracy_based_selection": false,
+  "num_classes": 100,
+  "num_tasks": 10,
+  "outer_validation_fraction": 0.2,
+  "statistics_dtype": "float32",
+  "solver_dtype": "float32",
+  "streams": [
+    {"stream_id": "s2025", "seed": 2025},
+    {"stream_id": "s2026", "seed": 2026},
+    {"stream_id": "s2027", "seed": 2027}
+  ],
+  "source_m23": {
+    "filename": "srq_generalization_m23_equal_budget_multistream_train_only.zip",
+    "sha256": "80c8940a1d7ff11fd71b14c127802ca1a80bc76aec608cbd93d42fc8a8595b2a",
+    "study_id": "srq-generalization-m23-equal-budget-multistream-train-only-v1",
+    "required_status": "PASS_M23_EQUAL_BUDGET_MULTISTREAM_TRAIN_ONLY",
+    "target_budget_field": "target_p2b_total_persistent_bytes"
+  },
+  "ranpac": {
+    "path": "phase2_no_petl_random_relu",
+    "feature_dimension": 768,
+    "full_expand_dimension": 10000,
+    "projection_distribution": "standard_normal",
+    "activation": "relu",
+    "encode_batch_size": 256,
+    "evaluation_batch_size": 256
+  },
+  "ridge_selection": {
+    "policy": "per_representation_train_only_calibration",
+    "candidate_lambdas": [
+      1e-8,
+      1e-7,
+      1e-6,
+      1e-5,
+      1e-4,
+      1e-3,
+      1e-2,
+      1e-1,
+      1.0,
+      10.0,
+      100.0,
+      1000.0,
+      10000.0,
+      100000.0,
+      1000000.0,
+      10000000.0,
+      100000000.0
+    ],
+    "fit_samples_per_class": 20,
+    "validation_samples_per_class": 5,
+    "metric": "mean_squared_error",
+    "tie_break": "smallest_lambda"
+  },
+  "packed_exact": {
+    "storage": "physical_blocked_upper_triangle_fp32",
+    "block_size": 256,
+    "projection_policy": "prefix_of_source_full_projection",
+    "dimension_policy": "largest_integer_not_exceeding_target_total_bytes",
+    "maximum_dimension": 10000,
+    "ridge_policy": "same_train_only_grid_selected_for_packed_representation"
+  },
+  "frequent_directions": {
+    "storage": "fp32_rank_by_dimension_summary",
+    "algorithm": "deterministic_standard_frequent_directions",
+    "shrinkage": "sigma_ell_squared",
+    "rank_policy": "largest_integer_not_exceeding_target_total_bytes",
+    "ridge_policy": "reuse_source_m23_full_random_relu_lambda",
+    "solve": "woodbury"
+  },
+  "budget": {
+    "target": "source_m23_full_width_p2b_final_total_persistent_tensor_bytes",
+    "derive_width_and_rank_before_encoding_or_accuracy": true,
+    "include_projection": true,
+    "include_cross_counts_and_classifier": true,
+    "element_size_bytes": 4
+  },
+  "gates": {
+    "maximum_solver_relative_residual": 0.0001,
+    "require_source_identity_match": true,
+    "require_physical_bytes_equal_symbolic_bytes": true,
+    "require_maximal_width_and_rank_under_budget": true,
+    "require_all_streams_complete": true,
+    "accuracy_is_not_a_gate": true
+  }
+}
