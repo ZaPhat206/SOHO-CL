@@ -619,6 +619,53 @@ def _close(a: Any, b: Any, tolerance: float = 1e-6) -> bool:
     return a == b
 
 
+def _ridge_selection_match(new: Any, old: Any, tolerance: float = 1e-6) -> bool:
+    """Compare calibration records while allowing harmless GPU round-off.
+
+    CountSketch uses ``scatter_add_`` with colliding buckets.  CUDA may choose
+    a different atomic-add order between processes, so the recorded MSE can
+    differ by a few ulps even when the selected lambda and all downstream
+    predictions are unchanged.  The protocol therefore keeps the structural
+    and decision fields exact, but compares only ``validation_mse`` with a
+    small absolute tolerance.
+    """
+
+    if not isinstance(new, dict) or not isinstance(old, dict) or set(new) != set(old):
+        return False
+    for name in new:
+        left, right = new[name], old[name]
+        if not isinstance(left, dict) or not isinstance(right, dict):
+            return False
+        if set(left) != set(right):
+            return False
+        for field in ("representation", "fit_samples", "validation_samples"):
+            if left.get(field) != right.get(field):
+                return False
+        # Lambda candidates and the selected lambda are protocol decisions,
+        # not noisy measurements; they must remain identical.
+        if left.get("selected_ridge_lambda") != right.get("selected_ridge_lambda"):
+            return False
+        left_scores, right_scores = left.get("scores"), right.get("scores")
+        if not isinstance(left_scores, list) or not isinstance(right_scores, list):
+            return False
+        if len(left_scores) != len(right_scores):
+            return False
+        for left_score, right_score in zip(left_scores, right_scores):
+            if not isinstance(left_score, dict) or not isinstance(right_score, dict):
+                return False
+            if set(left_score) != set(right_score):
+                return False
+            if left_score.get("ridge_lambda") != right_score.get("ridge_lambda"):
+                return False
+            if not _close(
+                left_score.get("validation_mse"),
+                right_score.get("validation_mse"),
+                tolerance=tolerance,
+            ):
+                return False
+    return True
+
+
 def _m5_scientific_match(new: dict, old: dict) -> bool:
     """Compare all deterministic scientific fields, excluding wall-clock data."""
 
@@ -644,7 +691,9 @@ def _m5_scientific_match(new: dict, old: dict) -> bool:
         "summary", {}
     ).get("pareto_dominators_of_p2b"):
         return False
-    if new.get("ridge_selection") != old.get("ridge_selection"):
+    if not _ridge_selection_match(
+        new.get("ridge_selection"), old.get("ridge_selection")
+    ):
         return False
     left_groups, right_groups = new.get("groups"), old.get("groups")
     if not isinstance(left_groups, list) or len(left_groups) != len(right_groups or []):

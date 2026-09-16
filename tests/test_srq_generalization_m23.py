@@ -137,6 +137,41 @@ def test_m23_stream_completion_requires_train_only_and_all_gates():
     assert not m23._stream_result_is_complete(payload, m23.STREAMS[0])
 
 
+def test_m23_m5_match_tolerates_cuda_calibration_roundoff_but_not_decision_changes():
+    left = _payload(seed=2025)
+    right = copy.deepcopy(left)
+    scores = [
+        {"ridge_lambda": 1.0, "validation_mse": 0.25},
+        {"ridge_lambda": 10.0, "validation_mse": 0.10},
+    ]
+    left["ridge_selection"] = {
+        "countsketch_random_relu": {
+            "representation": "countsketch_random_relu",
+            "selected_ridge_lambda": 10.0,
+            "scores": scores,
+            "fit_samples": 2,
+            "validation_samples": 2,
+        }
+    }
+    right["ridge_selection"] = copy.deepcopy(left["ridge_selection"])
+    right["ridge_selection"]["countsketch_random_relu"]["scores"][0][
+        "validation_mse"
+    ] += 5e-7
+    assert m23._m5_scientific_match(left, right)
+
+    right["ridge_selection"]["countsketch_random_relu"]["scores"][0][
+        "validation_mse"
+    ] += 2e-6
+    assert not m23._m5_scientific_match(left, right)
+
+    right = copy.deepcopy(left)
+    right["ridge_selection"] = copy.deepcopy(left["ridge_selection"])
+    right["ridge_selection"]["countsketch_random_relu"][
+        "selected_ridge_lambda"
+    ] = 1.0
+    assert not m23._m5_scientific_match(left, right)
+
+
 def test_m23_never_changes_m5_source():
     # This is a source-level guard for the explicit M23 non-modification rule.
     assert m5.ROOT / "tools" / "srq_generalization_m5.py"
