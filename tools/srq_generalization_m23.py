@@ -731,6 +731,8 @@ def summarize_streams(
             "aia_std": aia_std,
             "final_accuracy_mean": final_mean,
             "final_accuracy_std": final_std,
+            "final_validation_accuracy_mean": final_mean,
+            "final_validation_accuracy_std": final_std,
             "state_bytes_mean": state_mean,
             "state_bytes_std": state_std,
             "update_seconds_mean": update_mean,
@@ -771,6 +773,8 @@ def run(args) -> dict:
         ["git", "status", "--porcelain"], cwd=ROOT, text=True
     ).strip():
         raise RuntimeError("M23 requires a clean source checkout")
+    if args.device.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError("M23 requested CUDA but CUDA is unavailable")
     if (feature_cache_dir / "test.pt").exists():
         raise RuntimeError("M23 refuses a visible test.pt")
 
@@ -779,9 +783,24 @@ def run(args) -> dict:
         destination = per_stream_dir / f"stream_{stream['seed']}_results.json"
         if destination.is_file():
             payload = _load_json(destination)
-            if not _stream_result_is_complete(payload, stream):
-                raise RuntimeError(f"invalid or failed existing M23 result: {destination}")
-            print(f"RESUME SKIP {stream['stream_id']} {destination}", flush=True)
+            if _stream_result_is_complete(payload, stream):
+                print(f"RESUME SKIP {stream['stream_id']} {destination}", flush=True)
+            else:
+                # A failed/incomplete JSON is not a checkpoint.  Recompute it
+                # and replace it atomically, preserving any other streams.
+                print(
+                    f"RESUME REPLACE INCOMPLETE {stream['stream_id']} {destination}",
+                    flush=True,
+                )
+                payload = _run_one_stream(
+                    config=config,
+                    config_path=config_path,
+                    stream=stream,
+                    feature_cache_dir=feature_cache_dir,
+                    output_dir=per_stream_dir,
+                    device_name=args.device,
+                    require_clean_git=args.require_clean_git,
+                )
         else:
             payload = _run_one_stream(
                 config=config,
