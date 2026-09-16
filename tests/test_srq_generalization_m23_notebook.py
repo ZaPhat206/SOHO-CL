@@ -29,6 +29,8 @@ def test_m23_notebook_is_pinned_train_only_and_compiles():
     assert "test.pt').exists()" in code
     assert "--extract-train-only" in code
     assert "--original-m5-artifact" in code
+    assert "shutil.move(str(matches[0]),str(M5_PATH))" in code
+    assert "Keep uploaded artifacts outside the pinned git checkout" in code
     assert "M23 START" in code
     assert "m23_results.json" in code
     assert "files.download(archive)" in code
