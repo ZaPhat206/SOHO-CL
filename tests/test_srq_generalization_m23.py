@@ -61,10 +61,25 @@ def _payload(methods=None, *, seed=2025):
 
 def test_m23_config_has_only_stream_generalization_and_locks_budget():
     config = m23._read_config(CONFIG)
+    m5_config = json.loads(
+        (ROOT / "configs" / "srq_generalization_m5_equal_budget_train_only.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert config["streams"] == list(m23.STREAMS)
     assert "seed" not in config
     assert "projection_seed" not in config["ranpac"]
     assert "seed" not in config["countsketch"]
+    # All method-defining fields are byte-for-byte inherited from M5.
+    for key in set(m5_config) - {"seed", "study_id"}:
+        if key == "ranpac":
+            expected = {k: v for k, v in m5_config[key].items() if k != "projection_seed"}
+            assert config[key] == expected
+        elif key == "countsketch":
+            expected = {k: v for k, v in m5_config[key].items() if k != "seed"}
+            assert config[key] == expected
+        else:
+            assert config[key] == m5_config[key]
     assert m5._derive_budget_lock(config) == {
         "policy": "largest_integer_dimension_not_exceeding_target_bytes",
         "locked_before_representation_encoding_or_accuracy": True,
