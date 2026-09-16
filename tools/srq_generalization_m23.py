@@ -603,6 +603,11 @@ def _run_one_stream(
     return payload
 
 
+# Public spelling used by the M23 protocol; the implementation remains
+# private so callers cannot accidentally bypass the stream contract.
+run_one_stream = _run_one_stream
+
+
 def _read_m5_artifact(path: Path) -> dict:
     with zipfile.ZipFile(path) as archive:
         return json.loads(archive.read("m5_results.json").decode("utf-8"))
@@ -687,11 +692,34 @@ def _sample_stats(values: list[float]) -> tuple[float, float]:
 
 
 def summarize_streams(
+    output_dir: str | Path | None = None,
     *,
-    config: dict,
-    stream_payloads: dict[str, dict],
+    config: dict | None = None,
+    stream_payloads: dict[str, dict] | None = None,
     original_m5_artifact: str | Path | None = None,
 ) -> dict:
+    """Aggregate stream JSON files, or an already-loaded payload mapping.
+
+    The positional ``output_dir`` form is kept for the standalone M23
+    protocol (``summarize_streams(output_dir)``).  The runner uses the mapping
+    form to avoid rereading files that it just validated.
+    """
+
+    if stream_payloads is None:
+        if output_dir is None:
+            raise ValueError("M23 summary needs output_dir or stream_payloads")
+        root = Path(output_dir)
+        stream_dir = root / "m23_results" if (root / "m23_results").is_dir() else root
+        stream_payloads = {
+            item["stream_id"]: _load_json(
+                stream_dir / f"stream_{item['seed']}_results.json"
+            )
+            for item in STREAMS
+        }
+    if config is None:
+        config = _read_config(
+            ROOT / "configs" / "srq_generalization_m23_equal_budget_multistream_train_only.json"
+        )
     ordered = [stream_payloads[item["stream_id"]] for item in STREAMS]
     locks = [payload["budget_lock"] for payload in ordered]
     lock_identical = all(lock == locks[0] for lock in locks[1:])
@@ -769,11 +797,11 @@ def run(args) -> dict:
     feature_cache_dir = Path(args.feature_cache_dir).resolve()
     root_output = Path(args.output_dir).resolve()
     per_stream_dir = root_output / "m23_results"
-    if args.require_clean_git and subprocess.check_output(
+    if getattr(args, "require_clean_git", False) and subprocess.check_output(
         ["git", "status", "--porcelain"], cwd=ROOT, text=True
     ).strip():
         raise RuntimeError("M23 requires a clean source checkout")
-    if args.device.startswith("cuda") and not torch.cuda.is_available():
+    if str(getattr(args, "device", "cpu")).startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("M23 requested CUDA but CUDA is unavailable")
     if (feature_cache_dir / "test.pt").exists():
         raise RuntimeError("M23 refuses a visible test.pt")
@@ -813,7 +841,7 @@ def run(args) -> dict:
             )
         stream_payloads[stream["stream_id"]] = payload
 
-    artifact = args.original_m5_artifact
+    artifact = getattr(args, "original_m5_artifact", None)
     combined = summarize_streams(
         config=config,
         stream_payloads=stream_payloads,
