@@ -23,7 +23,7 @@ def test_m23_notebook_is_pinned_train_only_and_compiles():
         for cell in notebook["cells"]
         if cell["cell_type"] == "code"
     )
-    assert "REPO_COMMIT='b23dd37'" in code
+    assert "REPO_COMMIT='ec553f2'" in code
     assert "srq_generalization_m23_equal_budget_multistream_train_only.zip" in code
     assert "M5_NAME='srq_generalization_m5_equal_budget_train_only.zip'" in code
     assert "test.pt').exists()" in code
