@@ -12,6 +12,7 @@ from tools import srq_generalization_m24 as m24
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "srq_generalization_m24_equal_memory_controls_train_only.json"
+NOTEBOOK = ROOT / "notebooks" / "srq_generalization_m24_equal_memory_controls_colab.ipynb"
 
 
 def test_m24_config_is_train_only_and_accuracy_is_not_a_gate():
@@ -53,6 +54,32 @@ def test_m24_cli_supports_per_stream_handoffs():
     assert summary.feature_cache_dir is None
     with pytest.raises(SystemExit):
         m24.parse_args(["run-stream", *common, "--feature-cache-dir", "cache"])
+
+
+def test_m24_colab_is_pinned_train_only_and_resume_safe():
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    code = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "code"
+    )
+    assert "REPO_COMMIT='b25e751aa79377ada68c66dc9a144226089f02e3'" in code
+    assert "--extract-train-only" in code
+    assert "--extract-test" not in code
+    assert "load_test=True" not in code
+    assert "test.pt').exists()" in code
+    assert code.count("run_and_download_stream(") == 4  # definition + 3 streams
+    assert code.index("'s2025',2025") < code.index("'s2026',2026")
+    assert code.index("'s2026',2026") < code.index("'s2027',2027")
+    assert code.index("'s2027',2027") < code.index("'summarize'")
+    assert "srq_generalization_m24_equal_memory_controls_train_only.zip" in code
+    for relative in (
+        "configs/srq_generalization_m24_equal_memory_controls_train_only.json",
+        "tools/srq_generalization_m24.py",
+        "methods/analytic_ridge/equal_memory_controls.py",
+    ):
+        digest = m24._sha256_file(ROOT / relative)
+        assert f"'{relative}':'{digest}'" in code
 
 
 def test_m24_byte_lock_is_exact_and_maximal():
