@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import zipfile
 
 import pytest
@@ -64,7 +65,8 @@ def test_m24_colab_is_pinned_train_only_and_resume_safe():
         for cell in notebook["cells"]
         if cell.get("cell_type") == "code"
     )
-    assert "REPO_COMMIT='b25e751aa79377ada68c66dc9a144226089f02e3'" in code
+    pinned_commit = "ece2a1c5a7c15bf0888e622769fdfe4ef282865b"
+    assert f"REPO_COMMIT='{pinned_commit}'" in code
     assert "--extract-train-only" in code
     assert "--extract-test" not in code
     assert "load_test=True" not in code
@@ -80,9 +82,10 @@ def test_m24_colab_is_pinned_train_only_and_resume_safe():
         "methods/analytic_ridge/equal_memory_controls.py",
         "tools/experiment_runner.py",
     ):
-        digest = hashlib.sha256(
-            (ROOT / relative).read_bytes().replace(b"\r\n", b"\n")
-        ).hexdigest()
+        contents = subprocess.check_output(
+            ["git", "show", f"{pinned_commit}:{relative}"], cwd=ROOT
+        )
+        digest = hashlib.sha256(contents.replace(b"\r\n", b"\n")).hexdigest()
         assert f"'{relative}':'{digest}'" in code
 
 

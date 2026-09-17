@@ -19,7 +19,7 @@ commands_exact:
   python -B -m pytest -q -p no:cacheprovider tests/test_equal_memory_controls.py tests/test_srq_generalization_m24.py
   python -B -m pytest -q -p no:cacheprovider tests/test_equal_memory_controls.py tests/test_srq_generalization_m24.py tests/test_analytic_ridge_backend.py tests/test_ranpac_analytic_frontend.py
 exit_codes: 0, 0
-tests_passed/total: 10/10, then 24/24
+tests_passed/total: 11/11, then 26/26 after the compact-FD numerical repair
 environment: Windows; Python 3.13; local CPU; PyTorch from repository environment
 backbone_and_checkpoint: not loaded; config locks ViT-B/16 SHA-256 32aa17d6e17b43500f531d5f6dc9bc93e56ed8841b8a75682e1bb295d722405b
 dataset_and_split: not loaded; runner locks the verified M23 CIFAR-100 train-only split identities
@@ -32,7 +32,7 @@ state_inventory_and_bytes:
 checkpoint_audit: unit round trips pass; no sample-level field is retained
 metrics: none
 gate_decision: pass for preparing the pinned train-only Colab run
-known_deviations: update-workspace peaks are measured but are not part of the persistent-state budget; FD uses repeated exact SVDs and may be slow
+known_deviations: update-workspace peaks are measured but are not part of the persistent-state budget; FD uses repeated exact SVDs and may be slow; its stored FP64 Woodbury correction is counted in state bytes
 ```
 
 The large run remains blocked until the notebook pins an immutable commit,
