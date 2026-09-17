@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import zipfile
@@ -77,8 +78,11 @@ def test_m24_colab_is_pinned_train_only_and_resume_safe():
         "configs/srq_generalization_m24_equal_memory_controls_train_only.json",
         "tools/srq_generalization_m24.py",
         "methods/analytic_ridge/equal_memory_controls.py",
+        "tools/experiment_runner.py",
     ):
-        digest = m24._sha256_file(ROOT / relative)
+        digest = hashlib.sha256(
+            (ROOT / relative).read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()
         assert f"'{relative}':'{digest}'" in code
 
 
