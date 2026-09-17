@@ -95,7 +95,7 @@ def test_m24_byte_lock_is_exact_and_maximal():
     assert lock["packed_exact_dimension"] == 5878
     assert lock["packed_exact_total_persistent_bytes"] == 91_873_540
     assert lock["packed_exact_next_dimension_bytes"] > 91_880_088
-    assert lock["frequent_directions_rank"] == 1328
+    assert lock["frequent_directions_rank"] == 1400
     assert lock["frequent_directions_total_persistent_bytes"] == 91_840_400
     assert lock["frequent_directions_next_rank_bytes"] > 91_880_088
     assert lock["locked_before_representation_encoding_or_accuracy"] is True

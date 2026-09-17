@@ -28,7 +28,7 @@ seed(s): 2025, 2026, 2027 (historical M23 stream identities retained)
 config_hash: to be locked in the pinned Colab notebook after commit
 state_inventory_and_bytes:
   packed Exact: projection + physical unique FP32 Gram entries + Q + counts + weights; width 5878; 91873540 bytes
-  FD-Ridge: full projection + FP32 1328x10000 FD summary + Q + counts + weights; 91840400 bytes
+  FD-Ridge: full projection + FP32 1400x10000 FD summary + Q + counts + FP64 compact Woodbury correction; 91840400 bytes
 checkpoint_audit: unit round trips pass; no sample-level field is retained
 metrics: none
 gate_decision: pass for preparing the pinned train-only Colab run

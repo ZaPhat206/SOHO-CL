@@ -68,6 +68,8 @@
   },
   "frequent_directions": {
     "storage": "fp32_rank_by_dimension_summary",
+    "classifier_storage": "fp64_compact_woodbury_correction",
+    "classifier_storage": "fp64_compact_woodbury_correction",
     "algorithm": "deterministic_standard_frequent_directions",
     "shrinkage": "sigma_ell_squared",
     "rank_policy": "largest_integer_not_exceeding_target_total_bytes",
@@ -79,7 +81,8 @@
     "derive_width_and_rank_before_encoding_or_accuracy": true,
     "include_projection": true,
     "include_cross_counts_and_classifier": true,
-    "element_size_bytes": 4
+    "statistics_element_size_bytes": 4,
+    "fd_correction_element_size_bytes": 8
   },
   "gates": {
     "maximum_solver_relative_residual": 0.0001,

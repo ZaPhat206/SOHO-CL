@@ -184,6 +184,7 @@ def _read_config(path: str | Path) -> dict:
     directions = config["frequent_directions"]
     if directions != {
         "storage": "fp32_rank_by_dimension_summary",
+        "classifier_storage": "fp64_compact_woodbury_correction",
         "algorithm": "deterministic_standard_frequent_directions",
         "shrinkage": "sigma_ell_squared",
         "rank_policy": "largest_integer_not_exceeding_target_total_bytes",
@@ -197,7 +198,8 @@ def _read_config(path: str | Path) -> dict:
         "derive_width_and_rank_before_encoding_or_accuracy": True,
         "include_projection": True,
         "include_cross_counts_and_classifier": True,
-        "element_size_bytes": 4,
+        "statistics_element_size_bytes": 4,
+        "fd_correction_element_size_bytes": 8,
     }:
         raise ValueError("invalid M24 budget contract")
     gates = config["gates"]
@@ -275,7 +277,10 @@ def derive_budget_lock(config: dict, source_m23: dict) -> dict:
     feature_dimension = int(config["ranpac"]["feature_dimension"])
     full_dimension = int(config["ranpac"]["full_expand_dimension"])
     classes = int(config["num_classes"])
-    element_size = int(config["budget"]["element_size_bytes"])
+    element_size = int(config["budget"]["statistics_element_size_bytes"])
+    correction_element_size = int(
+        config["budget"]["fd_correction_element_size_bytes"]
+    )
     packed_dimension, packed_bytes = largest_packed_exact_dimension(
         target_total_bytes=target,
         feature_dimension=feature_dimension,
@@ -288,7 +293,8 @@ def derive_budget_lock(config: dict, source_m23: dict) -> dict:
         feature_dimension=feature_dimension,
         expanded_dimension=full_dimension,
         classes=classes,
-        element_size=element_size,
+        statistics_element_size=element_size,
+        correction_element_size=correction_element_size,
     )
     packed_next = element_size * feature_dimension * (packed_dimension + 1)
     packed_next += packed_exact_backend_bytes(
@@ -296,7 +302,11 @@ def derive_budget_lock(config: dict, source_m23: dict) -> dict:
     )
     fd_next = element_size * feature_dimension * full_dimension
     fd_next += frequent_directions_backend_bytes(
-        full_dimension, classes, fd_rank + 1, element_size=element_size
+        full_dimension,
+        classes,
+        fd_rank + 1,
+        statistics_element_size=element_size,
+        correction_element_size=correction_element_size,
     )
     return {
         "policy": "largest_integer_width_or_rank_not_exceeding_source_srq_bytes",

@@ -70,8 +70,11 @@ rank is the largest integer for which
 full projection + B + cross + counts + classifier <= 91,880,088 bytes.
 ```
 
-This rule gives rank 1,328 and 91,840,400 bytes.  Rank 1,329 must exceed the
-ceiling.  Because FD uses exactly the M23 full random-ReLU representation, it
+The classifier is stored as a compact FP64 Woodbury correction of shape
+`rank x classes`, not as a dense FP32 10,000-by-class weight matrix; these
+FP64 bytes are included in the accounting. This avoids cancellation in the
+wide Woodbury subtraction. The rule gives rank 1,400 and 91,840,400 bytes.
+Rank 1,401 must exceed the ceiling. Because FD uses exactly the M23 full random-ReLU representation, it
 uses M23's preregistered full-representation Ridge lambda for the same stream;
 accuracy is not used to retune the low-rank method.
 

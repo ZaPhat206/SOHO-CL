@@ -44,18 +44,25 @@ def frequent_directions_backend_bytes(
     classes: int,
     rank: int,
     *,
-    element_size: int = 4,
+    statistics_element_size: int = 4,
+    correction_element_size: int = 8,
 ) -> int:
-    """Final backend bytes: sketch, Q, weights, and class counts."""
+    """Final compact FD bytes: sketch, Q, counts, and correction.
+
+    The classifier is held as the compact Woodbury coefficient ``C`` in
+    ``W = Q/lambda - B.T C`` rather than as a separately stored dense FP32
+    matrix.  ``C`` is FP64 and its bytes are part of the persistent budget.
+    """
 
     if dimension <= 0 or classes <= 0 or rank <= 0 or rank > dimension:
         raise ValueError("invalid Frequent Directions accounting arguments")
-    if element_size <= 0:
-        raise ValueError("element_size must be positive")
+    if statistics_element_size <= 0 or correction_element_size <= 0:
+        raise ValueError("element sizes must be positive")
     return (
-        element_size * rank * dimension
-        + 2 * element_size * dimension * classes
-        + element_size * classes
+        statistics_element_size * rank * dimension
+        + statistics_element_size * dimension * classes
+        + statistics_element_size * classes
+        + correction_element_size * rank * classes
     )
 
 
@@ -95,7 +102,8 @@ def largest_frequent_directions_rank(
     feature_dimension: int,
     expanded_dimension: int,
     classes: int,
-    element_size: int = 4,
+    statistics_element_size: int = 4,
+    correction_element_size: int = 8,
 ) -> tuple[int, int]:
     """Largest FD rank whose projection and final backend fit."""
 
@@ -103,15 +111,19 @@ def largest_frequent_directions_rank(
         target_total_bytes, feature_dimension, expanded_dimension, classes
     ) <= 0:
         raise ValueError("invalid Frequent Directions budget arguments")
-    projection_bytes = element_size * feature_dimension * expanded_dimension
-    base = projection_bytes + 2 * element_size * expanded_dimension * classes
-    base += element_size * classes
-    per_rank = element_size * expanded_dimension
+    projection_bytes = statistics_element_size * feature_dimension * expanded_dimension
+    base = projection_bytes + statistics_element_size * expanded_dimension * classes
+    base += statistics_element_size * classes
+    per_rank = statistics_element_size * expanded_dimension + correction_element_size * classes
     rank = min(expanded_dimension, (target_total_bytes - base) // per_rank)
     if rank <= 0:
         raise ValueError("target budget cannot fit a rank-one FD sketch")
     total = projection_bytes + frequent_directions_backend_bytes(
-        expanded_dimension, classes, int(rank), element_size=element_size
+        expanded_dimension,
+        classes,
+        int(rank),
+        statistics_element_size=statistics_element_size,
+        correction_element_size=correction_element_size,
     )
     return int(rank), int(total)
 
@@ -299,6 +311,9 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
         )
         self.compression_count = 0
         self.covariance_error_bound = 0.0
+        self.correction = torch.empty(
+            (0, 0), device=self.device, dtype=torch.float64
+        )
         self.diagnostics.update(
             method="frequent_directions_ridge",
             sketch_rank=self.sketch_rank,
@@ -340,11 +355,21 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
         return last_delta
 
     def _solve(self, cross: torch.Tensor) -> tuple[torch.Tensor, float]:
-        sketch = self.sketch.to(self.solver_dtype)
-        work_cross = cross.to(self.solver_dtype)
+        """Solve through an FP64 compact Woodbury coefficient.
+
+        The dense expression ``Q - B.T @ (...)`` suffers severe FP32
+        cancellation on the 10k-wide, strongly regularized control.  We retain
+        the small coefficient instead; its FP64 storage is accounted for.
+        """
+
+        sketch = self.sketch.to(torch.float64)
+        work_cross = cross.to(torch.float64)
         ridge = float(self.ridge_lambda)
         if not len(sketch):
-            weights = work_cross / ridge
+            correction = torch.empty(
+                (0, work_cross.shape[1]), device=self.device, dtype=torch.float64
+            )
+            residual_matrix = torch.zeros_like(work_cross)
         else:
             core = sketch @ sketch.T
             core.diagonal().add_(ridge)
@@ -352,12 +377,17 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
             if int(info.max().item()) != 0:
                 raise RuntimeError("Frequent Directions Woodbury core is not SPD")
             projected = sketch @ work_cross
-            correction = torch.cholesky_solve(projected, factor)
-            weights = (work_cross - sketch.T @ correction) / ridge
-        residual = _relative_implicit_residual(
-            sketch, ridge, weights, work_cross
-        )
-        return weights, residual
+            correction = torch.cholesky_solve(projected, factor) / ridge
+            # A(Q/lambda - B.T C)-Q =
+            # B.T(BQ/lambda - (lambda I + BB.T)C).
+            # This is the residual of the implicit classifier without
+            # materializing a dense 10k-by-class weight matrix.
+            residual_matrix = sketch.T @ (
+                projected / ridge - core @ correction
+            )
+        denominator = max(float(torch.linalg.vector_norm(work_cross).item()), 1.0)
+        residual = float(torch.linalg.vector_norm(residual_matrix).item()) / denominator
+        return correction, residual
 
     def update(self, features: torch.Tensor, labels: torch.Tensor) -> None:
         values, target_labels = self._validated_batch(features, labels)
@@ -365,9 +395,10 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
         last_delta = self._update_sketch(values)
         new_cross = cross + values.T @ targets
         new_counts = counts + targets.sum(0)
-        weights, residual = self._solve(new_cross)
+        correction, residual = self._solve(new_cross)
         self.class_ids, self.Q, self.counts = class_ids, new_cross, new_counts
-        self.weights = weights
+        self.weights = None
+        self.correction = correction
         self.total_rows += len(values)
         self.diagnostics.update(
             solver_relative_residual=residual,
@@ -379,15 +410,33 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
         )
         if not bool(
             torch.isfinite(self.sketch).all()
-            and torch.isfinite(self.weights).all()
+            and torch.isfinite(self.correction).all()
         ):
             raise RuntimeError("Frequent Directions produced NaN or Inf")
         self.assert_exemplar_free_state()
 
     def persistent_tensors(self) -> dict[str, torch.Tensor]:
-        tensors = self._common_persistent_tensors()
-        tensors["fd_sketch"] = self.sketch
-        return tensors
+        return {
+            "Q": self.Q,
+            "counts": self.counts,
+            "fd_sketch": self.sketch,
+            "woodbury_correction": self.correction,
+        }
+
+    def predict_logits(self, features: torch.Tensor) -> torch.Tensor:
+        if not self.total_rows:
+            raise RuntimeError("backend has not been updated")
+        values = features.to(device=self.device, dtype=torch.float64)
+        if values.ndim != 2 or values.shape[1] != self.dimension:
+            raise ValueError(f"features must have shape (B, {self.dimension})")
+        if not bool(torch.isfinite(values).all()):
+            raise ValueError("features contain NaN or Inf")
+        logits = values @ self.Q.to(torch.float64) / self.ridge_lambda
+        if len(self.sketch):
+            logits.sub_(
+                (values @ self.sketch.to(torch.float64).T) @ self.correction
+            )
+        return logits
 
     def assert_exemplar_free_state(self) -> None:
         """Validate that the retained rows are an FD summary, not exemplars.
@@ -405,18 +454,20 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
             raise AssertionError("invalid Q shape")
         if self.counts.shape != (len(self.class_ids),):
             raise AssertionError("invalid class-count shape")
-        if self.weights is not None and self.weights.shape != self.Q.shape:
-            raise AssertionError("invalid classifier shape")
         if (
             self.sketch.ndim != 2
             or self.sketch.shape[1] != self.dimension
             or self.sketch.shape[0] > self.sketch_rank
         ):
             raise AssertionError("invalid Frequent Directions summary shape")
+        if self.correction.shape != (len(self.sketch), len(self.class_ids)):
+            raise AssertionError("invalid Frequent Directions correction shape")
         if self.total_rows > self.sketch_rank and len(self.sketch) != self.sketch_rank:
             raise AssertionError("filled Frequent Directions summary has wrong rank")
-        if not bool(torch.isfinite(self.sketch).all()):
-            raise AssertionError("non-finite Frequent Directions summary")
+        if not bool(torch.isfinite(self.sketch).all()) or not bool(
+            torch.isfinite(self.correction).all()
+        ):
+            raise AssertionError("non-finite Frequent Directions state")
         forbidden = ("history", "sample", "feature_cache", "labels", "codes")
         for name in self.persistent_tensors():
             if any(token in name.lower() for token in forbidden):
@@ -430,6 +481,7 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
             sketch=self.sketch.detach().cpu().clone(),
             compression_count=self.compression_count,
             covariance_error_bound=self.covariance_error_bound,
+            correction=self.correction.detach().cpu().clone(),
         )
         return state
 
@@ -456,11 +508,19 @@ class FrequentDirectionsRidgeBackend(AnalyticRidgeBackend):
         )
         if self.compression_count < 0 or self.covariance_error_bound < 0:
             raise ValueError("invalid Frequent Directions compression count")
+        correction = state["correction"].to(device=self.device, dtype=torch.float64)
+        if correction.shape != (len(self.sketch), len(self.class_ids)) or not bool(
+            torch.isfinite(correction).all()
+        ):
+            raise ValueError("invalid Frequent Directions Woodbury correction")
+        self.correction = correction
         if self.total_rows:
-            self.weights, residual = self._solve(self.Q)
+            expected, residual = self._solve(self.Q)
+            if not torch.allclose(expected, self.correction, atol=1e-10, rtol=1e-10):
+                raise ValueError("Frequent Directions correction checkpoint mismatch")
             self.diagnostics["solver_relative_residual"] = residual
         else:
-            self.weights = None
+            self.correction = torch.empty((0, 0), device=self.device, dtype=torch.float64)
         self.assert_exemplar_free_state()
 
     def persistent_state_bytes(self) -> int:

@@ -108,6 +108,30 @@ def test_frequent_directions_shrink_has_standard_psd_error():
     fd.assert_exemplar_free_state()
 
 
+def test_frequent_directions_compact_fp64_correction_avoids_wide_cancellation():
+    fd = FrequentDirectionsRidgeBackend(
+        dimension=31,
+        sketch_rank=7,
+        ridge_lambda=1_000_000.0,
+        statistics_dtype=torch.float32,
+        solver_dtype=torch.float32,
+        device="cpu",
+    )
+    generator = torch.Generator().manual_seed(17)
+    values = torch.randn((64, 31), generator=generator) * 10_000.0
+    labels = torch.tensor([0, 1, 2, 3] * 16)
+    fd.update(values, labels)
+    assert fd.weights is None
+    assert fd.correction.dtype == torch.float64
+    assert fd.diagnostics["solver_relative_residual"] < 1e-10
+    explicit = (
+        fd.Q.to(torch.float64) / fd.ridge_lambda
+        - fd.sketch.to(torch.float64).T @ fd.correction
+    )
+    probe = torch.randn((5, 31), generator=generator)
+    torch.testing.assert_close(fd.predict_logits(probe), probe.to(torch.float64) @ explicit)
+
+
 def test_frequent_directions_accounting_rank_lock_and_roundtrip():
     target = 50_000
     rank, used = largest_frequent_directions_rank(
